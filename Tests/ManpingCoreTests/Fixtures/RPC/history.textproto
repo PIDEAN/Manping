@@ -1,0 +1,8 @@
+cursor { max: 700 } has_more: true
+items { kid: 123 oid: 123 business: "archive" title: "Video history" view_at: 1700000000
+  card_ugc { bvid: "BV-fixture" cid: 321 name: "Fixture author" mid: 42 progress: 12 duration: 120 view: 100 cover: "https://example.invalid/cover.png" } }
+items { kid: 234 business: "pgc" title: "Episode history" card_ogv { progress: 10 duration: 60 subtitle: "episode" } }
+items { kid: 345 business: "article" title: "Article history" card_article { name: "Author" mid: 42 covers: "https://example.invalid/article.png" } }
+items { kid: 456 business: "live" title: "Live history" card_live { name: "Host" mid: 42 status: 1 cover: "https://example.invalid/live.png" } }
+items { kid: 567 business: "cheese" title: "Course history" card_cheese { progress: 5 duration: 60 subtitle: "course" } }
+items { kid: 678 business: "future" title: "Unsupported history" }

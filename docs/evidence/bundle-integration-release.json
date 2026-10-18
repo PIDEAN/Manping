@@ -1,0 +1,10 @@
+{
+  "buildMode": "release",
+  "dylibs": 44,
+  "machO": 46,
+  "allArm64": true,
+  "allFinalSignedSHA256Verified": true,
+  "codesignDeepStrict": true,
+  "systemPathRuntimeExit0": true,
+  "noHomebrewLoaded": true
+}

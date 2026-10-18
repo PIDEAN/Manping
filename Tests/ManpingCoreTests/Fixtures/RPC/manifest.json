@@ -1,0 +1,42 @@
+{
+  "protoc": "libprotoc 36.2",
+  "fakeDataOnly": true,
+  "schemaRevision": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+  "messages": {
+    "comments": {
+      "type": "bilibili.main.community.reply.v1.MainListReply",
+      "proto": "bilibili/main/community/reply/v1.proto",
+      "sha256": "d57f381fd97509149e65fe277aef6d6b5956a6fc1640068eb84ccbafad73f5f5"
+    },
+    "details": {
+      "type": "bilibili.main.community.reply.v1.DetailListReply",
+      "proto": "bilibili/main/community/reply/v1.proto",
+      "sha256": "e099a2139750c424170b1054a8f77557f0bb237e4b1f8a12fa8406b2ff842b44"
+    },
+    "dynamics": {
+      "type": "bilibili.app.dynamic.v2.DynAllReply",
+      "proto": "bilibili/app/dynamic/v2.proto",
+      "sha256": "1803b832813437e8df9f485ab12b3a5e1aa8e8ea2e4b8c1e57f7106203145952"
+    },
+    "history": {
+      "type": "bilibili.app.interfaces.v1.CursorV2Reply",
+      "proto": "bilibili/app/interfaces/v1.proto",
+      "sha256": "d421cfcbc54cb201930dda3bd7ace15d3bc5271b7c5f8e3f43c07304e064a63d"
+    },
+    "popular": {
+      "type": "bilibili.app.show.popular.v1.PopularReply",
+      "proto": "bilibili/app/show/popular/v1.proto",
+      "sha256": "c5a4f2f684025f01eb66ddfa872645ca38a33f37f2982e495ce024551b1c5d10"
+    },
+    "rank": {
+      "type": "bilibili.app.show.rank.v1.RankListReply",
+      "proto": "bilibili/app/show/rank/v1.proto",
+      "sha256": "0e02fc59885b669a4f35cf54ff5baaeaeb3b4f82f9da2c1c655b6b9f3a2538f3"
+    },
+    "metadata": {
+      "type": "bilibili.metadata.Metadata",
+      "proto": "bilibili/metadata.proto",
+      "sha256": "482a88867e4b67f52933ed63d1a106e148e91570aa8e5a0e27b137e81877a8cb"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "mpvTag": "v0.41.0",
+  "mpvArchiveSHA256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+  "libplaceboVersion": "7.360.1",
+  "references": [
+    {
+      "url": "https://github.com/haasn/libplacebo/blob/v7.360.1/src/colorspace.c",
+      "sha256": "ae7486faacb18dbd5a94d165396bea19a3f2d0f99acc909852a88700b6f1071a"
+    },
+    {
+      "url": "https://github.com/haasn/libplacebo/blob/v7.360.1/src/shaders/colorspace.c",
+      "sha256": "6c61f4c2b53128fbdf2c89430f76da3f453ed11eba9e15d3ba443e63992efea0"
+    },
+    {
+      "url": "https://github.com/haasn/libplacebo/blob/v7.360.1/src/renderer.c",
+      "sha256": "28dea61b53f4d17bbbb3927777c05f8df671cdf00833b0011aae4ddeeb7d0275"
+    },
+    {
+      "url": "https://github.com/haasn/libplacebo/blob/v7.360.1/src/shaders/custom_mpv.c",
+      "sha256": "0091602f4d94a5e23de05b560a43658c1cffcc50455012a323f23c814ef5a984"
+    }
+  ],
+  "license": "LGPL-2.1-or-later; libplacebo-LICENSE",
+  "shaderWeightsChanged": false,
+  "newPublicMpvOptions": false,
+  "mpvBuild": {
+    "version": "0.41.0",
+    "sourceSHA256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+    "deduplicatedTextureCoordinates": true,
+    "patches": {
+      "mpv-coreaudio-device-change.patch": "769b218df220738cc1cf9f81cf696c16518c5dfe56a5ef028e33b22536e0e924",
+      "mpv-0.41.0-deduplicate-quad-coordinates.patch": "106dd6766887aead29b8cb5e10cec44702d29cf841d5d371c1b82618be9e16c6",
+      "mpv-0.41.0-renderer-compatibility.patch": "15f1c7022e15099c22b228e99b95588d21201a32343f3d0cf641baa538ee7d19"
+    },
+    "meson": "1.10.1",
+    "options": [
+      "-Dbuildtype=release",
+      "-Dlibmpv=true",
+      "-Dcplayer=false",
+      "-Dbuild-date=false",
+      "-Dmanpage-build=disabled",
+      "-Dhtml-build=disabled",
+      "-Dvapoursynth=disabled",
+      "-Dmacos-cocoa-cb=disabled",
+      "-Dvulkan=disabled",
+      "-Dswift-flags="
+    ],
+    "librarySHA256": "df55dcaed22fad48b894a20722c51c9ed655cc5b7cd3ca931446646f1a251de8"
+  }
+}

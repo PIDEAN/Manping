@@ -1,0 +1,172 @@
+{
+  "actualProperties": {
+    "correct-downscaling": "yes",
+    "cscale": "bilinear",
+    "dither-depth": "no",
+    "dscale": "bilinear",
+    "gamma-factor": "1.000000",
+    "hwdec-current": "videotoolbox",
+    "icc-profile": "",
+    "icc-profile-auto": "no",
+    "linear-downscaling": "yes",
+    "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+    "scale": "bilinear",
+    "sigmoid-upscaling": "yes",
+    "target-peak": "3248",
+    "target-prim": "bt.2020",
+    "target-trc": "linear",
+    "tone-mapping": "bt.2390",
+    "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+    "video-out-params/colorlevels": "limited",
+    "video-out-params/colormatrix": "bt.709",
+    "video-out-params/gamma": "bt.1886",
+    "video-out-params/h": "1080",
+    "video-out-params/primaries": "bt.709",
+    "video-out-params/w": "1920",
+    "video-output-levels": "auto",
+    "video-params/colorlevels": "limited",
+    "video-params/colormatrix": "bt.709",
+    "video-params/gamma": "bt.1886",
+    "video-params/h": "1080",
+    "video-params/primaries": "bt.709",
+    "video-params/w": "1920"
+  },
+  "bvid": "BV1VVpo6gEYg",
+  "capturedAtUTC": "2026-10-13T06:00:41.242279+00:00",
+  "decodeErrorRetainedCount": 0,
+  "decodeErrorTimes": [],
+  "duration": 222.47343750000002,
+  "hwdec": "videotoolbox",
+  "limitations": [
+    "播放时钟不能单独证明图像稳定；终点 CGL 帧计数与一个 sampleHash 不能证明整个区间像素持续变化，未做主观像素验收。",
+    "诊断事件未提供时间戳；decodeErrorTimes 为空表示未记录 decode 错误，其他事件时间为未知。",
+    "报告仅保留终点 renderEvidence，没有逐帧 sampleHash 序列，不能报告 sampleHash 变化次数。",
+    "现有封存 CLI 的实现上下文使用 Web WBI /x/player/wbi/playurl（request qn127、fnval4048，再选择 qn80）；报告没有记录 endpoint，未验证实际 AppToken REST /x/player/playurl。",
+    "本次选择的 representation 与其他可能样本的签名 URL/媒体字节一致性未验证；未下载或比对 same-byte 样本。",
+    "本次为 40 秒诊断窗口，实际媒体时钟到 35.7440625 秒；未验证长时间播放、seek 或其他 BV/codec/quality。"
+  ],
+  "media": {
+    "audio-codec-name": "aac",
+    "video-params/colormatrix": "bt.709",
+    "video-params/gamma": "bt.1886",
+    "video-params/hw-pixelformat": "nv12",
+    "video-params/pixelformat": "videotoolbox",
+    "video-params/primaries": "bt.709"
+  },
+  "metricSamples": {
+    "count": 36,
+    "ranges": {
+      "decoder-frame-drop-count": {
+        "max": 0,
+        "min": 0,
+        "samples": 35
+      },
+      "demuxer-cache-duration": {
+        "max": 202.035125,
+        "min": 13.138125,
+        "samples": 35
+      },
+      "frame-drop-count": {
+        "max": 0,
+        "min": 0,
+        "samples": 35
+      },
+      "mediaSecond": {
+        "max": 35,
+        "min": 0,
+        "samples": 36
+      },
+      "residentBytes": {
+        "max": 251248640,
+        "min": 88621056,
+        "samples": 36
+      }
+    }
+  },
+  "metricsFinal": {
+    "decoder-frame-drop-count": 0,
+    "demuxer-cache-duration": 186.3528125,
+    "frame-drop-count": 0,
+    "residentBytes": 251265024,
+    "video-params/sig-peak": 0
+  },
+  "otherRetainedEvents": [
+    {
+      "text": "libmpv_render: correct-downscaling requires non-bilinear scaler.",
+      "time": null
+    },
+    {
+      "text": "ao/coreaudio: unable to set the input channel layout on the audio unit ([206][255][255][255]/-50)",
+      "time": null
+    }
+  ],
+  "privacyScan": {
+    ".build/live-playback/vt.stderr": {
+      "bytes": 0,
+      "credentialPatternFound": false,
+      "rawURLFound": false
+    },
+    ".build/live-playback/vt.stdout": {
+      "bytes": 0,
+      "credentialPatternFound": false,
+      "rawURLFound": false
+    },
+    "docs/evidence/live-bv-vt.json": {
+      "bytes": 11183,
+      "credentialPatternFound": false,
+      "rawURLFound": false
+    }
+  },
+  "processExitCode": 0,
+  "renderFields": {
+    "backgroundFrames": "868",
+    "componentType": "0x1406",
+    "fbo": "2",
+    "frames": "869",
+    "linkFailures": "0",
+    "maxActiveAttributes": "3",
+    "pollMilliseconds": "8",
+    "redBits": "16",
+    "sampleFrame": "840",
+    "sampleHash": "976c96c794f7557d",
+    "sampleTargetNits": "3248",
+    "sampledPeak": "0.342041",
+    "shaderLinks": "3",
+    "size": "1280x720"
+  },
+  "renderReady": true,
+  "reportSHA256": "6f00bfa849ac11520fe99cd92ecd9b69dff684ed05d7e8b8d09ab53278ec5877",
+  "representation": {
+    "audioCodec": "mp4a.40.2",
+    "bandwidth": 1841713,
+    "codec": "avc1.640032",
+    "height": 1080,
+    "qn": 80,
+    "requestedPixelViewport": [
+      1280,
+      720
+    ],
+    "width": 1920
+  },
+  "request": {
+    "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+    "codec": "avc1",
+    "fixedViewport": true,
+    "hwdecMode": "videotoolbox",
+    "quality": 80
+  },
+  "requestedWallSeconds": 40,
+  "result": "在本次有效播放样本中，VT 保持启用，有 CGL 渲染帧计数且丢帧计数为 0，未记录 decode/NAL 错误；无须追加软件解码控制。",
+  "retainedEventCount": 2,
+  "sealedExecutableSHA256": "a204485ac136d8282ddfdd8ba1a317494135cc86d415fa5c233b4b00ea5664d0",
+  "system": {
+    "architecture": "arm64",
+    "buildVersion": "26A434",
+    "productVersion": "27.0.1"
+  },
+  "time": 35.7440625,
+  "viewportPixels": [
+    1280,
+    720
+  ]
+}

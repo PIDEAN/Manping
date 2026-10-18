@@ -1,0 +1,9 @@
+{
+  "repository": "https://github.com/protocolbuffers/protobuf",
+  "tag": "v36.2",
+  "files": {
+    "google/protobuf/any.proto": "8e56f61e3078e9232d39ce1b1bab28613783af8191f93a910c3617933f87a179"
+  },
+  "license": "ThirdPartyNotices/GoogleProtobuf-LICENSE",
+  "licenseSHA256": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d"
+}

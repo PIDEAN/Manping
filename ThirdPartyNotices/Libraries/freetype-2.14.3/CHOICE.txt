@@ -1,0 +1,4 @@
+FreeType is dual-licensed (FTL or GPL-2.0-or-later, see LICENSE.TXT). Manping, a
+GPL-3.0 program, uses it under the GPL option, version 3; the full text is in
+COPYING.GPL-3.0. Portions of this software are copyright (C) The FreeType
+Project (https://freetype.org). All rights reserved.

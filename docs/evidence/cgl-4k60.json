@@ -1,0 +1,131 @@
+{
+  "display" : "edr=false current=16.0 mappedHeadroom=16.0 potential=16.0 scale=2.0",
+  "duration" : 14,
+  "error" : "",
+  "events" : [
+
+  ],
+  "hwdec" : "videotoolbox",
+  "media" : {
+    "audio-codec-name" : "",
+    "video-params\/colormatrix" : "bt.709",
+    "video-params\/gamma" : "bt.1886",
+    "video-params\/hw-pixelformat" : "p010",
+    "video-params\/pixelformat" : "videotoolbox",
+    "video-params\/primaries" : "bt.709"
+  },
+  "metrics" : {
+    "decoder-frame-drop-count" : 0,
+    "demuxer-cache-duration" : 1,
+    "frame-drop-count" : 14,
+    "residentBytes" : 300056576,
+    "video-params\/sig-peak" : 0
+  },
+  "metricSamples" : [
+    {
+      "mediaSecond" : 0,
+      "residentBytes" : 99106816
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 1,
+      "residentBytes" : 299974656,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 2,
+      "residentBytes" : 300957696,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1.0166666666666662,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 3,
+      "residentBytes" : 297631744,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 4,
+      "residentBytes" : 298434560,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 5,
+      "residentBytes" : 298418176,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 6,
+      "residentBytes" : 299450368,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1.0000000000000009,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 7,
+      "residentBytes" : 299565056,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 8,
+      "residentBytes" : 299614208,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 9,
+      "residentBytes" : 299728896,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 10,
+      "residentBytes" : 299728896,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 14,
+      "mediaSecond" : 11,
+      "residentBytes" : 299925504,
+      "video-params\/sig-peak" : 0
+    }
+  ],
+  "passes" : "",
+  "probes" : {
+    "afterMainStall" : "frames=255 backgroundFrames=254 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=6d9e2eca1a346a75 sampleFrame=240 sampleTargetNits=203 shaderLinks=6 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+    "beforeMainStall" : "frames=134 backgroundFrames=133 fbo=7 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=ede729e4a434f86e sampleFrame=120 sampleTargetNits=203 shaderLinks=6 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8"
+  },
+  "render" : "frames=674 backgroundFrames=673 fbo=7 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=c7f74388cb6da495 sampleFrame=660 sampleTargetNits=203 shaderLinks=6 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+  "renderReady" : true,
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : false,
+  "time" : 11.333333333333334,
+  "windowNumber" : 16238
+}

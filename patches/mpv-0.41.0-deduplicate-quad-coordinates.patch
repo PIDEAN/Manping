@@ -1,0 +1,71 @@
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -1294,14 +1294,43 @@
+                                             const struct ra_fbo *fbo, bool discard,
+                                             const struct mp_rect *dst)
+ {
+-    // The first element is reserved for `vec2 position`
+-    int num_vertex_attribs = 1 + p->num_pass_imgs;
++    // Compute the same four UV corners as the old per-texture attributes.
++    // Compare actual float bytes after all transforms and normalization: equal
++    // dimensions alone do not imply equal coordinates (rotation/flip/crop).
++    struct vertex_pt corners[p->num_pass_imgs + 1][4];
++    int num_coords = 0;
++    for (int i = 0; i < p->num_pass_imgs; i++) {
++        struct image *s = &p->pass_imgs[i];
++        struct vertex_pt candidate[4] = {0};
++        if (s->tex) {
++            for (int n = 0; n < 4; n++) {
++                float tx = (n / 2) * s->w;
++                float ty = (n % 2) * s->h;
++                gl_transform_vec(s->transform, &tx, &ty);
++                bool rect = s->tex->params.non_normalized;
++                candidate[n].x = tx / (rect ? 1 : s->tex->params.w);
++                candidate[n].y = ty / (rect ? 1 : s->tex->params.h);
++            }
++        }
++        int coord = 0;
++        while (coord < num_coords &&
++               memcmp(corners[coord], candidate, sizeof(candidate)) != 0)
++            coord++;
++        if (coord == num_coords) {
++            memcpy(corners[num_coords++], candidate, sizeof(candidate));
++        }
++        PRELUDE("#define texcoord%d mpv_unique_coord%d\n", i, coord);
++    }
++
++    // The first element is reserved for `vec2 position`. Texture/sampler
++    // bindings stay independent; only identical interpolated coordinates share.
++    int num_vertex_attribs = 1 + num_coords;
+     size_t vertex_stride = num_vertex_attribs * sizeof(struct vertex_pt);
+ 
+     // Expand the VAO if necessary
+     while (p->vao_len < num_vertex_attribs) {
+         MP_TARRAY_APPEND(p, p->vao, p->vao_len, (struct ra_renderpass_input) {
+-            .name = talloc_asprintf(p, "texcoord%d", p->vao_len - 1),
++            .name = talloc_asprintf(p, "mpv_unique_coord%d", p->vao_len - 1),
+             .type = RA_VARTYPE_FLOAT,
+             .dim_v = 2,
+             .dim_m = 1,
+@@ -1326,19 +1355,8 @@
+         // vec2 position in idx 0
+         vs[0].x = x[n / 2];
+         vs[0].y = y[n % 2];
+-        for (int i = 0; i < p->num_pass_imgs; i++) {
+-            struct image *s = &p->pass_imgs[i];
+-            if (!s->tex)
+-                continue;
+-            struct gl_transform tr = s->transform;
+-            float tx = (n / 2) * s->w;
+-            float ty = (n % 2) * s->h;
+-            gl_transform_vec(tr, &tx, &ty);
+-            bool rect = s->tex->params.non_normalized;
+-            // vec2 texcoordN in idx N+1
+-            vs[i + 1].x = tx / (rect ? 1 : s->tex->params.w);
+-            vs[i + 1].y = ty / (rect ? 1 : s->tex->params.h);
+-        }
++        for (int i = 0; i < num_coords; i++)
++            vs[i + 1] = corners[i][n];
+     }
+ 
+     memmove(&p->tmp_vertex[num_vertex_attribs * 4],

@@ -1,0 +1,191 @@
+{
+  "grpc-swift-2": {
+    "repository": "https://github.com/grpc/grpc-swift-2.git",
+    "version": "2.4.3",
+    "revision": "ac33066eb6edb1a21a6ca172ea8184a9b06f3cc7",
+    "licenses": {
+      "grpc-swift-2-NOTICES.txt": "c42abdf7c437a635d6d1ec02c1885e54f01a5e139c0e1e0e9ae0751c77b4c41c",
+      "grpc-swift-2-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "grpc-swift-nio-transport": {
+    "repository": "https://github.com/grpc/grpc-swift-nio-transport.git",
+    "version": "2.10.0",
+    "revision": "ff4420d7c33cc998a590b0761630d67f76bc291e",
+    "licenses": {
+      "grpc-swift-nio-transport-NOTICES.txt": "53ab4b7f9add0b13c39b86a748a7ce71878d648702f409f6b5818e26bd775fbe",
+      "grpc-swift-nio-transport-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "grpc-swift-protobuf": {
+    "repository": "https://github.com/grpc/grpc-swift-protobuf.git",
+    "version": "2.4.1",
+    "revision": "176c5a434fd76f6f479848d1a8f7d44967534168",
+    "licenses": {
+      "grpc-swift-protobuf-NOTICES.txt": "d32417a8d0ada2f2b74635d72f2dac85e69f9fadbdf5f67c6bef84425c00a8b3",
+      "grpc-swift-protobuf-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-algorithms": {
+    "repository": "https://github.com/apple/swift-algorithms.git",
+    "version": "1.2.1",
+    "revision": "87e50f483c54e6efd60e885f7f5aa946cee68023",
+    "licenses": {
+      "swift-algorithms-LICENSE.txt": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    }
+  },
+  "swift-asn1": {
+    "repository": "https://github.com/apple/swift-asn1.git",
+    "version": "1.7.3",
+    "revision": "3b6410f7dee09eb33cdd26260c5fd47fda19b0e2",
+    "licenses": {
+      "swift-asn1-NOTICE.txt": "11dd3b3b783e6ec26098dd38ebc962986ea109b85447e28e62867b83bd0f8c5b",
+      "swift-asn1-LICENSE.txt": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+    }
+  },
+  "swift-async-algorithms": {
+    "repository": "https://github.com/apple/swift-async-algorithms.git",
+    "version": "1.1.7",
+    "revision": "13713a4ffdee8abd929f92568ee9462a46ae26e0",
+    "licenses": {
+      "swift-async-algorithms-LICENSE.txt": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    }
+  },
+  "swift-atomics": {
+    "repository": "https://github.com/apple/swift-atomics.git",
+    "version": "1.3.1",
+    "revision": "0442cb5a3f98ab802acb777929fdb446bda11a34",
+    "licenses": {
+      "swift-atomics-LICENSE.txt": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    }
+  },
+  "swift-certificates": {
+    "repository": "https://github.com/apple/swift-certificates.git",
+    "version": "1.21.0",
+    "revision": "ff86b924ead66f853b8baf91f3c41926a8f36177",
+    "licenses": {
+      "swift-certificates-NOTICE.txt": "57d7797703d906b63c2be50d891cf70bdec307ae6f77a881638c33343f3dd195",
+      "swift-certificates-LICENSE.txt": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
+    }
+  },
+  "swift-collections": {
+    "repository": "https://github.com/apple/swift-collections.git",
+    "version": "1.7.3",
+    "revision": "35a1edcb8ebd2bfe251d587f0b69e62af28f508c",
+    "licenses": {
+      "swift-collections-LICENSE.txt": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    }
+  },
+  "swift-crypto": {
+    "repository": "https://github.com/apple/swift-crypto.git",
+    "version": "5.0.1",
+    "revision": "1c80d3aff53fedc445b60692980cb4f19a618657",
+    "licenses": {
+      "swift-crypto-NOTICE.txt": "b3ddc2ae068e76b3beb71be03c0400f90090f9469aa491bf7b1ac42320af37b8",
+      "swift-crypto-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-http-structured-headers": {
+    "repository": "https://github.com/apple/swift-http-structured-headers.git",
+    "version": "1.7.0",
+    "revision": "933538faa42c432d385f02e07df0ace7c5ecfc47",
+    "licenses": {
+      "swift-http-structured-headers-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-http-types": {
+    "repository": "https://github.com/apple/swift-http-types.git",
+    "version": "1.8.0",
+    "revision": "bff4b6903cdc99dda49649dd52f46c11cfd3ed50",
+    "licenses": {
+      "swift-http-types-NOTICE.txt": "eb79190094094bb6ce2b177a7ba7708f50bf873b9a2c5e6e1936a5f391b5ec0f",
+      "swift-http-types-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-log": {
+    "repository": "https://github.com/apple/swift-log.git",
+    "version": "1.16.1",
+    "revision": "4038b6a4f74a1426f47eb1dd5b4bb5628a15d597",
+    "licenses": {
+      "swift-log-NOTICE.txt": "879b241d49b407215a0ad8e1c6a71c358d7b29591b090cf379d37a5f50cff918",
+      "swift-log-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-nio": {
+    "repository": "https://github.com/apple/swift-nio.git",
+    "version": "2.104.0",
+    "revision": "6db9d9abd92ad7399b8a564cafbb87d3507245fa",
+    "licenses": {
+      "swift-nio-NOTICE.txt": "d25ed2452b3476c342082d11e4e8bf5459174d2836124f842b499850bcebc50e",
+      "swift-nio-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-nio-extras": {
+    "repository": "https://github.com/apple/swift-nio-extras.git",
+    "version": "1.35.1",
+    "revision": "41449336c8ecfadac6b4b5be75f9c3c306e61ced",
+    "licenses": {
+      "swift-nio-extras-NOTICE.txt": "722817c4c450c062f1f6e7b9df36733c0f6983aaad3e5e4aa5d76fe23d90010a",
+      "swift-nio-extras-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-nio-http2": {
+    "repository": "https://github.com/apple/swift-nio-http2.git",
+    "version": "1.46.0",
+    "revision": "0f3e54e29c944c2e835ad52159da7d9e1c94ac69",
+    "licenses": {
+      "swift-nio-http2-NOTICE.txt": "56b85f4571b653e82649d82a696afe841a417206a21a25afac751bcb11c2ea87",
+      "swift-nio-http2-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-nio-ssl": {
+    "repository": "https://github.com/apple/swift-nio-ssl.git",
+    "version": "2.37.5",
+    "revision": "322f3c2a4a21df31c84ca416bf65ee5e9059e440",
+    "licenses": {
+      "swift-nio-ssl-NOTICE.txt": "03e8ca5c65a3df21fe1ab48eef91bca7d370db56c290d8ef16eaaa09ba322abe",
+      "swift-nio-ssl-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-nio-transport-services": {
+    "repository": "https://github.com/apple/swift-nio-transport-services.git",
+    "version": "1.28.0",
+    "revision": "67787bb645a5e67d2edcdfbe48a216cc549222d5",
+    "licenses": {
+      "swift-nio-transport-services-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-numerics": {
+    "repository": "https://github.com/apple/swift-numerics.git",
+    "version": "1.1.1",
+    "revision": "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+    "licenses": {
+      "swift-numerics-LICENSE.txt": "770af8291f708538d8ff885a0bbc4e045cd700531741c4f99528d435c14d7f55"
+    }
+  },
+  "swift-protobuf": {
+    "repository": "https://github.com/apple/swift-protobuf.git",
+    "version": "1.39.0",
+    "revision": "3d537cb81aef272a03cb3be815439e9bf0eb3bd3",
+    "licenses": {
+      "swift-protobuf-LICENSE.txt": "186c5f0192a754714a7e542233ddaaad28745626e0ad32e358d3f5af00afb84a"
+    }
+  },
+  "swift-service-lifecycle": {
+    "repository": "https://github.com/swift-server/swift-service-lifecycle.git",
+    "version": "2.12.1",
+    "revision": "c55297914e26ce3085b73ca88c521ef99136f6ad",
+    "licenses": {
+      "swift-service-lifecycle-NOTICE.txt": "e0583b716a12a866a2a1d7456c26a17d18e1ec70f0ecaf2c62ed77180d1db043",
+      "swift-service-lifecycle-LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  },
+  "swift-system": {
+    "repository": "https://github.com/apple/swift-system.git",
+    "version": "1.8.1",
+    "revision": "869129b7bf4ecc57b97d0193ad29690ca2134750",
+    "licenses": {
+      "swift-system-LICENSE.txt": "2245a990b635558be210fb3eb4f8a6f7a49aebc0fefbf5859146a65ddc7ddcf3"
+    }
+  }
+}

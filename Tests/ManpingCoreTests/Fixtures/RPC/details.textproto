@@ -1,0 +1,4 @@
+cursor { next: 501 is_end: true mode: MAIN_LIST_TIME }
+root { id: 101 count: 1 content { message: "Root" } member { mid: 42 name: "Fixture author" }
+  replies { id: 102 root: 101 content { message: "Child" } member { mid: 43 name: "Child author" } }
+}

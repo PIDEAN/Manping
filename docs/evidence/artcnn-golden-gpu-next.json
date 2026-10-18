@@ -1,0 +1,114 @@
+[
+  {
+    "file": "Ani4Kv2_ArtCNN_C4F32_i2.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0,
+    "max": 0.0,
+    "psnr": null,
+    "interiorMAE": 0.0,
+    "interiorMax": 0.0,
+    "changedFraction": 0.0
+  },
+  {
+    "file": "AniSD_ArtCNN_C4F32_i4.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0,
+    "max": 0.0,
+    "psnr": null,
+    "interiorMAE": 0.0,
+    "interiorMax": 0.0,
+    "changedFraction": 0.0
+  },
+  {
+    "file": "ArtCNN_C4F16.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0003820208499345835,
+    "max": 0.006363012130922413,
+    "psnr": 63.338938632855715,
+    "interiorMAE": 0.0003905963890881978,
+    "interiorMax": 0.006363012130922413,
+    "changedFraction": 0.8098177083333333
+  },
+  {
+    "file": "ArtCNN_C4F16_DN.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.00047974375881279085,
+    "max": 0.008590829327840097,
+    "psnr": 61.232084040654954,
+    "interiorMAE": 0.0004897145156848254,
+    "interiorMax": 0.008590829327840097,
+    "changedFraction": 0.8469921875
+  },
+  {
+    "file": "ArtCNN_C4F16_DS.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0003506873359301924,
+    "max": 0.006958113984893564,
+    "psnr": 63.717588330327075,
+    "interiorMAE": 0.00035655600230895295,
+    "interiorMax": 0.006958113984893564,
+    "changedFraction": 0.8844097222222222
+  },
+  {
+    "file": "ArtCNN_C4F32.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0003642529198774186,
+    "max": 0.007858396276798657,
+    "psnr": 63.00814346813916,
+    "interiorMAE": 0.0003635321744545,
+    "interiorMax": 0.007858396276798657,
+    "changedFraction": 0.8516015625
+  },
+  {
+    "file": "ArtCNN_C4F32_DN.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.0004111905719378104,
+    "max": 0.008514534218356608,
+    "psnr": 62.10727489790664,
+    "interiorMAE": 0.0004164028048825151,
+    "interiorMax": 0.008514534218356608,
+    "changedFraction": 0.7777387152777778
+  },
+  {
+    "file": "ArtCNN_C4F32_DS.glsl",
+    "size": [
+      360,
+      640,
+      3
+    ],
+    "mae": 0.00038539750458477045,
+    "max": 0.009338521400778219,
+    "psnr": 62.345053168486864,
+    "interiorMAE": 0.00038824639925537423,
+    "interiorMax": 0.009338521400778219,
+    "changedFraction": 0.7684852430555555
+  }
+]

@@ -1,0 +1,3140 @@
+{
+  "method": "Production VideoSurface/VideoLayer CGL RGBA16Float vs original gpu-next/macvk, same static H264 frame and software decoder; BT709/sRGB/203, bt.2390, bilinear scale/cscale/dscale, no dither. No resampling/cropping.",
+  "buildMode": "release",
+  "executableSHA256": "1b15972c510761a69d21cbc20a0d5effe2ad325dbe71abd6753204d15dc25865",
+  "mpvSHA256": "26c0a8e1ef9beb93c9b1476c679f927c2da965acaa2df0efdcdc794d746de8d5",
+  "fixtureSHA256": "5ea74daf49e1de18c2a77af8b42330654aed77cb3eadce4f8b293ea1e86b22b1",
+  "requestedPixelSize": [
+    1280,
+    720
+  ],
+  "allEightPipelinesSampled": true,
+  "pixelEquivalent": false,
+  "gateDecision": "Raw full-frame metrics for review; numerical identity is not claimed. See separate linear, metadata and runtime evidence.",
+  "results": [
+    {
+      "file": "None",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "libmpv_render: shader compatibility: direct bilinear planes 640x360 -> 1280x720\n",
+        "libmpv_render: shader compatibility: legacy color fallback: no current video frame\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "libmpv_render: shader compatibility: direct bilinear planes 640x360 -> 1280x720\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/None.json"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=144 backgroundFrames=143 fbo=4 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=a59a3647845401c sampleFrame=120 sampleTargetNits=203 shaderLinks=2 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.00019285663679640238,
+      "max": 0.0020583362540055328,
+      "psnr": 68.79387287192215,
+      "nativeSHA256": "727a76d6065d4f374ecb38b2ef2624966cb5ca159345beb60445be49974a84a8",
+      "referenceSHA256": "8466bbc77f6c627d08d410d5d0d1e0db32210af08340f68cda5d242162357432",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "Ani4Kv2_ArtCNN_C4F32_i2.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/Ani4Kv2_ArtCNN_C4F32_i2.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "libmpv_render: shader compatibility: legacy color fallback: no current video frame\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "osd/libass: Done.\n",
+        "osd/libass: Setting up fonts...\n",
+        "osd/libass: Shaper: FriBidi 1.0.16 (SIMPLE) HarfBuzz-ng 14.5.0 (COMPLEX)\n",
+        "osd/libass: Using font provider coretext\n",
+        "osd/libass: libass source: tarball: 0.17.5\n",
+        "vo/libmpv: mpv_render_context_render() not being called or stuck.\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/Ani4Kv2_ArtCNN_C4F32_i2.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/Ani4Kv2_ArtCNN_C4F32_i2.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 357917,
+              "avg": 357917,
+              "peak": 357917,
+              "count": 1,
+              "samples": [
+                357917
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 42125,
+              "avg": 42125,
+              "peak": 42125,
+              "count": 1,
+              "samples": [
+                42125
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 417208,
+              "avg": 417208,
+              "peak": 417208,
+              "count": 1,
+              "samples": [
+                417208
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 317916,
+              "avg": 317916,
+              "peak": 317916,
+              "count": 1,
+              "samples": [
+                317916
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 33667,
+              "avg": 33667,
+              "peak": 33667,
+              "count": 1,
+              "samples": [
+                33667
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 203833,
+              "avg": 203833,
+              "peak": 203833,
+              "count": 1,
+              "samples": [
+                203833
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 58667,
+              "avg": 58667,
+              "peak": 58667,
+              "count": 1,
+              "samples": [
+                58667
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 98084,
+              "avg": 98084,
+              "peak": 98084,
+              "count": 1,
+              "samples": [
+                98084
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 82542,
+              "avg": 82542,
+              "peak": 82542,
+              "count": 1,
+              "samples": [
+                82542
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 688125,
+              "avg": 688125,
+              "peak": 688125,
+              "count": 1,
+              "samples": [
+                688125
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 36333,
+              "avg": 36333,
+              "peak": 36333,
+              "count": 1,
+              "samples": [
+                36333
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 190875,
+              "avg": 190875,
+              "peak": 190875,
+              "count": 1,
+              "samples": [
+                190875
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 121792,
+              "avg": 121792,
+              "peak": 121792,
+              "count": 1,
+              "samples": [
+                121792
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 150791,
+              "avg": 150791,
+              "peak": 150791,
+              "count": 1,
+              "samples": [
+                150791
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 224542,
+              "avg": 224542,
+              "peak": 224542,
+              "count": 1,
+              "samples": [
+                224542
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 457083,
+              "avg": 457083,
+              "peak": 457083,
+              "count": 1,
+              "samples": [
+                457083
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 275208,
+              "avg": 275208,
+              "peak": 275208,
+              "count": 1,
+              "samples": [
+                275208
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 514291,
+              "avg": 514291,
+              "peak": 514291,
+              "count": 1,
+              "samples": [
+                514291
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 407375,
+              "avg": 407375,
+              "peak": 407375,
+              "count": 1,
+              "samples": [
+                407375
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 167042,
+              "avg": 167042,
+              "peak": 167042,
+              "count": 1,
+              "samples": [
+                167042
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 34292,
+              "avg": 34292,
+              "peak": 34292,
+              "count": 1,
+              "samples": [
+                34292
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 45708,
+              "avg": 45708,
+              "peak": 45708,
+              "count": 1,
+              "samples": [
+                45708
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 73500,
+              "avg": 73500,
+              "peak": 73500,
+              "count": 1,
+              "samples": [
+                73500
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 285292,
+              "avg": 285292,
+              "peak": 285292,
+              "count": 1,
+              "samples": [
+                285292
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 71375,
+              "avg": 71375,
+              "peak": 71375,
+              "count": 1,
+              "samples": [
+                71375
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 122584,
+              "avg": 122584,
+              "peak": 122584,
+              "count": 1,
+              "samples": [
+                122584
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 479375,
+              "avg": 479375,
+              "peak": 479375,
+              "count": 1,
+              "samples": [
+                479375
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 254750,
+              "avg": 254750,
+              "peak": 254750,
+              "count": 1,
+              "samples": [
+                254750
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 272083,
+              "avg": 272083,
+              "peak": 272083,
+              "count": 1,
+              "samples": [
+                272083
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 140584,
+              "avg": 140584,
+              "peak": 140584,
+              "count": 1,
+              "samples": [
+                140584
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 177125,
+              "avg": 177125,
+              "peak": 177125,
+              "count": 1,
+              "samples": [
+                177125
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 448750,
+              "avg": 448750,
+              "peak": 448750,
+              "count": 1,
+              "samples": [
+                448750
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-6)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Depth-To-Space)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=121 backgroundFrames=120 fbo=1 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=d68308a75152f8df sampleFrame=120 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.000277332243624102,
+      "max": 0.0024553390483138537,
+      "psnr": 66.6956195523025,
+      "nativeSHA256": "0ab4501a82ef67f94d6dbc259e65e64945bac0250886267c74d99e75b40fe770",
+      "referenceSHA256": "ce862fcf8e118a5ae8088614c53bb19f95f5b2702f9db565dd06d5841cf95a54",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "AniSD_ArtCNN_C4F32_i4.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/AniSD_ArtCNN_C4F32_i4.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "osd/libass: Done.\n",
+        "osd/libass: Using font provider coretext\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/AniSD_ArtCNN_C4F32_i4.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/AniSD_ArtCNN_C4F32_i4.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 679792,
+              "avg": 679792,
+              "peak": 679792,
+              "count": 1,
+              "samples": [
+                679792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 39208,
+              "avg": 39208,
+              "peak": 39208,
+              "count": 1,
+              "samples": [
+                39208
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 643792,
+              "avg": 643792,
+              "peak": 643792,
+              "count": 1,
+              "samples": [
+                643792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 552709,
+              "avg": 552709,
+              "peak": 552709,
+              "count": 1,
+              "samples": [
+                552709
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 37959,
+              "avg": 37959,
+              "peak": 37959,
+              "count": 1,
+              "samples": [
+                37959
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 66667,
+              "avg": 66667,
+              "peak": 66667,
+              "count": 1,
+              "samples": [
+                66667
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 40459,
+              "avg": 40459,
+              "peak": 40459,
+              "count": 1,
+              "samples": [
+                40459
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 26792,
+              "avg": 26792,
+              "peak": 26792,
+              "count": 1,
+              "samples": [
+                26792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 54959,
+              "avg": 54959,
+              "peak": 54959,
+              "count": 1,
+              "samples": [
+                54959
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 422334,
+              "avg": 422334,
+              "peak": 422334,
+              "count": 1,
+              "samples": [
+                422334
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 445042,
+              "avg": 445042,
+              "peak": 445042,
+              "count": 1,
+              "samples": [
+                445042
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 163208,
+              "avg": 163208,
+              "peak": 163208,
+              "count": 1,
+              "samples": [
+                163208
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 61666,
+              "avg": 61666,
+              "peak": 61666,
+              "count": 1,
+              "samples": [
+                61666
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 106584,
+              "avg": 106584,
+              "peak": 106584,
+              "count": 1,
+              "samples": [
+                106584
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 69916,
+              "avg": 69916,
+              "peak": 69916,
+              "count": 1,
+              "samples": [
+                69916
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 482916,
+              "avg": 482916,
+              "peak": 482916,
+              "count": 1,
+              "samples": [
+                482916
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 153375,
+              "avg": 153375,
+              "peak": 153375,
+              "count": 1,
+              "samples": [
+                153375
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 168667,
+              "avg": 168667,
+              "peak": 168667,
+              "count": 1,
+              "samples": [
+                168667
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 74792,
+              "avg": 74792,
+              "peak": 74792,
+              "count": 1,
+              "samples": [
+                74792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 253625,
+              "avg": 253625,
+              "peak": 253625,
+              "count": 1,
+              "samples": [
+                253625
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 471416,
+              "avg": 471416,
+              "peak": 471416,
+              "count": 1,
+              "samples": [
+                471416
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 561792,
+              "avg": 561792,
+              "peak": 561792,
+              "count": 1,
+              "samples": [
+                561792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 167542,
+              "avg": 167542,
+              "peak": 167542,
+              "count": 1,
+              "samples": [
+                167542
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 723750,
+              "avg": 723750,
+              "peak": 723750,
+              "count": 1,
+              "samples": [
+                723750
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 257208,
+              "avg": 257208,
+              "peak": 257208,
+              "count": 1,
+              "samples": [
+                257208
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 32125,
+              "avg": 32125,
+              "peak": 32125,
+              "count": 1,
+              "samples": [
+                32125
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 466083,
+              "avg": 466083,
+              "peak": 466083,
+              "count": 1,
+              "samples": [
+                466083
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 190500,
+              "avg": 190500,
+              "peak": 190500,
+              "count": 1,
+              "samples": [
+                190500
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 593083,
+              "avg": 593083,
+              "peak": 593083,
+              "count": 1,
+              "samples": [
+                593083
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 735416,
+              "avg": 735416,
+              "peak": 735416,
+              "count": 1,
+              "samples": [
+                735416
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 132166,
+              "avg": 132166,
+              "peak": 132166,
+              "count": 1,
+              "samples": [
+                132166
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 152834,
+              "avg": 152834,
+              "peak": 152834,
+              "count": 1,
+              "samples": [
+                152834
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-6)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Depth-To-Space)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=129 backgroundFrames=128 fbo=56 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=9972770b5bcddcb1 sampleFrame=120 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0002508115070490226,
+      "max": 0.0025619361314564992,
+      "psnr": 67.35732337939322,
+      "nativeSHA256": "d540ef663198fda7a92db5ea967df5d319182421dece85f70bdee25aa1617954",
+      "referenceSHA256": "8e54fb7d07db1ba00e214a3a816305972a28c5769e7f3e491210cea08e5f46fc",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F16.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F16.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F16 (Conv2D)",
+              "last": 1917584,
+              "avg": 1917584,
+              "peak": 1917584,
+              "count": 1,
+              "samples": [
+                1917584
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-1-ReLU)",
+              "last": 2249166,
+              "avg": 2249166,
+              "peak": 2249166,
+              "count": 1,
+              "samples": [
+                2249166
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-2-ReLU)",
+              "last": 688959,
+              "avg": 688959,
+              "peak": 688959,
+              "count": 1,
+              "samples": [
+                688959
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-3-ReLU)",
+              "last": 373667,
+              "avg": 373667,
+              "peak": 373667,
+              "count": 1,
+              "samples": [
+                373667
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-4-ReLU)",
+              "last": 1714417,
+              "avg": 1714417,
+              "peak": 1714417,
+              "count": 1,
+              "samples": [
+                1714417
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-5)",
+              "last": 1716167,
+              "avg": 1716167,
+              "peak": 1716167,
+              "count": 1,
+              "samples": [
+                1716167
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Conv2D-6)",
+              "last": 772333,
+              "avg": 772333,
+              "peak": 772333,
+              "count": 1,
+              "samples": [
+                772333
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 (Depth-To-Space)",
+              "last": 275792,
+              "avg": 275792,
+              "peak": 275792,
+              "count": 1,
+              "samples": [
+                275792
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 503833,
+              "avg": 503833,
+              "peak": 503833,
+              "count": 1,
+              "samples": [
+                503833
+              ]
+            }
+          ]
+        }
+      },
+      "render": "frames=147 backgroundFrames=146 fbo=1 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=cc0b8445285b0690 sampleFrame=120 sampleTargetNits=203 shaderLinks=29 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.00045684946088165955,
+      "max": 0.007308223040705823,
+      "psnr": 61.696128319521115,
+      "nativeSHA256": "f0950e9ea92204e94b00ad18641d3bb0f70f666af766ccdae14de60156583933",
+      "referenceSHA256": "47110bc3d40996608baa4b0e66ebde057262e768c077a002533977773e3f5c42",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F16_DN.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16_DN.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F16_DN.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16_DN.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D)",
+              "last": 1064041,
+              "avg": 1064041,
+              "peak": 1064041,
+              "count": 1,
+              "samples": [
+                1064041
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-1-ReLU)",
+              "last": 2148042,
+              "avg": 2148042,
+              "peak": 2148042,
+              "count": 1,
+              "samples": [
+                2148042
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-2-ReLU)",
+              "last": 366334,
+              "avg": 366334,
+              "peak": 366334,
+              "count": 1,
+              "samples": [
+                366334
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-3-ReLU)",
+              "last": 456334,
+              "avg": 456334,
+              "peak": 456334,
+              "count": 1,
+              "samples": [
+                456334
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-4-ReLU)",
+              "last": 436792,
+              "avg": 436792,
+              "peak": 436792,
+              "count": 1,
+              "samples": [
+                436792
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-5)",
+              "last": 583791,
+              "avg": 583791,
+              "peak": 583791,
+              "count": 1,
+              "samples": [
+                583791
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Conv2D-6)",
+              "last": 477500,
+              "avg": 477500,
+              "peak": 477500,
+              "count": 1,
+              "samples": [
+                477500
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DN (Depth-To-Space)",
+              "last": 276125,
+              "avg": 276125,
+              "peak": 276125,
+              "count": 1,
+              "samples": [
+                276125
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 400333,
+              "avg": 400333,
+              "peak": 400333,
+              "count": 1,
+              "samples": [
+                400333
+              ]
+            }
+          ]
+        }
+      },
+      "render": "frames=148 backgroundFrames=147 fbo=32 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=4107508d852838a4 sampleFrame=120 sampleTargetNits=203 shaderLinks=29 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0005535124080068247,
+      "max": 0.007933989158345728,
+      "psnr": 60.896768874068556,
+      "nativeSHA256": "0d36240d4269b06774563a1d7eca828b57a90ac6dbe107efcdffff81a7d85fc0",
+      "referenceSHA256": "151e265f9185eac5abcd57ec94e777f441cd469c7d79e0d88e01539699b79f5a",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F16_DS.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16_DS.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F16_DS.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F16_DS.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D)",
+              "last": 2273541,
+              "avg": 2273541,
+              "peak": 2273541,
+              "count": 1,
+              "samples": [
+                2273541
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-1-ReLU)",
+              "last": 1928209,
+              "avg": 1928209,
+              "peak": 1928209,
+              "count": 1,
+              "samples": [
+                1928209
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-2-ReLU)",
+              "last": 380708,
+              "avg": 380708,
+              "peak": 380708,
+              "count": 1,
+              "samples": [
+                380708
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-3-ReLU)",
+              "last": 441458,
+              "avg": 441458,
+              "peak": 441458,
+              "count": 1,
+              "samples": [
+                441458
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-4-ReLU)",
+              "last": 422917,
+              "avg": 422917,
+              "peak": 422917,
+              "count": 1,
+              "samples": [
+                422917
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-5)",
+              "last": 1104292,
+              "avg": 1104292,
+              "peak": 1104292,
+              "count": 1,
+              "samples": [
+                1104292
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Conv2D-6)",
+              "last": 322250,
+              "avg": 322250,
+              "peak": 322250,
+              "count": 1,
+              "samples": [
+                322250
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F16 DS (Depth-To-Space)",
+              "last": 65916,
+              "avg": 65916,
+              "peak": 65916,
+              "count": 1,
+              "samples": [
+                65916
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 272250,
+              "avg": 272250,
+              "peak": 272250,
+              "count": 1,
+              "samples": [
+                272250
+              ]
+            }
+          ]
+        }
+      },
+      "render": "frames=147 backgroundFrames=146 fbo=1 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=623efb516f84a16f sampleFrame=120 sampleTargetNits=203 shaderLinks=29 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0005747137770099797,
+      "max": 0.007538928201235501,
+      "psnr": 60.18008634916739,
+      "nativeSHA256": "7fccc57a7fca3630d2ff142067e5fc9e8b14b4977846a3b3f8c37177f5c82715",
+      "referenceSHA256": "fd8cd801c433737014c42488b30abd9f403c9c2f60fea4acb66a10f0d3d2063c",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F32.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "16",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F32.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F32 (Conv2D)",
+              "last": 957333,
+              "avg": 957333,
+              "peak": 957333,
+              "count": 1,
+              "samples": [
+                957333
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-1-ReLU)",
+              "last": 5895667,
+              "avg": 5895667,
+              "peak": 5895667,
+              "count": 1,
+              "samples": [
+                5895667
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-2-ReLU)",
+              "last": 2736125,
+              "avg": 2736125,
+              "peak": 2736125,
+              "count": 1,
+              "samples": [
+                2736125
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-3-ReLU)",
+              "last": 3769709,
+              "avg": 3769709,
+              "peak": 3769709,
+              "count": 1,
+              "samples": [
+                3769709
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-4-ReLU)",
+              "last": 1656625,
+              "avg": 1656625,
+              "peak": 1656625,
+              "count": 1,
+              "samples": [
+                1656625
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-5)",
+              "last": 2068875,
+              "avg": 2068875,
+              "peak": 2068875,
+              "count": 1,
+              "samples": [
+                2068875
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Conv2D-6)",
+              "last": 457041,
+              "avg": 457041,
+              "peak": 457041,
+              "count": 1,
+              "samples": [
+                457041
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 (Depth-To-Space)",
+              "last": 490500,
+              "avg": 490500,
+              "peak": 490500,
+              "count": 1,
+              "samples": [
+                490500
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=196 backgroundFrames=195 fbo=1 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=f7ee40dcc7da0c78 sampleFrame=180 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.00037681640658798515,
+      "max": 0.010541760098373015,
+      "psnr": 63.68250717970056,
+      "nativeSHA256": "846c0ebaccb70167239015c810394aa16decad8677b9d7213668a4909b157745",
+      "referenceSHA256": "69353269c4390c9bbb375aee8844e17d3a5174aab896333e7a1a96b0273d03f9",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F32_DN.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32_DN.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "16",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F32_DN.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32_DN.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D)",
+              "last": 1136542,
+              "avg": 1136542,
+              "peak": 1136542,
+              "count": 1,
+              "samples": [
+                1136542
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-1-ReLU)",
+              "last": 5160500,
+              "avg": 5160500,
+              "peak": 5160500,
+              "count": 1,
+              "samples": [
+                5160500
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-2-ReLU)",
+              "last": 4644750,
+              "avg": 4644750,
+              "peak": 4644750,
+              "count": 1,
+              "samples": [
+                4644750
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-3-ReLU)",
+              "last": 2633792,
+              "avg": 2633792,
+              "peak": 2633792,
+              "count": 1,
+              "samples": [
+                2633792
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-4-ReLU)",
+              "last": 2589834,
+              "avg": 2589834,
+              "peak": 2589834,
+              "count": 1,
+              "samples": [
+                2589834
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-5)",
+              "last": 3693667,
+              "avg": 3693667,
+              "peak": 3693667,
+              "count": 1,
+              "samples": [
+                3693667
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Conv2D-6)",
+              "last": 856958,
+              "avg": 856958,
+              "peak": 856958,
+              "count": 1,
+              "samples": [
+                856958
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DN (Depth-To-Space)",
+              "last": 533000,
+              "avg": 533000,
+              "peak": 533000,
+              "count": 1,
+              "samples": [
+                533000
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=197 backgroundFrames=196 fbo=54 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=1597302b07609b4b sampleFrame=180 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0005774644426254739,
+      "max": 0.008590359934100067,
+      "psnr": 59.39018208239182,
+      "nativeSHA256": "3eb62081ad10d1c14c69923091c7f406081bb5ca7673f2013f553df037adb235",
+      "referenceSHA256": "89b15831b81f5e400f97241ad0a645cf7968e5589c6010af1c8e6bbf078ac179",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "ArtCNN_C4F32_DS.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32_DS.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "16",
+        "--report",
+        ".build/renderer-golden/ArtCNN_C4F32_DS.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/ArtCNN_C4F32_DS.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D)",
+              "last": 1144166,
+              "avg": 1144166,
+              "peak": 1144166,
+              "count": 1,
+              "samples": [
+                1144166
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-1-ReLU)",
+              "last": 4034625,
+              "avg": 4034625,
+              "peak": 4034625,
+              "count": 1,
+              "samples": [
+                4034625
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-2-ReLU)",
+              "last": 3208916,
+              "avg": 3208916,
+              "peak": 3208916,
+              "count": 1,
+              "samples": [
+                3208916
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-3-ReLU)",
+              "last": 5370917,
+              "avg": 5370917,
+              "peak": 5370917,
+              "count": 1,
+              "samples": [
+                5370917
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-4-ReLU)",
+              "last": 2826334,
+              "avg": 2826334,
+              "peak": 2826334,
+              "count": 1,
+              "samples": [
+                2826334
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-5)",
+              "last": 4016334,
+              "avg": 4016334,
+              "peak": 4016334,
+              "count": 1,
+              "samples": [
+                4016334
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Conv2D-6)",
+              "last": 538583,
+              "avg": 538583,
+              "peak": 538583,
+              "count": 1,
+              "samples": [
+                538583
+              ]
+            },
+            {
+              "desc": "ArtCNN C4F32 DS (Depth-To-Space)",
+              "last": 867458,
+              "avg": 867458,
+              "peak": 867458,
+              "count": 1,
+              "samples": [
+                867458
+              ]
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=198 backgroundFrames=197 fbo=55 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=b3acbc2035a7cc4f sampleFrame=180 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0004765204696779967,
+      "max": 0.009046409480621076,
+      "psnr": 61.85332888207444,
+      "nativeSHA256": "fa451abbbb1ec259cc22186cfe6ef8419bf0a27c8675555681ff972e6cbae1b5",
+      "referenceSHA256": "635966d9d0f3a772a050c94d49c6175fd017a91df34828bd25405f1948d9c73f",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.15,0.18,0.28,1.0",
+      "display-p3:0.04,0.05,0.09,1.0"
+    ]
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "amber.svg",
+          "name": "amber",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "pink.svg",
+          "name": "pink",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "cyan.svg",
+          "name": "cyan",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "mist.svg",
+          "name": "mist",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      },
+      "specular": true
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schemaRevision": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+  "generator": {
+    "version": "1.39.0",
+    "revision": "3d537cb81aef272a03cb3be815439e9bf0eb3bd3"
+  },
+  "files": {
+    "bilibili_account_service_v1.pb.swift": "910a9609b3f3e0b3b0f0f241597e523ab5094bf1ff92be628a29dcaba59b50e7",
+    "bilibili_app_archive_middleware_v1.pb.swift": "3884013e8002fca01bdf679d3b8c2b636d09b042272a2d5b796b280db65adc81",
+    "bilibili_app_archive_v1.pb.swift": "7d1c2011dd177259504b6e49e0fc9ae4640872e3f2249d8de7b8d25d615cd208",
+    "bilibili_app_card_v1.pb.swift": "a9e8aa168861e8931c77f4f62a98d80c41c6a8a812bb757ebe4bf236b6951634",
+    "bilibili_app_dynamic_common.pb.swift": "fad4bd8dcd993d487593b25bcdaf29bc602cb62beb9cb3b9eee3419271f91a9c",
+    "bilibili_app_dynamic_v2.pb.swift": "855a5e855025602a276baf388cd7220f640502a5262bcb365244e9ff685550e6",
+    "bilibili_app_interfaces_v1.pb.swift": "007ddbfdecab711f625ee3d1f7e0242e415ac2d8f079af8ffca5de909c05dfd0",
+    "bilibili_app_show_popular_v1.pb.swift": "3ef96f71bb819523845e56f94794529994b9dcab67a5730f7905068a9cb1b4c4",
+    "bilibili_app_show_rank_v1.pb.swift": "a6d246af50934ec3b363833b6fb7c92062f5f3dee0598b624163aaa8976b6647",
+    "bilibili_app_view_v1.pb.swift": "c18d2b0ba997576983bc0c3ac092ad17df56e70681cfff3ca28e35e0648089fe",
+    "bilibili_dagw_component_avatar_common.pb.swift": "e46e26a9cdb5dd6d7855886922289411c01a779a704e52f11242a6173856961d",
+    "bilibili_dagw_component_avatar_v1.pb.swift": "f015a5c676482495bac80a0e7eb1890e0401b5633a0d06c4d5cf93fa92477fc3",
+    "bilibili_dagw_component_avatar_v1_plugin.pb.swift": "bdfc970346bf26e585aeebd1c37440a13c7f1268271ba13da955d83ff0cafb4b",
+    "bilibili_main_community_reply_v1.pb.swift": "c9980898182a4df53e56dda2b214585fdf373abbbe1e4be67d9b86a2d8b820fa",
+    "bilibili_metadata.pb.swift": "8518ec9db25e491d620b1888b1a8f51049d93bd7770b8ca71392abbd9e4487a3",
+    "bilibili_metadata_device.pb.swift": "3f335e016e8d36172f7d986b93c7b4002baedd960f1ca5b016a91c36cba4503d",
+    "bilibili_metadata_fawkes.pb.swift": "95d77772372a1271acd02da56c6890c593439687116f69646640c0d24ad77fdd",
+    "bilibili_metadata_locale.pb.swift": "760acbc0103ad7911242422cfd797677411dcb7ce32b00f300b5550a382ce443",
+    "bilibili_metadata_network.pb.swift": "d509b4cc98fbdcb4dcff5420b4365f8e2ad0fea34c7c98495afb5c80ea253e56",
+    "bilibili_metadata_restriction.pb.swift": "c8185291b8c60fb3b5b3b9f010d9b2e6be7a451c69b813a34a621262ca778692",
+    "bilibili_pagination.pb.swift": "ec99b47dad77d8793396100be4dcb8783b719a2e1afd77336086f8d954fc551b",
+    "bilibili_vas_garb_model.pb.swift": "ffcaa89d3eb8fdcb15f0c54e0ab4a7c7d2680088def3881efa94b1fd1e5a9628",
+    "bilibili_vas_garb_service.pb.swift": "6974667f13660e438ebba9e3d78484655ed643d0ae7f58db45d2fbef584294f8"
+  }
+}

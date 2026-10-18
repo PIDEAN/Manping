@@ -1,0 +1,1 @@
+items { param: "123" title: "Ranking fixture" cid: 321 mid: 42 name: "Fixture author" duration: 120 play: 100 cover: "https://example.invalid/cover.png" }

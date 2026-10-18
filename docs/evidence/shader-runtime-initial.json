@@ -1,0 +1,601 @@
+[
+  {
+    "preset": "None",
+    "exit": 0,
+    "elapsed": 5.6,
+    "render": "frames=146 backgroundFrames=146 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=3f23628b1fe07614",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.7,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": false,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowA",
+    "exit": 0,
+    "elapsed": 5.45,
+    "render": "frames=132 backgroundFrames=132 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=232ed8ddcff89a0c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.2,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 1,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowB",
+    "exit": 0,
+    "elapsed": 5.62,
+    "render": "frames=140 backgroundFrames=140 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=82020f786be05a77",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 1,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowC",
+    "exit": 0,
+    "elapsed": 5.45,
+    "render": "frames=141 backgroundFrames=141 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=a4c6ee13e768cc2a",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowAA",
+    "exit": 0,
+    "elapsed": 5.68,
+    "render": "frames=141 backgroundFrames=141 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=3061f9ca438fdfe8",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowBB",
+    "exit": 0,
+    "elapsed": 5.66,
+    "render": "frames=141 backgroundFrames=141 fbo=41 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=63e6f57c4e8c11dd",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/LowCA",
+    "exit": 0,
+    "elapsed": 5.68,
+    "render": "frames=143 backgroundFrames=143 fbo=31 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=dd32080fb05c9810",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.6,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighA",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=89 backgroundFrames=89 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=97d8dc96b85f9537",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8333333333333335,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 33,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighB",
+    "exit": 0,
+    "elapsed": 5.68,
+    "render": "frames=111 backgroundFrames=111 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=3804c7c4588cd856",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.166666666666667,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 20,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighC",
+    "exit": 0,
+    "elapsed": 5.71,
+    "render": "frames=119 backgroundFrames=119 fbo=41 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=7a92fc156730937f",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 8,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighAA",
+    "exit": 0,
+    "elapsed": 5.64,
+    "render": "frames=135 backgroundFrames=134 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=1265266fffecf845",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 6,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighBB",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=136 backgroundFrames=136 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=6e308248d005f7e4",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 5,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Anime4K/HighCA",
+    "exit": 0,
+    "elapsed": 5.67,
+    "render": "frames=141 backgroundFrames=141 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=849e68e279abdeb",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "ArtCNN/C4F16",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=141 backgroundFrames=141 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=d9c88058c86dd806",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "ArtCNN/C4F16_DN",
+    "exit": 0,
+    "elapsed": 5.45,
+    "render": "frames=119 backgroundFrames=119 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=9e45841b904f262",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8666666666666667,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 4,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "ArtCNN/C4F16_DS",
+    "exit": 0,
+    "elapsed": 5.45,
+    "render": "frames=119 backgroundFrames=119 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=25b0a4318953b57d",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8666666666666667,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 4,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "ArtCNN/C4F32",
+    "exit": 0,
+    "elapsed": 5.72,
+    "render": "frames=123 backgroundFrames=123 fbo=57 size=2314x1181 componentType=0x1406 redBits=16 sampledPeak=0.798828 sampleHash=8e5f5d0cbb917b9c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.166666666666667,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 8,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": [
+      "libmpv_render: shader link log (status=0): ERROR: Implementation limit of 16 MAX_VERTEX_ATTRIBS (e.g., number of generic plus conventional active vec4 attributes) exceeded, shader uses up to vec4 attribute 16.\n"
+    ]
+  },
+  {
+    "preset": "ArtCNN/C4F32_DN",
+    "exit": 0,
+    "elapsed": 5.43,
+    "render": "frames=39 backgroundFrames=39 fbo=2 size=2314x1181 componentType=0x1406 redBits=16 sampledPeak=0.798828 sampleHash=8e5f5d0cbb917b9c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.6,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 76,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": [
+      "libmpv_render: shader link log (status=0): ERROR: Implementation limit of 16 MAX_VERTEX_ATTRIBS (e.g., number of generic plus conventional active vec4 attributes) exceeded, shader uses up to vec4 attribute 16.\n"
+    ]
+  },
+  {
+    "preset": "ArtCNN/C4F32_DS",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=40 backgroundFrames=40 fbo=2 size=2314x1181 componentType=0x1406 redBits=16 sampledPeak=0.798828 sampleHash=8e5f5d0cbb917b9c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 82,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": [
+      "libmpv_render: shader link log (status=0): ERROR: Implementation limit of 16 MAX_VERTEX_ATTRIBS (e.g., number of generic plus conventional active vec4 attributes) exceeded, shader uses up to vec4 attribute 16.\n"
+    ]
+  },
+  {
+    "preset": "ArtCNN/C4F32Ani4KI2",
+    "exit": 0,
+    "elapsed": 5.44,
+    "render": "frames=38 backgroundFrames=38 fbo=2 size=2314x1181 componentType=0x1406 redBits=16 sampledPeak=0.798828 sampleHash=8e5f5d0cbb917b9c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 83,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": [
+      "libmpv_render: shader link log (status=0): ERROR: Implementation limit of 16 MAX_VERTEX_ATTRIBS (e.g., number of generic plus conventional active vec4 attributes) exceeded, shader uses up to vec4 attribute 16.\n"
+    ]
+  },
+  {
+    "preset": "ArtCNN/C4F32AniSDI4",
+    "exit": 0,
+    "elapsed": 5.65,
+    "render": "frames=39 backgroundFrames=39 fbo=2 size=2314x1181 componentType=0x1406 redBits=16 sampledPeak=0.798828 sampleHash=8e5f5d0cbb917b9c",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8333333333333335,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 83,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": [
+      "libmpv_render: shader link log (status=0): ERROR: Implementation limit of 16 MAX_VERTEX_ATTRIBS (e.g., number of generic plus conventional active vec4 attributes) exceeded, shader uses up to vec4 attribute 16.\n"
+    ]
+  },
+  {
+    "preset": "Ravu/lite-ar-r2",
+    "exit": 0,
+    "elapsed": 5.69,
+    "render": "frames=144 backgroundFrames=144 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=f69bd9623b4fa645",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.633333333333333,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Ravu/lite-ar-r3",
+    "exit": 0,
+    "elapsed": 5.46,
+    "render": "frames=143 backgroundFrames=143 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=b5c2b3c253c4d321",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.6,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Ravu/lite-ar-r4",
+    "exit": 0,
+    "elapsed": 5.68,
+    "render": "frames=143 backgroundFrames=143 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=befd7b13c3168db3",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.6,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Ravu/lite-r2",
+    "exit": 0,
+    "elapsed": 5.45,
+    "render": "frames=144 backgroundFrames=144 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=3093dc6ee9bc16a7",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.633333333333333,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Ravu/lite-r3",
+    "exit": 0,
+    "elapsed": 5.44,
+    "render": "frames=144 backgroundFrames=143 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=1ee0e6be947b0865",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.633333333333333,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "Ravu/lite-r4",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=145 backgroundFrames=145 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999023 sampleHash=1661a90ef384231a",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.6,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 0,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "nnedi3/Basic",
+    "exit": 0,
+    "elapsed": 5.7,
+    "render": "frames=138 backgroundFrames=138 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=28d27bffb0e96378",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 4.5,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 3,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "nnedi3/Plus",
+    "exit": 0,
+    "elapsed": 5.7,
+    "render": "frames=89 backgroundFrames=89 fbo=2 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=893bb57c0a5e8c06",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.8,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 32,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "nnedi3/Pro",
+    "exit": 0,
+    "elapsed": 5.47,
+    "render": "frames=9 backgroundFrames=9 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0 sampleHash=0",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 3.2666666666666666,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 94,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  },
+  {
+    "preset": "nnedi3/ProMax",
+    "exit": 0,
+    "elapsed": 20.1,
+    "render": "frames=9 backgroundFrames=9 fbo=13 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0 sampleHash=0",
+    "error": "",
+    "hwdec": "videotoolbox",
+    "time": 17.8,
+    "metrics": {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 0,
+      "demuxer-cache-state/fw-bytes": 0,
+      "frame-drop-count": 533,
+      "mistimed-frame-count": 0,
+      "video-params/sig-peak": 0
+    },
+    "shaderRequested": true,
+    "shaderErrors": []
+  }
+]

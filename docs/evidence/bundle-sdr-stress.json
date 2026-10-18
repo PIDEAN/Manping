@@ -1,0 +1,17 @@
+{
+  "duration" : 30,
+  "error" : "",
+  "events" : [
+    "ao\/coreaudio: unable to set the input channel layout on the audio unit ([206][255][255][255]\/-50)\n"
+  ],
+  "hdr" : "not-verified",
+  "hwdec" : "videotoolbox",
+  "passes" : "",
+  "renderReady" : true,
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : false,
+  "time" : 11.766666666666666,
+  "windowNumber" : 15579
+}

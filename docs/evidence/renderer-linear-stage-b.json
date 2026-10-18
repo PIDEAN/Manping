@@ -1,0 +1,423 @@
+{
+  "method": "Actual CGL RGBA16F vs linked libplacebo CPU pl_color_space_infer_map/pl_color_linearize; neutral code values only; no corrected captures.",
+  "librarySHA256": "de80cf7f753ff7df05b462db073b4662eba57157f1790fb95a82bdaf02383a3f",
+  "fixtureSHA256": "b93d6f90d80d74b7de485fe5240863a55ef6008f1589020cb587df98f44636da",
+  "results": [
+    {
+      "case": "auto-1",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/auto-1.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=203",
+        "target-contrast=auto"
+      ],
+      "captureSHA256": "7327872c6fad0de0981fc1efbbaba3f611541efc5d2d3c00ffce90197e36cf2b",
+      "logSHA256": "3037bb62594a3f91f4c48057b3bc55231c5d12178f25cf93cf3f14e563f6a84a",
+      "reference": {
+        "sourceMin": 0.202999994,
+        "sourceMax": 203,
+        "targetMin": 0.202999994,
+        "targetMax": 203,
+        "linearBars": [
+          0.000999999931,
+          0.0405730978,
+          0.226778373,
+          1
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.00099945068359375,
+          0.00099945068359375,
+          0.00099945068359375
+        ],
+        [
+          0.040557861328125,
+          0.040557861328125,
+          0.040557861328125
+        ],
+        [
+          0.2266845703125,
+          0.2266845703125,
+          0.2266845703125
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.00048828125,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=auto",
+        "PROPERTY target-peak=203",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    },
+    {
+      "case": "auto-2",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/auto-2.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=406",
+        "target-contrast=auto"
+      ],
+      "captureSHA256": "5233a77876b667cc9be57aa9c8d12451e9d38c5c2b6e7e43de32124f79195c92",
+      "logSHA256": "10c9da56252f1d5295617d35d971ff0ad79b3baf86a395f3d8ee7aac40462a2e",
+      "reference": {
+        "sourceMin": 0.405999988,
+        "sourceMax": 203,
+        "targetMin": 0.405999988,
+        "targetMax": 406,
+        "linearBars": [
+          0.0019999994,
+          0.0462292992,
+          0.23618117,
+          1
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.0019989013671875,
+          0.0019989013671875,
+          0.0019989013671875
+        ],
+        [
+          0.04620361328125,
+          0.04620361328125,
+          0.04620361328125
+        ],
+        [
+          0.236083984375,
+          0.236083984375,
+          0.236083984375
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.00048828125,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=auto",
+        "PROPERTY target-peak=406",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    },
+    {
+      "case": "auto-16",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/auto-16.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=3248",
+        "target-contrast=auto"
+      ],
+      "captureSHA256": "5d33d2a6ac482a3490ffa9aaa25e87de6a53e7f241fadde1154da900596d64eb",
+      "logSHA256": "551d4974af889719bddf16c535db5816f058aa4593782f3b5fbf3e82e433a1d9",
+      "reference": {
+        "sourceMin": 3.24799991,
+        "sourceMax": 203,
+        "targetMin": 3.24799991,
+        "targetMax": 3248,
+        "linearBars": [
+          0.015999997,
+          0.0853112787,
+          0.291879833,
+          0.99999994
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.0159912109375,
+          0.0159912109375,
+          0.0159912109375
+        ],
+        [
+          0.08526611328125,
+          0.08526611328125,
+          0.08526611328125
+        ],
+        [
+          0.291748046875,
+          0.291748046875,
+          0.291748046875
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.0004882212500000316,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=auto",
+        "PROPERTY target-peak=3248",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    },
+    {
+      "case": "inf",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/inf.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=203",
+        "target-contrast=inf"
+      ],
+      "captureSHA256": "fcf9e8d09709c9b0fd65151d93f46818de6c29d739715f4d29f3a5e747aedb7c",
+      "logSHA256": "6cbee60fe3f5318a10114febc81dc29bd5b840a5652ba5bee2fbd3588a0829dd",
+      "reference": {
+        "sourceMin": 1.00000001e-07,
+        "sourceMax": 203,
+        "targetMin": 1.00000001e-07,
+        "targetMax": 203,
+        "linearBars": [
+          4.92610663e-09,
+          0.0262539946,
+          0.200171143,
+          1
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0262451171875,
+          0.0262451171875,
+          0.0262451171875
+        ],
+        [
+          0.2000732421875,
+          0.2000732421875,
+          0.2000732421875
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.00048828125,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=inf",
+        "PROPERTY target-peak=203",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    },
+    {
+      "case": "finite-2000",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/finite-2000.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=203",
+        "target-contrast=2000"
+      ],
+      "captureSHA256": "67ea75e25adfa12a0f92b1e96552ca0b94f5e42f8298812690a7137679f1c444",
+      "logSHA256": "2cf4a8b766e4fdfe1b9ef17139027d6f1e3ba2d22399bfffd4319ca3b03f1278",
+      "reference": {
+        "sourceMin": 0.101499997,
+        "sourceMax": 203,
+        "targetMin": 0.101499997,
+        "targetMax": 203,
+        "linearBars": [
+          0.000499999907,
+          0.0366151892,
+          0.219879732,
+          0.99999994
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.000499725341796875,
+          0.000499725341796875,
+          0.000499725341796875
+        ],
+        [
+          0.036590576171875,
+          0.036590576171875,
+          0.036590576171875
+        ],
+        [
+          0.2198486328125,
+          0.2198486328125,
+          0.2198486328125
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.0004882212500000316,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=2000",
+        "PROPERTY target-peak=203",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    },
+    {
+      "case": "known-source",
+      "command": [
+        ".build/renderer-work/renderer-fixture",
+        ".build/mpv-build/libmpv.2.dylib",
+        ".build/renderer-linear/sdr-bars.mkv",
+        ".build/renderer-linear/known-source.pfm",
+        "1280",
+        "720",
+        "3",
+        "target-trc=linear",
+        "target-prim=bt.2020",
+        "target-peak=203",
+        "target-contrast=auto",
+        "vf=format:min-luma=0.203:max-luma=203"
+      ],
+      "captureSHA256": "7327872c6fad0de0981fc1efbbaba3f611541efc5d2d3c00ffce90197e36cf2b",
+      "logSHA256": "e20abc16b7b68fc05b1a410cb225cd1704de114a8d974179f08629972266edb5",
+      "reference": {
+        "sourceMin": 0.202999994,
+        "sourceMax": 203,
+        "targetMin": 0.202999994,
+        "targetMax": 203,
+        "linearBars": [
+          0.000999999931,
+          0.0405730978,
+          0.226778373,
+          1
+        ]
+      },
+      "actualNeutralRGB": [
+        [
+          0.00099945068359375,
+          0.00099945068359375,
+          0.00099945068359375
+        ],
+        [
+          0.040557861328125,
+          0.040557861328125,
+          0.040557861328125
+        ],
+        [
+          0.2266845703125,
+          0.2266845703125,
+          0.2266845703125
+        ],
+        [
+          0.99951171875,
+          1.0,
+          0.99951171875
+        ]
+      ],
+      "maxNeutralError": 0.00048828125,
+      "actualPasses": [
+        "combining planes + color conversion + direct bilinear planes 640x360 -> 1280x720 + metadata SDR BT.1886 to linear + output to screen",
+        "drawing osd",
+        "merging planes",
+        "upload frame (naive)"
+      ],
+      "properties": [
+        "PROPERTY video-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":0.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\"}",
+        "PROPERTY video-out-params={\"pixelformat\":\"yuv420p\",\"average-bpp\":12,\"w\":640,\"h\":360,\"dw\":640,\"dh\":360,\"crop-x\":0,\"crop-y\":0,\"crop-w\":640,\"crop-h\":360,\"aspect\":1.777778,\"aspect-name\":\"16:9\",\"par\":1.000000,\"sar\":1.777778,\"sar-name\":\"16:9\",\"colormatrix\":\"bt.709\",\"colorlevels\":\"limited\",\"primaries\":\"bt.709\",\"gamma\":\"bt.1886\",\"sig-peak\":1.000000,\"light\":\"display\",\"chroma-location\":\"mpeg2/4/h264\",\"stereo-in\":\"mono\",\"rotate\":0,\"alpha\":\"none\",\"min-luma\":0.203000,\"max-luma\":203.000000,\"max-cll\":0.000000,\"max-fall\":0.000000}",
+        "PROPERTY osd-dimensions={\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "PROPERTY hwdec-current=no",
+        "PROPERTY target-contrast=auto",
+        "PROPERTY target-peak=203",
+        "PROPERTY target-trc=linear",
+        "PROPERTY target-prim=bt.2020"
+      ]
+    }
+  ],
+  "limitation": "This is a transfer/white-point unit test, not full-image GPU equivalence or physical display measurement."
+}

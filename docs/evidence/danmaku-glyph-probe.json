@@ -1,0 +1,155 @@
+{
+  "actualProperties": {
+    "correct-downscaling": "yes",
+    "cscale": "",
+    "dither-depth": "no",
+    "dscale": "hermite",
+    "gamma-factor": "1.000000",
+    "hwdec-current": "videotoolbox",
+    "icc-profile": "",
+    "icc-profile-auto": "no",
+    "linear-downscaling": "yes",
+    "osd-dimensions": "{\"w\":2314,\"h\":1207,\"par\":1.000000,\"aspect\":1.917150,\"mt\":0,\"mb\":0,\"ml\":84,\"mr\":85}",
+    "scale": "lanczos",
+    "sigmoid-upscaling": "yes",
+    "target-peak": "203",
+    "target-prim": "bt.709",
+    "target-trc": "srgb",
+    "tone-mapping": "bt.2390",
+    "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+    "video-out-params/colorlevels": "limited",
+    "video-out-params/colormatrix": "bt.601",
+    "video-out-params/gamma": "bt.1886",
+    "video-out-params/h": "180",
+    "video-out-params/primaries": "bt.709",
+    "video-out-params/w": "320",
+    "video-output-levels": "auto",
+    "video-params/colorlevels": "limited",
+    "video-params/colormatrix": "bt.601",
+    "video-params/gamma": "bt.1886",
+    "video-params/h": "180",
+    "video-params/primaries": "bt.709",
+    "video-params/w": "320"
+  },
+  "danmaku": {
+    "activePages": 4,
+    "bytesPerPage": 4194304,
+    "cachedPages": 4,
+    "copiedGlyphs": 0,
+    "frameGlyphs": 1024,
+    "historyPageLimit": 8,
+    "peakFramePages": 4,
+    "peakHistoryPages": 4,
+    "peakInFlight": 3,
+    "peakInFlightPages": 4,
+    "peakResidentPages": 8,
+    "rasterized": 2048,
+    "submits": 397,
+    "vertexGlyphs": 1024
+  },
+  "display": "edr=false current=1.2 mappedHeadroom=1.2 potential=16.0 scale=2.0",
+  "duration": 18,
+  "error": "",
+  "events": [],
+  "hwdec": "videotoolbox",
+  "media": {
+    "audio-codec-name": "",
+    "video-params/colormatrix": "bt.601",
+    "video-params/gamma": "bt.1886",
+    "video-params/hw-pixelformat": "nv12",
+    "video-params/pixelformat": "videotoolbox",
+    "video-params/primaries": "bt.709"
+  },
+  "metrics": {
+    "decoder-frame-drop-count": 0,
+    "demuxer-cache-duration": 1,
+    "frame-drop-count": 6,
+    "residentBytes": 235749376,
+    "video-params/sig-peak": 0
+  },
+  "metricSamples": [
+    {
+      "mediaSecond": 0,
+      "residentBytes": 98713600
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1.0333333333333334,
+      "frame-drop-count": 6,
+      "mediaSecond": 1,
+      "residentBytes": 197509120,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "frame-drop-count": 6,
+      "mediaSecond": 2,
+      "residentBytes": 218595328,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1.0000000000000004,
+      "frame-drop-count": 6,
+      "mediaSecond": 3,
+      "residentBytes": 218873856,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "frame-drop-count": 6,
+      "mediaSecond": 4,
+      "residentBytes": 219217920,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "frame-drop-count": 6,
+      "mediaSecond": 5,
+      "residentBytes": 231833600,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "frame-drop-count": 6,
+      "mediaSecond": 6,
+      "residentBytes": 235438080,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1.033333333333334,
+      "frame-drop-count": 6,
+      "mediaSecond": 7,
+      "residentBytes": 235569152,
+      "video-params/sig-peak": 0
+    },
+    {
+      "decoder-frame-drop-count": 0,
+      "demuxer-cache-duration": 1,
+      "frame-drop-count": 6,
+      "mediaSecond": 8,
+      "residentBytes": 235634688,
+      "video-params/sig-peak": 0
+    }
+  ],
+  "passes": "",
+  "probes": {},
+  "render": "frames=257 backgroundFrames=256 fbo=7 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=3f23628b1fe07614 sampleFrame=240 sampleTargetNits=203 shaderLinks=6 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+  "renderReady": true,
+  "representation": {},
+  "shaderEvents": [],
+  "shaderRequested": false,
+  "time": 8.6,
+  "viewportPixels": [
+    2314,
+    1207
+  ],
+  "windowNumber": 16588,
+  "buildMode": "release",
+  "executableSHA256": "a204485ac136d8282ddfdd8ba1a317494135cc86d415fa5c233b4b00ea5664d0"
+}

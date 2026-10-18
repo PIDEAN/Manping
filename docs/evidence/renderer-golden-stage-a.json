@@ -1,0 +1,1524 @@
+{
+  "method": "Production VideoSurface/VideoLayer CGL RGBA16Float vs original gpu-next/macvk, same static H264 frame and software decoder; BT709/sRGB/203, bt.2390, bilinear scale/cscale/dscale, no dither. No resampling/cropping.",
+  "buildMode": "release",
+  "executableSHA256": "4bbb6a752281f53c047aa7f2b52896ddd156572e82d1142fe1be94bcfe9144b6",
+  "mpvSHA256": "f22c3172994e69cc65546fb51776cc31870782624bbe93f747ca56e2a354bd22",
+  "fixtureSHA256": "5ea74daf49e1de18c2a77af8b42330654aed77cb3eadce4f8b293ea1e86b22b1",
+  "requestedPixelSize": [
+    1280,
+    720
+  ],
+  "allEightPipelinesSampled": false,
+  "pixelEquivalent": false,
+  "gateDecision": "Stage A only; production linear EDR mapping pending",
+  "results": [
+    {
+      "file": "None",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "libmpv_render: shader compatibility: direct bilinear planes 640x360 -> 1280x720\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "libmpv_render: shader compatibility: direct bilinear planes 640x360 -> 1280x720\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/None.json"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=145 backgroundFrames=144 fbo=2 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=a59a3647845401c sampleFrame=120 sampleTargetNits=203 shaderLinks=2 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.00019285663679640238,
+      "max": 0.0020583362540055328,
+      "psnr": 68.79387287192215,
+      "nativeSHA256": "727a76d6065d4f374ecb38b2ef2624966cb5ca159345beb60445be49974a84a8",
+      "referenceSHA256": "8466bbc77f6c627d08d410d5d0d1e0db32210af08340f68cda5d242162357432",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "Ani4Kv2_ArtCNN_C4F32_i2.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/Ani4Kv2_ArtCNN_C4F32_i2.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: Testing FBO format rgba16f\n",
+        "libmpv_render: Texture for plane 0: 640x360\n",
+        "libmpv_render: Texture for plane 1: 320x180\n",
+        "libmpv_render: Texture for plane 2: 320x180\n",
+        "libmpv_render: Using FBO format rgba16f.\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "vo/libmpv: mpv_render_context_render() not being called or stuck.\n",
+        "vo/libmpv: mpv_render_report_swap() not being called.\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/Ani4Kv2_ArtCNN_C4F32_i2.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/Ani4Kv2_ArtCNN_C4F32_i2.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 1041167,
+              "avg": 1041167,
+              "peak": 1041167,
+              "count": 1,
+              "samples": [
+                1041167
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 20042,
+              "avg": 20042,
+              "peak": 20042,
+              "count": 1,
+              "samples": [
+                20042
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 31875,
+              "avg": 31875,
+              "peak": 31875,
+              "count": 1,
+              "samples": [
+                31875
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 18208,
+              "avg": 18208,
+              "peak": 18208,
+              "count": 1,
+              "samples": [
+                18208
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 37708,
+              "avg": 37708,
+              "peak": 37708,
+              "count": 1,
+              "samples": [
+                37708
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 1219042,
+              "avg": 1219042,
+              "peak": 1219042,
+              "count": 1,
+              "samples": [
+                1219042
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 252959,
+              "avg": 252959,
+              "peak": 252959,
+              "count": 1,
+              "samples": [
+                252959
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D)",
+              "last": 33958,
+              "avg": 33958,
+              "peak": 33958,
+              "count": 1,
+              "samples": [
+                33958
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 45625,
+              "avg": 45625,
+              "peak": 45625,
+              "count": 1,
+              "samples": [
+                45625
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 206375,
+              "avg": 206375,
+              "peak": 206375,
+              "count": 1,
+              "samples": [
+                206375
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 601334,
+              "avg": 601334,
+              "peak": 601334,
+              "count": 1,
+              "samples": [
+                601334
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 54500,
+              "avg": 54500,
+              "peak": 54500,
+              "count": 1,
+              "samples": [
+                54500
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 49333,
+              "avg": 49333,
+              "peak": 49333,
+              "count": 1,
+              "samples": [
+                49333
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 161875,
+              "avg": 161875,
+              "peak": 161875,
+              "count": 1,
+              "samples": [
+                161875
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 279834,
+              "avg": 279834,
+              "peak": 279834,
+              "count": 1,
+              "samples": [
+                279834
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-1-ReLU)",
+              "last": 558750,
+              "avg": 558750,
+              "peak": 558750,
+              "count": 1,
+              "samples": [
+                558750
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 141083,
+              "avg": 141083,
+              "peak": 141083,
+              "count": 1,
+              "samples": [
+                141083
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 37958,
+              "avg": 37958,
+              "peak": 37958,
+              "count": 1,
+              "samples": [
+                37958
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 201541,
+              "avg": 201541,
+              "peak": 201541,
+              "count": 1,
+              "samples": [
+                201541
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 391500,
+              "avg": 391500,
+              "peak": 391500,
+              "count": 1,
+              "samples": [
+                391500
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 90666,
+              "avg": 90666,
+              "peak": 90666,
+              "count": 1,
+              "samples": [
+                90666
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 1228792,
+              "avg": 1228792,
+              "peak": 1228792,
+              "count": 1,
+              "samples": [
+                1228792
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 468792,
+              "avg": 468792,
+              "peak": 468792,
+              "count": 1,
+              "samples": [
+                468792
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-2-ReLU)",
+              "last": 2787958,
+              "avg": 2787958,
+              "peak": 2787958,
+              "count": 1,
+              "samples": [
+                2787958
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 160459,
+              "avg": 160459,
+              "peak": 160459,
+              "count": 1,
+              "samples": [
+                160459
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 146000,
+              "avg": 146000,
+              "peak": 146000,
+              "count": 1,
+              "samples": [
+                146000
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 182083,
+              "avg": 182083,
+              "peak": 182083,
+              "count": 1,
+              "samples": [
+                182083
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 224000,
+              "avg": 224000,
+              "peak": 224000,
+              "count": 1,
+              "samples": [
+                224000
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 100042,
+              "avg": 100042,
+              "peak": 100042,
+              "count": 1,
+              "samples": [
+                100042
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 244417,
+              "avg": 244417,
+              "peak": 244417,
+              "count": 1,
+              "samples": [
+                244417
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 263500,
+              "avg": 263500,
+              "peak": 263500,
+              "count": 1,
+              "samples": [
+                263500
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-3-ReLU)",
+              "last": 321833,
+              "avg": 321833,
+              "peak": 321833,
+              "count": 1,
+              "samples": [
+                321833
+              ]
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Conv2D-6)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[Ani4Kv2_ArtCNN_C4F32_i2] (Depth-To-Space)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=122 backgroundFrames=121 fbo=2 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=d68308a75152f8df sampleFrame=120 sampleTargetNits=203 shaderLinks=53 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.000277332243624102,
+      "max": 0.0024553390483138537,
+      "psnr": 66.6956195523025,
+      "nativeSHA256": "0ab4501a82ef67f94d6dbc259e65e64945bac0250886267c74d99e75b40fe770",
+      "referenceSHA256": "ce862fcf8e118a5ae8088614c53bb19f95f5b2702f9db565dd06d5841cf95a54",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    },
+    {
+      "file": "AniSD_ArtCNN_C4F32_i4.glsl",
+      "nativeExit": 0,
+      "nativeSize": [
+        1280,
+        720
+      ],
+      "passes": "",
+      "shaderEvents": [
+        "cplayer: Set property: glsl-shaders=\"Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/AniSD_ArtCNN_C4F32_i4.glsl\" -> 1\n",
+        "libmpv_render: Disabling HDR peak computation (one or more of the following is not supported: compute shaders=0, SSBO=0).\n",
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n"
+      ],
+      "events": [
+        "libmpv_render: shader compatibility: BT.1886 black map src=0.203/203 dst=0.203/203 nits contrast=0\n",
+        "osd/libass: Done.\n",
+        "osd/libass: Setting up fonts...\n",
+        "osd/libass: Shaper: FriBidi 1.0.16 (SIMPLE) HarfBuzz-ng 14.5.0 (COMPLEX)\n",
+        "osd/libass: Using font provider coretext\n",
+        "osd/libass: libass API version: 0x1705000\n",
+        "osd/libass: libass source: tarball: 0.17.5\n",
+        "vo/libmpv: mpv_render_context_render() not being called or stuck.\n"
+      ],
+      "nativeCommand": [
+        "dist/renderer/Manping.app/Contents/MacOS/Manping",
+        "--diagnose",
+        ".build/full-pipeline/static.mp4",
+        "--fixed-viewport",
+        "--sdr",
+        "--verbose",
+        "--hwdec-mode",
+        "no",
+        "--seconds",
+        "5",
+        "--report",
+        ".build/renderer-golden/AniSD_ArtCNN_C4F32_i4.json",
+        "--shader",
+        "Sources/ManpingApp/Resources/Shaders/ArtCNNCompat/AniSD_ArtCNN_C4F32_i4.glsl"
+      ],
+      "referenceSize": [
+        1280,
+        720
+      ],
+      "validRectangle": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "decoder": "software on both",
+      "nativeProperties": {
+        "correct-downscaling": "yes",
+        "cscale": "bilinear",
+        "dither-depth": "no",
+        "dscale": "bilinear",
+        "gamma-factor": "1.000000",
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": "no",
+        "linear-downscaling": "yes",
+        "linear-upscaling": "no",
+        "osd-dimensions": "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+        "scale": "bilinear",
+        "sigmoid-upscaling": "yes",
+        "target-peak": "203",
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": "360",
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": "640",
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": "360",
+        "video-params/primaries": "bt.709",
+        "video-params/w": "640",
+        "vo-passes": "unavailable(-1)"
+      },
+      "referenceProperties": {
+        "correct-downscaling": true,
+        "cscale": "bilinear",
+        "dither-depth": false,
+        "dscale": "bilinear",
+        "gamma-factor": 1.0,
+        "hwdec-current": "no",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "linear-downscaling": true,
+        "linear-upscaling": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        },
+        "scale": "bilinear",
+        "sigmoid-upscaling": true,
+        "target-peak": 203,
+        "target-prim": "bt.709",
+        "target-trc": "srgb",
+        "tone-mapping": "bt.2390",
+        "video-codec": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+        "video-out-params/chroma-location": "mpeg2/4/h264",
+        "video-out-params/colorlevels": "limited",
+        "video-out-params/colormatrix": "bt.709",
+        "video-out-params/gamma": "bt.1886",
+        "video-out-params/h": 360,
+        "video-out-params/primaries": "bt.709",
+        "video-out-params/w": 640,
+        "video-output-levels": "auto",
+        "video-params/chroma-location": "mpeg2/4/h264",
+        "video-params/colorlevels": "limited",
+        "video-params/colormatrix": "bt.709",
+        "video-params/gamma": "bt.1886",
+        "video-params/h": 360,
+        "video-params/primaries": "bt.709",
+        "video-params/w": 640,
+        "vo-passes": {
+          "fresh": [
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 800625,
+              "avg": 800625,
+              "peak": 800625,
+              "count": 1,
+              "samples": [
+                800625
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 164958,
+              "avg": 164958,
+              "peak": 164958,
+              "count": 1,
+              "samples": [
+                164958
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 1891458,
+              "avg": 1891458,
+              "peak": 1891458,
+              "count": 1,
+              "samples": [
+                1891458
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 193417,
+              "avg": 193417,
+              "peak": 193417,
+              "count": 1,
+              "samples": [
+                193417
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 980000,
+              "avg": 980000,
+              "peak": 980000,
+              "count": 1,
+              "samples": [
+                980000
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 17875,
+              "avg": 17875,
+              "peak": 17875,
+              "count": 1,
+              "samples": [
+                17875
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 39917,
+              "avg": 39917,
+              "peak": 39917,
+              "count": 1,
+              "samples": [
+                39917
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D)",
+              "last": 141167,
+              "avg": 141167,
+              "peak": 141167,
+              "count": 1,
+              "samples": [
+                141167
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 127541,
+              "avg": 127541,
+              "peak": 127541,
+              "count": 1,
+              "samples": [
+                127541
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 51042,
+              "avg": 51042,
+              "peak": 51042,
+              "count": 1,
+              "samples": [
+                51042
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 862792,
+              "avg": 862792,
+              "peak": 862792,
+              "count": 1,
+              "samples": [
+                862792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 273750,
+              "avg": 273750,
+              "peak": 273750,
+              "count": 1,
+              "samples": [
+                273750
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 240250,
+              "avg": 240250,
+              "peak": 240250,
+              "count": 1,
+              "samples": [
+                240250
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 139916,
+              "avg": 139916,
+              "peak": 139916,
+              "count": 1,
+              "samples": [
+                139916
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 145791,
+              "avg": 145791,
+              "peak": 145791,
+              "count": 1,
+              "samples": [
+                145791
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-1-ReLU)",
+              "last": 148667,
+              "avg": 148667,
+              "peak": 148667,
+              "count": 1,
+              "samples": [
+                148667
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 168792,
+              "avg": 168792,
+              "peak": 168792,
+              "count": 1,
+              "samples": [
+                168792
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 161916,
+              "avg": 161916,
+              "peak": 161916,
+              "count": 1,
+              "samples": [
+                161916
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 1606334,
+              "avg": 1606334,
+              "peak": 1606334,
+              "count": 1,
+              "samples": [
+                1606334
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 162625,
+              "avg": 162625,
+              "peak": 162625,
+              "count": 1,
+              "samples": [
+                162625
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 184833,
+              "avg": 184833,
+              "peak": 184833,
+              "count": 1,
+              "samples": [
+                184833
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 211083,
+              "avg": 211083,
+              "peak": 211083,
+              "count": 1,
+              "samples": [
+                211083
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 32708,
+              "avg": 32708,
+              "peak": 32708,
+              "count": 1,
+              "samples": [
+                32708
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-2-ReLU)",
+              "last": 699708,
+              "avg": 699708,
+              "peak": 699708,
+              "count": 1,
+              "samples": [
+                699708
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 39875,
+              "avg": 39875,
+              "peak": 39875,
+              "count": 1,
+              "samples": [
+                39875
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 315459,
+              "avg": 315459,
+              "peak": 315459,
+              "count": 1,
+              "samples": [
+                315459
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 145417,
+              "avg": 145417,
+              "peak": 145417,
+              "count": 1,
+              "samples": [
+                145417
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 197041,
+              "avg": 197041,
+              "peak": 197041,
+              "count": 1,
+              "samples": [
+                197041
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 177125,
+              "avg": 177125,
+              "peak": 177125,
+              "count": 1,
+              "samples": [
+                177125
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 234542,
+              "avg": 234542,
+              "peak": 234542,
+              "count": 1,
+              "samples": [
+                234542
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 74584,
+              "avg": 74584,
+              "peak": 74584,
+              "count": 1,
+              "samples": [
+                74584
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-3-ReLU)",
+              "last": 2890333,
+              "avg": 2890333,
+              "peak": 2890333,
+              "count": 1,
+              "samples": [
+                2890333
+              ]
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-4-ReLU)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-5)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Conv2D-6)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "[AniSD_ArtCNN_C4F32_i4] (Depth-To-Space)",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            },
+            {
+              "desc": "color decoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ],
+          "redraw": [
+            {
+              "desc": "frame mixing (1 frame), color encoding",
+              "last": 0,
+              "avg": 0,
+              "peak": 0,
+              "count": 0,
+              "samples": []
+            }
+          ]
+        }
+      },
+      "render": "frames=122 backgroundFrames=121 fbo=2 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=1 sampleHash=9972770b5bcddcb1 sampleFrame=120 sampleTargetNits=203 shaderLinks=54 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+      "error": "",
+      "mae": 0.0002508115070490226,
+      "max": 0.0025619361314564992,
+      "psnr": 67.35732337939322,
+      "nativeSHA256": "d540ef663198fda7a92db5ea967df5d319182421dece85f70bdee25aa1617954",
+      "referenceSHA256": "8e54fb7d07db1ba00e214a3a816305972a28c5769e7f3e491210cea08e5f46fc",
+      "actualPropertyParity": {
+        "correct-downscaling": true,
+        "cscale": true,
+        "dither-depth": true,
+        "dscale": true,
+        "gamma-factor": true,
+        "hwdec-current": true,
+        "icc-profile": true,
+        "icc-profile-auto": true,
+        "linear-downscaling": true,
+        "linear-upscaling": true,
+        "osd-dimensions": true,
+        "scale": true,
+        "sigmoid-upscaling": true,
+        "target-peak": true,
+        "target-prim": true,
+        "target-trc": true,
+        "tone-mapping": true,
+        "video-codec": true,
+        "video-out-params/chroma-location": true,
+        "video-out-params/colorlevels": true,
+        "video-out-params/colormatrix": true,
+        "video-out-params/gamma": true,
+        "video-out-params/h": true,
+        "video-out-params/primaries": true,
+        "video-out-params/w": true,
+        "video-output-levels": true,
+        "video-params/chroma-location": true,
+        "video-params/colorlevels": true,
+        "video-params/colormatrix": true,
+        "video-params/gamma": true,
+        "video-params/h": true,
+        "video-params/primaries": true,
+        "video-params/w": true,
+        "vo-passes": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "dylibCount": 44,
+  "inputSetUnchanged": true,
+  "changedInputs": [
+    ".build/mpv-build/libmpv.2.dylib"
+  ],
+  "unchangedOtherInputHashes": true
+}

@@ -1,0 +1,3 @@
+ver: "fixture-v1"
+items { small_cover_v5 { base { param: "123" title: "Popular fixture" idx: 900 cover: "https://example.invalid/cover.png" player_args { cid: 321 } } up { id: 42 name: "Fixture author" } cover_right_text1: "02:00" } }
+items { hot_topic { base { idx: 901 title: "Topic fixture" } } }

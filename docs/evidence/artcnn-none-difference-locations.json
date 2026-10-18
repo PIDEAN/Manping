@@ -1,0 +1,126 @@
+{
+  "maxCoordinateXYChannel": [
+    62,
+    14,
+    2
+  ],
+  "nativeRGBAtMaximum": [
+    0.576171875,
+    0.184814453125,
+    0.11724853515625
+  ],
+  "referenceRGBAtMaximum": [
+    0.6187685969329366,
+    0.23421072709239338,
+    0.006637674525062943
+  ],
+  "max": 0.11061086063118705,
+  "fractionPixelsAbove002": 0.08902126736111111,
+  "rowBucketsAbove002": [
+    17770,
+    12196,
+    8803,
+    8239,
+    3893,
+    16070,
+    13811,
+    1260
+  ],
+  "columnBucketsAbove002": [
+    11536,
+    8541,
+    6859,
+    5121,
+    4857,
+    23450,
+    15881,
+    5797
+  ],
+  "top20CoordinatesXY": [
+    [
+      1225,
+      345
+    ],
+    [
+      1181,
+      333
+    ],
+    [
+      1213,
+      341
+    ],
+    [
+      1197,
+      337
+    ],
+    [
+      110,
+      29
+    ],
+    [
+      126,
+      29
+    ],
+    [
+      30,
+      29
+    ],
+    [
+      14,
+      29
+    ],
+    [
+      174,
+      14
+    ],
+    [
+      158,
+      14
+    ],
+    [
+      158,
+      29
+    ],
+    [
+      174,
+      29
+    ],
+    [
+      190,
+      14
+    ],
+    [
+      190,
+      29
+    ],
+    [
+      78,
+      14
+    ],
+    [
+      126,
+      14
+    ],
+    [
+      110,
+      14
+    ],
+    [
+      190,
+      46
+    ],
+    [
+      30,
+      14
+    ],
+    [
+      62,
+      14
+    ]
+  ],
+  "wholeMSE": 7.396969853329185e-05,
+  "interiorMSE": 8.690062732815149e-05,
+  "visualInspection": "Maximum and other hotspots follow burned-in testsrc2 timestamp / diagonal / chroma edges; source PNG already contains timestamp; no observed player OSC/cursor overlay.",
+  "fixtureDecodedFrames": 720,
+  "fixtureDistinctFrameMD5": 1
+}

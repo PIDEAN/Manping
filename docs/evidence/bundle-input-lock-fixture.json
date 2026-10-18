@@ -1,0 +1,11 @@
+{
+  "libraries": 44,
+  "baselinePassed": true,
+  "rejected": {
+    "missing": true,
+    "extra": true,
+    "hash": true,
+    "ffmpegHash": true,
+    "mpvMetadata": true
+  }
+}

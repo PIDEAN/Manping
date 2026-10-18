@@ -1,0 +1,15 @@
+{
+  "buildMode": "release",
+  "dylibs": 44,
+  "machO": 46,
+  "allArm64": true,
+  "allFinalSignedSHA256Verified": true,
+  "codesignDeepStrict": true,
+  "systemPathRuntimeExit0": true,
+  "noHomebrewLoaded": true,
+  "app": "dist/diagnostics/Manping.app",
+  "executableSHA256": "cb2dfe90d608154aaffc72eeb849fb7b369b14948f461333565541441a4340e9",
+  "finalManifestSHA256": "12e8b1feccd1284a1485a379584188b108791e6716328ebd0fbc71b20e8854fd",
+  "verifierOutputRoot": ".build/sigmoid-controls/bundle-verifier",
+  "sourceScopeNote": "Frozen diagnostics package and captures precede subsequent RPC-only review fixes; latest source Release build verified separately."
+}

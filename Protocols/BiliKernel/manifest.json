@@ -1,0 +1,66 @@
+{
+  "repository": "https://github.com/Richasy/bili-kernel",
+  "revision": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+  "license": "GPL-3.0 (repository; protocol files are reverse-engineered declarations, provenance retained in headers)",
+  "entrypoints": [
+    "bilibili/app/dynamic/v2.proto",
+    "bilibili/app/interfaces/v1.proto",
+    "bilibili/main/community/reply/v1.proto",
+    "bilibili/app/show/popular/v1.proto",
+    "bilibili/app/show/rank/v1.proto",
+    "bilibili/app/view/v1.proto"
+  ],
+  "metadata": [
+    "bilibili/metadata.proto",
+    "bilibili/metadata/device.proto",
+    "bilibili/metadata/network.proto",
+    "bilibili/metadata/locale.proto",
+    "bilibili/metadata/restriction.proto",
+    "bilibili/metadata/fawkes.proto"
+  ],
+  "externalImports": [
+    "google/protobuf/any.proto"
+  ],
+  "files": {
+    "bilibili/account/service/v1.proto": "fe50c184e6eef20a65311850f0067a0a3cb59a82b143c4ae0526e2d611999d6b",
+    "bilibili/app/archive/middleware/v1.proto": "46eb517ca73208e85a59e4db01b7c09feb38e4afaa3080a952d590b089a99e16",
+    "bilibili/app/archive/v1.proto": "08839cbf6ecaa90c75497ce5bb82bc7f290b7043cb2adb658651eee1a82f7ba9",
+    "bilibili/app/card/v1.proto": "818fbc4b798b604b167c6f94f92d0c2902fdc0e87099345121bac1d5f4fb99ba",
+    "bilibili/app/dynamic/common.proto": "81981735cf470bcc2fcdab123a539496677acc8323d1581866ae1e201b4a408d",
+    "bilibili/app/dynamic/v2.proto": "af168f67645e5020482ee126995479c666caa60c137ab6c6b6100278dc60afb3",
+    "bilibili/app/interfaces/v1.proto": "afee987b4a4b3d3160425225fed0ccbc4bb295010df7745885dcbbc1c2f07b37",
+    "bilibili/app/show/popular/v1.proto": "119b93be3320c7149caa8a7a91bb0a753eed4d38b4c4d9824e725fd562edb72d",
+    "bilibili/app/show/rank/v1.proto": "6329e1cb51286e8284adc79a971260ad666749a1d1bc04f18092bf4f3f4cf672",
+    "bilibili/app/view/v1.proto": "f4adade6238657de3750d6c2968a5de7848dbbe19f7115e2d105123497af4e93",
+    "bilibili/dagw/component/avatar/common.proto": "9eb90b2d7e210317588be3bf78c76026be58e85bd3742cc7d8b90d4dcd6667b5",
+    "bilibili/dagw/component/avatar/v1.proto": "77c9dcb7d2cf3d5c1a5792326bd572d37a394d6a25637568985a1bf4427382f4",
+    "bilibili/dagw/component/avatar/v1/plugin.proto": "33346fc4c40d053abd3556574e42507e88da15a1e1ffcd6060b525af31500f4b",
+    "bilibili/main/community/reply/v1.proto": "912c9b69580dce54ba6a705fe5e08ce546b818514e7b9ef11681413265059255",
+    "bilibili/metadata.proto": "8f676100183e1838ed4ab7a6591f88dcbe71cd1aeb1f6f414ce7446e6d916286",
+    "bilibili/metadata/device.proto": "1260f9f38dd2107ee71fab5e88fd314e403c50a8a9ef21a89b9d30869ba6988d",
+    "bilibili/metadata/fawkes.proto": "ad3be616f89b02dfd4bbaf3cdc8b2afc52da499ee477494dde11f09e246ea666",
+    "bilibili/metadata/locale.proto": "4999ce29e5dcf7bc11c0ad62be75c3830bf855eab6268bfc32b203808b059b6c",
+    "bilibili/metadata/network.proto": "475af46a87e406781b8bbddf3b34707155896dc69a2c59c42a686d165b51955e",
+    "bilibili/metadata/restriction.proto": "09774f00792d6b3f5d96503c7fc57d567c867f699a486453df2dc34dd871ae97",
+    "bilibili/pagination.proto": "4b95cba6a766c5f21af777c1240064bb69494bd58ca8a88c157903c83a73d715",
+    "bilibili/vas/garb/model.proto": "4b54e7e82d1e64299d993f56af4eb10d6ca9cc648e7be15549113b4a1e4cf9c6",
+    "bilibili/vas/garb/service.proto": "210d4d65d900bef5e5e2e9ea67be9f2d6ac4ff59bafcf7ea24cc917155ef19f7"
+  },
+  "referenceSourceSHA256": {
+    "src/BiliKernel.Abstractions/Bili/BiliApis.cs": "33110096718d3bed4952790e5186a569fedb95cfb53061e904884688f5be1271",
+    "src/BiliKernel.Abstractions/BasicExtensions.cs": "05a14f3ae32aa650a2fe397c89cb6a23263a7d825b4980534cf7052a15065581",
+    "src/BiliKernel.Abstractions/Models/CommentTargetType.cs": "b9c0f16de2c69172bee270c660cd28198fdf559b8c5446def8ac9a975e4d0f91",
+    "src/BiliKernel.Core/Authenticator/BiliAuthenticator.cs": "5f1fad3bea284fcb0243a1d4339370d4bf5c2d14e39190dbf1a0dd80f79e85a6",
+    "src/BiliKernel.Core/Authenticator/BiliAuthenticator.Extension.cs": "df57bf30452860b1439030495c76021ba889fb5d34a9b2de0037b329c3fd64b4",
+    "src/BiliKernel.Core/Http/Buvid.cs": "0712dca2abe3da85ab7e8c943bc1bf313c448c5c46675bf228728531f1061807",
+    "src/BiliKernel.Grpc/GrpcConfig.cs": "6c8105d3e4c5c11422193fd5623d1a9eec748bb82ae53181745d4a4f5418c92a",
+    "src/Services/Services.Comment/Core/CommentClient.cs": "0e6c8a8903c3a8419cb7e58d7484a4059984765ceddbf8d6c1e570aac8ae90a4",
+    "src/Services/Services.Comment/Core/Adapters/CommentAdapter.cs": "e845870bdf70bdd7867c083b2e345a28f5b180a067f2a15b8b154bd088b75fb7",
+    "src/Services/Services.Moment/Core/MomentClient.cs": "067bc858bbb016460ffe2ebcbf13ce2055edeef72e9031bf1ed11f8a3c776388",
+    "src/Services/Services.Moment/Core/Adapters/MomentAdapter.cs": "6a39d4b7626ccc0f1e6f253ca4708ec8d600e31ee31b38450e76c0bdf39b0ad1",
+    "src/Services/Services.Media/Core/VideoDiscoveryClient.cs": "35191f17c11988128ebd1950b0d2e8630218518eb6487f7a31f082e0efcf2341",
+    "src/Services/Services.Media/Core/Adapters/VideoAdapter.cs": "b2c162e259e070deda3bee2eec8f79553d32e1b08ebe403432b21cd7d8639380",
+    "src/Services/Services.User/Core/ViewHistoryClient.cs": "b630c9b2dc4e3d1ce100facdcce1d645c7f4781878d2503e539398449463de5a",
+    "src/Services/Services.User/Core/Adapters/VideoAdapter.cs": "040900abb82960969873ba7c25e5f782d96f03826b77da3b66a35ffc3431ee1f"
+  }
+}

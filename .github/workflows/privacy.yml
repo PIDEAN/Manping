@@ -1,0 +1,11 @@
+name: privacy
+on: [push, pull_request]
+jobs:
+  privacy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: No personal data in tracked files or commit authors
+        run: python3 scripts/privacy_check.py --authors

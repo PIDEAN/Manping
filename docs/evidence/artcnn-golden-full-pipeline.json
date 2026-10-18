@@ -1,0 +1,18 @@
+{
+  "method": "Production CGL compat float PFM frame30 vs stock gpu-next/macvk original compute start1; BT709/sRGB/203nits/no dithering. macvk screenshot height rounded to1208; bilinear normalize reference to1207. Includes renderer, output precision, geometry and resampling differences; not bit-exact equivalence.",
+  "file": "ArtCNN_C4F16.glsl",
+  "nativeSize": [
+    2314,
+    1207
+  ],
+  "referenceSize": [
+    2314,
+    1208
+  ],
+  "mae": 0.005240734090276588,
+  "max": 1.0,
+  "psnr": 32.228652408911344,
+  "interiorMAE": 0.00551030021218501,
+  "interiorMax": 1.0,
+  "allEightPipelinesVerified": false
+}

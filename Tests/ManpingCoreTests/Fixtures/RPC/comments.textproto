@@ -1,0 +1,8 @@
+cursor { next: 500 is_end: false mode: MAIN_LIST_HOT }
+replies { id: 101 root: 0 like: 3 ctime: 1700000000 count: 1
+  content { message: "Fixture [smile]" emotes { key: "[smile]" value { url: "https://example.invalid/smile.png" } } }
+  member { mid: 42 name: "Fixture author" face: "//example.invalid/avatar.png" }
+  reply_control { action: 1 }
+  replies { id: 102 root: 101 content { message: "Child" } member { mid: 43 name: "Child author" } }
+}
+up_top { id: 90 content { message: "Pinned" } member { mid: 42 name: "Fixture author" } reply_control { is_up_top: true } }

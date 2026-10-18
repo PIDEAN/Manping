@@ -1,0 +1,1073 @@
+import AppKit
+import ManpingCore
+import CMpv
+import OpenGL.GL3
+import QuartzCore
+import SwiftUI
+
+private final class EngineReference: @unchecked Sendable {
+  let pointer: OpaquePointer
+  var chapterGeneration = -2
+  var chapterCount = -1
+  var chapters: [PlaybackChapter] = []
+  init(_ pointer: OpaquePointer) { self.pointer = pointer }
+}
+
+// Tags public EOF property samples with the load that produced them.
+private final class PlaybackEOFGeneration: @unchecked Sendable {
+  private let lock = NSLock()
+  private var generation = -1
+  var value: Int { lock.withLock { generation } }
+  func store(_ value: Int) { lock.withLock { generation = value } }
+}
+
+/// Keeps one closed mpv engine and its render layer (CGL context + mpv render context) for
+/// the next player. Creating a render context per video made the system OpenGL-on-Metal
+/// pipeline cache grow by ~0.27 MiB per open/close; reusing the pair avoids recompiling.
+/// Only lifecycle changes here; rendering itself is untouched.
+@MainActor final class MpvEnginePool {
+  static let shared = MpvEnginePool()
+  private struct Parked { let engine: OpaquePointer; let signature: String; let id: UUID }
+  private var parked: Parked?
+  /// A parked engine still holds its video-sized render buffers; release it if unused this long.
+  var idleLifetime: Duration = ProcessInfo.processInfo.environment["MANPING_MPV_POOL_IDLE_SECONDS"]
+    .flatMap(Double.init).map { .milliseconds(Int(max(0.5, $0) * 1000)) } ?? .seconds(90)
+  private var eviction: Task<Void, Never>?
+  /// Render layers created for live or parked engines, so a new surface can re-host them.
+  private var layers: [OpaquePointer: VideoLayer] = [:]
+  private let queue = DispatchQueue(label: "io.github.pidean.manping.mpv.pool", qos: .userInitiated)
+  private(set) var reuses = 0
+  /// Returns the parked engine when it was created with the same library and profile.
+  func checkout(signature: String) -> OpaquePointer? {
+    guard let current = parked else { return nil }
+    parked = nil; eviction?.cancel(); eviction = nil
+    if current.signature == signature { reuses += 1; return current.engine }
+    destroy(current.engine)
+    return nil
+  }
+  func adopt(_ layer: VideoLayer, for engine: OpaquePointer) { layers[engine] = layer }
+  func layer(for engine: OpaquePointer) -> VideoLayer? { layers[engine] }
+  /// Called when a player closes. Keeps at most one idle engine; destroys the rest.
+  func checkin(_ engine: OpaquePointer, signature: String, reusable: Bool) {
+    if reusable, parked == nil {
+      let reference = EngineReference(engine)
+      // Stop decoding and network I/O; the next loadfile replaces the playlist entry.
+      queue.sync {
+        let stop = strdup("stop")
+        var args: [UnsafePointer<CChar>?] = [UnsafePointer(stop), nil]
+        _ = args.withUnsafeMutableBufferPointer { bili_mpv_command(reference.pointer, $0.baseAddress) }
+        free(stop)
+        // Match a freshly created engine: no carried-over speed, shaders or subtitle choice.
+        _ = bili_mpv_set(reference.pointer, "pause", "no")
+        _ = bili_mpv_set(reference.pointer, "speed", "1")
+        _ = bili_mpv_set(reference.pointer, "glsl-shaders", "")
+        _ = bili_mpv_set(reference.pointer, "sid", "auto")
+      }
+      let id = UUID()
+      parked = Parked(engine: engine, signature: signature, id: id)
+      let lifetime = idleLifetime
+      eviction = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: lifetime)
+        guard !Task.isCancelled, let self, let current = self.parked, current.id == id else { return }
+        self.parked = nil; self.destroy(current.engine)
+      }
+      return
+    }
+    destroy(engine)
+  }
+  /// Render context first (it needs the engine), then the engine.
+  private func destroy(_ engine: OpaquePointer) {
+    if let layer = layers.removeValue(forKey: engine) { layer.stop(); layer.removeFromSuperlayer() }
+    let reference = EngineReference(engine)
+    queue.sync { bili_mpv_destroy(reference.pointer) }
+  }
+  func drain() {
+    eviction?.cancel(); eviction = nil
+    if let current = parked { parked = nil; destroy(current.engine) }
+  }
+}
+
+/// The playback position lives in its own object: only the timeline, progress bar and chapter
+/// list observe it, so ten position updates a second no longer re-render the whole player page
+/// (which also closed menus mid-click).
+@MainActor final class PlaybackClock: ObservableObject {
+  @Published var time: Double = 0
+}
+
+@MainActor final class PlayerModel: ObservableObject {
+  let clock = PlaybackClock()
+  var time: Double {
+    get { clock.time }
+    set { if clock.time != newValue { clock.time = newValue } }
+  }
+  @Published var duration: Double = 0
+  /// mpv `paused-for-cache`: playback is waiting for network data.
+  @Published private(set) var buffering = false
+  /// Seconds of media buffered ahead of the playhead (`demuxer-cache-duration`).
+  private(set) var bufferedAhead: Double = 0
+  @Published private(set) var eofReached = false
+  private var eofArmed = false
+  private let eofGeneration = PlaybackEOFGeneration()
+  @Published var paused = false
+  /// 仅播放声音: video decoding off for this session (music, podcasts, saving power).
+  @Published private(set) var audioOnly = PlayerModel.sessionAudioOnly
+  static var sessionAudioOnly = false
+  /// Live rooms always show video: the session preference applies to videos and episodes.
+  func suspendAudioOnly() { audioOnly = false }
+  func setAudioOnly(_ on: Bool) {
+    guard on != audioOnly else { return }
+    audioOnly = on; Self.sessionAudioOnly = on
+    if on { liveText.clear() }
+    set("vid", on ? "no" : "auto")
+  }
+  /// The frame on screen at the video's display size (longest side at most 3840 px).
+  func captureFrame() async -> CGImage? {
+    guard let engine, external == nil else { return nil }
+    let reference = EngineReference(engine)
+    let size: (Double, Double) = await withCheckedContinuation { continuation in
+      queue.async {
+        continuation.resume(returning: (bili_mpv_number(reference.pointer, "video-params/dw"),
+          bili_mpv_number(reference.pointer, "video-params/dh")))
+      }
+    }
+    guard size.0.isFinite, size.1.isFinite, size.0 >= 16, size.1 >= 16 else { return nil }
+    let scale = min(1, 3840 / max(size.0, size.1))
+    return await surface?.captureVideoFrame(width: Int(size.0 * scale), height: Int(size.1 * scale))
+  }
+  /// Live Text over the paused frame (设置 › 播放控制 › 暂停时识别画面文字).
+  let liveText = LiveTextController()
+  /// Live Text applies to the built-in player showing video, with the setting on.
+  var liveTextEnabled: Bool { runtimeSettings.bool(.liveText) && !audioOnly && external == nil && !closing }
+  /// Display-sleep assertion held only while frames are actually advancing.
+  private let sleepGuard = PlaybackPowerAssertion()
+  @Published var volume: Double = 80
+  @Published var speed: Double = 1
+  @Published var status = "未加载"
+  @Published var error: String?
+  @Published var hardware = ""
+  /// Volume and danmaku visibility chosen during this app session carry over to the next
+  /// video or part instead of snapping back to the settings default.
+  static var sessionVolume: Double?
+  static var sessionComments: Bool?
+  @Published var commentsEnabled = true { didSet { if oldValue != commentsEnabled { Self.sessionComments = commentsEnabled } } }
+  @Published private(set) var chapters: [PlaybackChapter] = []
+  @Published private(set) var usesExternalMpv = false
+  var danmakuFontSize: Double = 24
+  var danmakuOpacity: Double = 1
+  var danmakuSpeed: Double = 1
+  /// Fraction of the view height scrolling and top danmaku may use (1/4, 1/2 or 1). It is a
+  /// player-local preference kept outside the settings catalog.
+  var danmakuArea: Double = PlayerModel.storedDanmakuArea {
+    didSet { if oldValue != danmakuArea { PerformanceEnvironment.defaults.set(danmakuArea, forKey: Self.danmakuAreaKey) } }
+  }
+  static let danmakuAreaKey = "Manping.danmakuArea"
+  static let danmakuAreas: [Double] = [0.25, 0.5, 1]
+  private static var storedDanmakuArea: Double {
+    let value = PerformanceEnvironment.defaults.double(forKey: danmakuAreaKey)
+    return danmakuAreas.contains(value) ? value : 1
+  }
+  /// The user's own rules plus the account's synced shield list. The user's rules have one
+  /// source, `DanmakuFilterStore`, shared by every player and both editors.
+  var effectiveDanmakuFilter: DanmakuFilter {
+    var filter = DanmakuFilterStore.shared.filter
+    filter.account = DanmakuShieldSync.shared.shield
+    return filter
+  }
+  /// The user's rules or the account shield list changed (edited, synced, toggled, signed out).
+  func refreshAccountShield() {
+    timeline.setFilter(effectiveDanmakuFilter)
+    surface?.refreshDanmakuPreferences()
+  }
+  private var runtimeSettings = MacSettings()
+  private var temporaryOriginalSpeed: Double?
+  /// The value the user just chose and until when poll samples that disagree are stale.
+  private var userSpeed: (value: Double, until: Date)?
+  private var userVolume: (value: Double, until: Date)?
+  private var external: M7ExternalMpv?
+  /// Lanes are laid out for the current danmaku speed, including timelines assigned later.
+  var timeline = DanmakuTimeline(comments: []) {
+    didSet {
+      timeline.setFilter(effectiveDanmakuFilter); timeline.setSpeed(danmakuSpeed)
+      // The render thread draws from a published copy.
+      surface?.danmakuTimelineChanged()
+    }
+  }
+  private let queue = DispatchQueue(label: "io.github.pidean.manping.mpv.commands", qos: .userInitiated)
+  private var poll: DispatchSourceTimer?
+  private(set) var engine: OpaquePointer?
+  private var engineSignature = ""
+  private var closing = false
+  private var pending: (video: URL, audio: URL?, start: Double, paused: Bool)?
+  private var generation = 0
+  weak var surface: VideoSurface?
+  var diagnosticEvents: [String] = []
+  var shaderEvents: [String] = []
+  var passes = ""
+  var metrics: [String: Double] = [:]
+  var metricSamples: [[String: Double]] = []
+  var mediaEvidence: [String: String] = [:]
+  /// Off for live streams, which have no fixed length.
+  var tracksDuration = true
+  /// Display reconfigurations (layer or tone-mapping target) since launch; diagnostics only.
+  var displayUpdates = 0
+  private var clockUpdated = Date()
+  /// Smooth clock for danmaku, fed from the sampling thread (see DanmakuClock).
+  nonisolated let danmakuClock = DanmakuClock()
+  /// Media time at `host` (CACurrentMediaTime) for placing danmaku.
+  nonisolated func mediaClock(at host: CFTimeInterval) -> Double? { danmakuClock.media(at: host) }
+  var mediaClock: Double { danmakuClock.media(at: CACurrentMediaTime()) ?? time }
+  static var libraryPath: String {
+    if let override = ProcessInfo.processInfo.environment["MANPING_MPV_LIBRARY"] { return override }
+    let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Frameworks/libmpv.2.dylib")
+      .path
+    return FileManager.default.fileExists(atPath: bundled)
+      ? bundled : "/opt/homebrew/lib/libmpv.2.dylib"
+  }
+  func start() {
+    guard engine == nil, external == nil, !closing else { return }
+    if DebugUIFixtures.enabled && !PerformanceOptions.playsLocalMedia { return }
+    let executable = runtimeSettings.text(.customMpv)
+    if !executable.isEmpty {
+      usesExternalMpv = true
+      let external = M7ExternalMpv { [weak self] sample in
+        Task { @MainActor [weak self] in
+          guard let self, !self.closing else { return }
+          self.time = sample.time
+          self.danmakuClock.update(.init(host: CACurrentMediaTime(), media: sample.time,
+            playing: !sample.paused, speed: sample.speed))
+          if self.duration != sample.duration { self.duration = sample.duration }
+          if self.paused != sample.paused { self.paused = sample.paused }
+          if self.speed != sample.speed && !self.isStale(sample.speed, against: self.userSpeed) { self.speed = sample.speed }
+          if self.volume != sample.volume && !self.isStale(sample.volume, against: self.userVolume) { self.volume = sample.volume }
+          self.clockUpdated = Date()
+          if self.chapters != sample.chapters { self.chapters = sample.chapters }
+          if !sample.eof && !sample.idle && sample.duration > 0 { self.eofArmed = true }
+          if sample.eof && self.eofArmed { self.eofReached = true }
+          if let error = sample.error, self.error != error { self.error = error }
+          let status = sample.exited ? "外部 mpv 已退出" : "外部 mpv · 已连接"
+          if self.status != status { self.status = status }
+          if sample.exited { self.external = nil }
+        }
+      }
+      self.external = external
+      external.start(executable: executable)
+      applyRuntime(previous: nil)
+      return
+    }
+    var message = [CChar](repeating: 0, count: 2048)
+    let customLibrary = runtimeSettings.text(.customLibMpv)
+    let path = customLibrary.isEmpty ? Self.libraryPath : customLibrary
+    // A profile switch needs a fresh engine (profiles set different option sets).
+    let signature = path + "\u{0}" + runtimeSettings.text(.mpvProfile)
+    let reference: EngineReference?
+    if let reused = MpvEnginePool.shared.checkout(signature: signature) {
+      reference = EngineReference(reused)
+    } else {
+      reference = queue.sync { bili_mpv_create(path, &message, message.count).map(EngineReference.init) }
+      if let handle = reference?.pointer, let ca = Bundle.main.url(forResource: "cacert", withExtension: "pem") {
+        queue.sync { _ = bili_mpv_set(handle, "tls-ca-file", ca.path) }
+      }
+    }
+    let handle = reference?.pointer
+    guard let handle, let reference else {
+      error = String(cString: message)
+      return
+    }
+    engine = handle
+    engineSignature = signature
+    let diagnosticMode =
+      ProcessInfo.processInfo.arguments.contains("--diagnose")
+      || ProcessInfo.processInfo.arguments.contains("--diagnose-bvid")
+    let eofGeneration = self.eofGeneration
+    let danmakuClock = self.danmakuClock
+    let timer = DispatchSource.makeTimerSource(queue: queue)
+    timer.schedule(deadline: .now(), repeating: .milliseconds(100))
+    timer.setEventHandler { @Sendable [weak self] in
+      let handle = reference.pointer
+      let sampledGeneration = eofGeneration.value
+      let reachedEnd = bili_mpv_flag(handle, "eof-reached") != 0
+      var time: Double = 0
+      // Unavailable while a file is opening; the clock then keeps the requested start position.
+      let timeKnown = bili_mpv_number_checked(handle, "time-pos", &time) >= 0 && time.isFinite
+      let duration = bili_mpv_number(handle, "duration")
+      let paused = bili_mpv_flag(handle, "pause") != 0
+      let waitingForCache = bili_mpv_flag(handle, "paused-for-cache") > 0
+      let idle = bili_mpv_flag(handle, "idle-active") != 0
+      let speed = bili_mpv_number(handle, "speed")
+      // audio-pts follows the audio device sample by sample; time-pos steps once per video
+      // frame. Read with this thread's host time, not when the main thread gets around to it.
+      var audioTime: Double = 0
+      let audioKnown = bili_mpv_number_checked(handle, "audio-pts", &audioTime) >= 0 && audioTime.isFinite && audioTime >= 0
+      if timeKnown || audioKnown {
+        danmakuClock.update(.init(host: CACurrentMediaTime(), media: audioKnown ? audioTime : time,
+          playing: !paused && !waitingForCache && !idle && !reachedEnd, speed: speed))
+      }
+      let volume = bili_mpv_number(handle, "volume")
+      let countValue = bili_mpv_number(handle, "chapter-list/count")
+      let chapterCount = countValue.isFinite ? Int(min(1024, max(0, countValue))) : 0
+      if reference.chapterGeneration != sampledGeneration || reference.chapterCount != chapterCount {
+        reference.chapterGeneration = sampledGeneration; reference.chapterCount = chapterCount
+        reference.chapters = (0..<chapterCount).compactMap { index in
+          var seconds: Double = 0
+          guard bili_mpv_number_checked(handle, "chapter-list/\(index)/time", &seconds) >= 0,
+            seconds.isFinite, seconds >= 0 else { return nil }
+          var title = [CChar](repeating: 0, count: 2048)
+          _ = bili_mpv_string(handle, "chapter-list/\(index)/title", &title, title.count)
+          let text = String(cString: title)
+          return PlaybackChapter(index: index, title: text.isEmpty ? "章节 \(index + 1)" : text, time: seconds)
+        }
+      }
+      let chapters = reference.chapters
+      var hardware = [CChar](repeating: 0, count: 128)
+      _ = bili_mpv_string(handle, "hwdec-current", &hardware, hardware.count)
+      let hardwareText = String(cString: hardware)
+      var passes = [CChar](repeating: 0, count: 32768)
+      _ = bili_mpv_passes(handle, &passes, passes.count)
+      let passText = String(cString: passes)
+      var logs: [String] = []
+      for _ in 0..<64 {
+        var message = [CChar](repeating: 0, count: 2048)
+        let event = bili_mpv_event(handle, &message, message.count)
+        if event == 0 { break }
+        let line = DiagnosticRedactor.sanitize(String(cString: message))
+        if !line.hasPrefix("event:") { logs.append(line) }
+      }
+      let names = [
+        "audio-codec-name", "video-params/pixelformat", "video-params/hw-pixelformat",
+        "video-params/primaries", "video-params/gamma", "video-params/colormatrix",
+      ]
+      let media = Dictionary(
+        uniqueKeysWithValues: names.map { name in
+          var buffer = [CChar](repeating: 0, count: 256)
+          _ = bili_mpv_string(handle, name, &buffer, buffer.count)
+          return (name, String(cString: buffer))
+        })
+      let events = logs
+      let properties = [
+        "frame-drop-count", "decoder-frame-drop-count", "mistimed-frame-count",
+        "demuxer-cache-duration", "demuxer-cache-state/fw-bytes", "video-params/sig-peak",
+        "estimated-vf-fps", "estimated-frame-number", "estimated-frame-count",
+        "display-fps", "vsync-jitter", "video-bitrate",
+      ]
+      var measured = Dictionary(
+        uniqueKeysWithValues: properties.compactMap { name -> (String, Double)? in
+          var value: Double = 0
+          return bili_mpv_number_checked(handle, name, &value) >= 0 ? (name, value) : nil
+        })
+      if diagnosticMode { measured["residentBytes"] = Double(bili_process_resident_bytes()) }
+      let metrics = measured
+      DispatchQueue.main.async { [weak self] in
+        guard let self, !self.closing else { return }
+        self.mediaEvidence = media
+        self.metrics = metrics
+        if diagnosticMode && self.metricSamples.last?["mediaSecond"] != floor(time) {
+          self.metricSamples.append(metrics.merging(["mediaSecond": floor(time)]) { _, new in new })
+          self.metricSamples = Array(self.metricSamples.suffix(120))
+        }
+        if self.generation == sampledGeneration, self.pending == nil {
+          if !reachedEnd && !idle && duration > 0 { self.eofArmed = true }
+          if reachedEnd && self.eofArmed { self.eofReached = true }
+        }
+        // Publish only real changes: every @Published write re-renders observing views.
+        if timeKnown, self.generation == sampledGeneration, self.pending == nil {
+          self.time = time
+          self.clockUpdated = Date()
+        }
+        self.passes = passText
+        // A live stream's "duration" grows every poll; publishing it re-rendered the page 10×/s.
+        if self.tracksDuration, self.duration != duration { self.duration = duration }
+        if self.paused != paused {
+          self.paused = paused
+          if paused, self.liveTextEnabled, !idle {
+            self.liveText.analyse(self)
+          } else {
+            self.liveText.clear()
+          }
+        }
+        if speed.isFinite && speed > 0 && self.speed != speed && !self.isStale(speed, against: self.userSpeed) { self.speed = speed }
+        if volume.isFinite && volume >= 0 && self.volume != volume && !self.isStale(volume, against: self.userVolume) { self.volume = volume }
+        if self.chapters != chapters { self.chapters = chapters }
+        if self.buffering != waitingForCache { self.buffering = waitingForCache }
+        self.bufferedAhead = metrics["demuxer-cache-duration"] ?? 0
+        self.surface?.setPlaybackActive(!paused && !idle)
+        self.sleepGuard.update(playing: !paused && !idle && !reachedEnd)
+        if self.hardware != hardwareText { self.hardware = hardwareText }
+        // An error sampled before the newest loadfile belongs to the previous stream.
+        if self.generation == sampledGeneration, self.pending == nil,
+          let failure = events.last(where: { $0.hasPrefix("end-file:") && !$0.contains("success") }) {
+          let reason = failure.dropFirst("end-file:".count).trimmingCharacters(in: .whitespaces)
+          self.error = "没能加载视频流（\(reason)）。可在 播放器设置 › 网络与节点 中换节点或重新测速后重试。"
+        }
+        if !events.isEmpty {
+          self.shaderEvents.append(
+            contentsOf: events.filter {
+              $0.localizedCaseInsensitiveContains("shader")
+                || $0.localizedCaseInsensitiveContains("compute")
+            })
+          self.shaderEvents = Array(self.shaderEvents.suffix(512))
+          self.diagnosticEvents.append(contentsOf: events)
+          self.diagnosticEvents = Array(self.diagnosticEvents.suffix(128))
+          if let error = events.last(where: {
+            $0.contains("error") || $0.contains("failed") || $0.contains("Error")
+          }), self.status != error {
+            self.status = error
+          }
+        }
+      }
+    }
+    poll = timer
+    timer.resume()
+    applyRuntime(previous: nil)
+  }
+  func load(video: URL, audio: URL?, start: Double = 0, paused: Bool = false) {
+    self.start()
+    generation += 1
+    resetPlaybackEnd()
+    chapters = []
+    danmakuClock.reset()
+    liveText.clear()
+    if let external {
+      external.load(video: video, audio: audio, start: start, paused: paused)
+      // External mpv keeps its own options; carry 仅播放声音 to it on every load as well.
+      external.set("vid", audioOnly ? "no" : "auto")
+      status = "外部 mpv · 正在加载"
+      time = 0
+      return
+    }
+    pending = (video, audio, start, paused)
+    // A fresh engine starts with video on; carry 仅播放声音 into it.
+    set("vid", audioOnly ? "no" : "auto")
+    status = "正在加载分离音视频"
+    error = nil
+    // Report the start position until the new file plays, so a quality change or CDN reload
+    // issued during loading resumes from here instead of from zero.
+    time = start
+    if duration != 0 { duration = 0 }
+    if surface?.renderReady == true { renderStarted() }
+  }
+  func renderStarted() {
+    guard let pending, let engine, !closing else { return }
+    self.pending = nil
+    let reference = EngineReference(engine)
+    let loadGeneration = generation
+    let eofGeneration = self.eofGeneration
+    queue.async { [weak self] in
+      let result = bili_mpv_load(
+        reference.pointer, pending.video.absoluteString,
+        pending.audio?.absoluteString, pending.start, pending.paused ? 1 : 0)
+      eofGeneration.store(loadGeneration)
+      if result < 0 { DispatchQueue.main.async { self?.error = "mpv loadfile failed: \(result)" } }
+    }
+  }
+  func resetPlaybackEnd() { eofReached = false; eofArmed = false }
+  #if DEBUG
+  func simulatePlaybackEnd() {
+    guard DebugUIFixtures.enabled else { return }
+    eofReached = true
+  }
+  #endif
+  func command(_ args: [String]) {
+    if let external, !closing { external.command(args); return }
+    guard let engine, !closing else { return }
+    let reference = EngineReference(engine)
+    queue.async { [weak self] in
+      let engine = reference.pointer
+      let pointers = args.map { strdup($0) }
+      defer { for pointer in pointers { free(pointer) } }
+      var arguments = pointers.map { UnsafePointer<CChar>($0) } + [nil]
+      let result = arguments.withUnsafeMutableBufferPointer {
+        bili_mpv_command(engine, $0.baseAddress)
+      }
+      if result < 0 { DispatchQueue.main.async { self?.error = "mpv command failed: \(result)" } }
+    }
+  }
+  func set(_ name: String, _ value: String) {
+    if let external, !closing { external.set(name, value); return }
+    guard let engine, !closing else { return }
+    let reference = EngineReference(engine)
+    queue.async { [weak self] in
+      let engine = reference.pointer
+      let result = bili_mpv_set(engine, name, value)
+      if result < 0 { DispatchQueue.main.async { self?.error = "mpv property \(name): \(result)" } }
+    }
+  }
+  func verboseLogs() {
+    guard let engine else { return }
+    let reference = EngineReference(engine)
+    queue.async { bili_mpv_log_level(reference.pointer, "v") }
+  }
+  /// Danmaku look and speed only; safe to call while a settings control is being dragged.
+  func applyDanmakuPreferences(_ settings: MacSettings) {
+    danmakuFontSize = settings.number(.danmakuFontSize)
+    danmakuOpacity = settings.number(.danmakuOpacity)
+    danmakuSpeed = settings.number(.danmakuSpeed)
+    timeline.setSpeed(danmakuSpeed)
+    surface?.refreshDanmakuPreferences()
+  }
+  func setDanmakuArea(_ area: Double) {
+    guard Self.danmakuAreas.contains(area), area != danmakuArea else { return }
+    danmakuArea = area
+    surface?.refreshDanmakuPreferences()
+  }
+  func configureRuntime(settings: MacSettings, previous: MacSettings? = nil) {
+    let old = runtimeSettings
+    runtimeSettings = settings
+    if !settings.bool(.liveText) { liveText.clear() }
+    applyDanmakuPreferences(settings)
+    if engine != nil || external != nil {
+      if old.text(.customLibMpv) != settings.text(.customLibMpv)
+        || old.text(.customMpv) != settings.text(.customMpv)
+        || old.text(.mpvProfile) != settings.text(.mpvProfile) {
+        status = "播放器路径或画质配置已保存，下次新建播放器时生效"
+      }
+      applyRuntime(previous: previous ?? old)
+    }
+  }
+  private func applyRuntime(previous: MacSettings?) {
+    let old = previous.map { Dictionary(uniqueKeysWithValues: MpvRuntimePlan.properties($0)) }
+    for (name, value) in MpvRuntimePlan.properties(runtimeSettings) where old?[name] != value {
+      set(name, value)
+    }
+    // Profiles override different option sets; a fresh engine prevents a
+    // fast -> high-quality transition from retaining fast-only options.
+    if previous == nil {
+      command(["apply-profile", runtimeSettings.text(.mpvProfile)])
+    }
+    if previous?.text(.logLevel) != runtimeSettings.text(.logLevel) {
+      let level = runtimeSettings.text(.logLevel)
+      if let external { external.set("msg-level", "all=" + level) }
+      else if let engine {
+        let reference = EngineReference(engine)
+        queue.async { bili_mpv_log_level(reference.pointer, level) }
+      }
+    }
+  }
+  /// User-initiated speed change: applied to mpv at once, and later poll samples that still
+  /// carry the old value are ignored for a moment so the choice does not snap back.
+  func setSpeed(_ value: Double) {
+    guard value.isFinite, value > 0 else { return }
+    speed = value; userSpeed = (value, Date().addingTimeInterval(0.8))
+    set("speed", String(value))
+  }
+  func setVolume(_ value: Double) {
+    guard value.isFinite, value >= 0 else { return }
+    volume = value; userVolume = (value, Date().addingTimeInterval(0.8)); Self.sessionVolume = value
+    set("volume", String(value))
+  }
+  private func isStale(_ sample: Double, against user: (value: Double, until: Date)?) -> Bool {
+    guard let user, Date() < user.until else { return false }
+    return abs(sample - user.value) > 0.001
+  }
+  func beginTemporarySpeed() {
+    guard temporaryOriginalSpeed == nil else { return }
+    temporaryOriginalSpeed = speed
+    speed = runtimeSettings.number(.temporarySpeed)
+    set("speed", String(speed))
+  }
+  func endTemporarySpeed() {
+    guard let original = temporaryOriginalSpeed else { return }
+    temporaryOriginalSpeed = nil; speed = original
+    set("speed", String(original))
+  }
+  func loadSubtitle(url: URL, title: String? = nil) {
+    guard url.isFileURL else { error = "字幕必须先下载到本地文件"; return }
+    command(["sub-add", url.path, "select", title ?? url.lastPathComponent])
+  }
+  func clearSubtitle() { set("sid", "no") }
+  func seek(_ seconds: Double) {
+    // A deliberate jump: danmaku follow it (backwards too) instead of waiting.
+    danmakuClock.seek(to: seconds, now: CACurrentMediaTime())
+    // The frame changes: once the new one is decoded, analyse it if still paused.
+    if paused, liveTextEnabled { liveText.analyse(self, afterSeekFrom: time) } else { liveText.clear() }
+    if let args = MpvRuntimePlan.seek(seconds, precise: runtimeSettings.text(.preciseSeek) != "no") {
+      command(args)
+    }
+  }
+  func togglePause() { command(["cycle", "pause"]) }
+  func shutdown() {
+    guard !closing else { return }
+    closing = true
+    sleepGuard.release()
+    liveText.clear()
+    // No callback points into UI. Stop both timers before freeing the render context.
+    poll?.cancel()
+    poll = nil
+    external?.shutdown(); external = nil
+    temporaryOriginalSpeed = nil
+    surface?.stopRendering()
+    if let engine {
+      // Drain queued commands for this player before handing the engine on.
+      queue.sync {}
+      MpvEnginePool.shared.checkin(engine, signature: engineSignature, reusable: error == nil)
+    }
+    engine = nil
+  }
+}
+final class VideoSurface: NSView {
+  let model: PlayerModel
+  private var videoLayer: VideoLayer?
+  private var metalView: DanmakuView!
+  private var observers: [NSObjectProtocol] = []
+  private var displayTimer: Timer?
+  private var lastDisplay = ""
+  private var lastLayerSignature = ""
+  private var appliedPeak = 0.0
+  private var appliedPeakAt = Date.distantPast
+  private var appliedForHDR = false
+  /// `MANPING_DISPLAY_UPDATES=legacy` re-applies everything on every headroom change (comparison only).
+  private static let legacyDisplayUpdates = ProcessInfo.processInfo.environment["MANPING_DISPLAY_UPDATES"] == "legacy"
+  var renderReady = false
+  var displayEvidence = ""
+  var renderEvidence: String { videoLayer?.statistics() ?? "" }
+  init(model: PlayerModel) {
+    self.model = model
+    super.init(frame: .zero)
+    wantsLayer = true
+    layer?.backgroundColor = NSColor.black.cgColor
+    model.surface?.stopRendering()
+    model.surface = self
+    model.start()
+    if let engine = model.engine {
+      do {
+        let video: VideoLayer
+        if let pooled = MpvEnginePool.shared.layer(for: engine), pooled.isLive {
+          pooled.removeFromSuperlayer()
+          video = pooled
+        } else {
+          video = try VideoLayer(engine: engine)
+          MpvEnginePool.shared.adopt(video, for: engine)
+        }
+        videoLayer = video
+        layer?.addSublayer(video)
+        video.invalidateFrame()
+        renderReady = true
+      } catch { model.error = String(describing: error) }
+    }
+    metalView = DanmakuView(model: model)
+    addSubview(metalView)
+    for name in [
+      NSWindow.didChangeScreenNotification, NSWindow.didChangeBackingPropertiesNotification,
+      NSApplication.didChangeScreenParametersNotification,
+    ] {
+      observers.append(
+        NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) {
+          [weak self] _ in
+          MainActor.assumeIsolated { self?.updateDisplay() }
+        })
+    }
+    // Headroom changes with brightness even without a screen-change notification.
+    displayTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated { self?.updateDisplay() }
+    }
+    model.renderStarted()
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  override func layout() {
+    super.layout()
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    if videoLayer?.frame != bounds {
+      videoLayer?.frame = bounds
+      videoLayer?.invalidateFrame()
+    }
+    CATransaction.commit()
+    metalView.frame = bounds
+    updateDisplay()
+  }
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    updateDisplay()
+  }
+  private func updateDisplay() {
+    guard let videoLayer else { return }
+    let screen = window?.screen ?? NSScreen.main
+    let potential = screen?.maximumPotentialExtendedDynamicRangeColorComponentValue ?? 1
+    let rawCurrent = screen?.maximumExtendedDynamicRangeColorComponentValue ?? 1
+    let arguments = ProcessInfo.processInfo.arguments
+    let cap =
+      arguments.firstIndex(of: "--headroom-cap").flatMap {
+        arguments.count > $0 + 1 ? Double(arguments[$0 + 1]) : nil
+      } ?? Double.greatestFiniteMagnitude
+    let current = min(max(1, (rawCurrent * 10).rounded(.down) / 10), max(1, cap))
+    let edr =
+      videoLayer.floating && potential > 1 && !ProcessInfo.processInfo.arguments.contains("--sdr")
+    let scale = window?.backingScaleFactor ?? 1
+    let signature =
+      "edr=\(edr) current=\((rawCurrent * 10).rounded() / 10) mappedHeadroom=\(current) potential=\(potential) scale=\(scale)"
+    videoLayer.setVisible(
+      window != nil && !isHiddenOrHasHiddenAncestor && !(window?.isMiniaturized ?? false))
+    if let number = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+      videoLayer.setDisplay(CGDirectDisplayID(number.uint32Value))
+    }
+    guard signature != lastDisplay else { return }
+    lastDisplay = signature
+    displayEvidence = signature
+    let peak = edr ? max(1, current) * 203 : 203
+    if Self.legacyDisplayUpdates {
+      model.displayUpdates += 1
+      videoLayer.configureDisplay(edr: edr, scale: scale)
+      model.set("target-prim", edr ? "bt.2020" : "bt.709")
+      model.set("target-trc", edr ? "linear" : "srgb")
+      model.set("target-peak", String(Int(peak)))
+      model.set("tone-mapping", "bt.2390")
+      return
+    }
+    // The layer and target space only change with EDR or scale. Auto-brightness moves the
+    // headroom every second or so; re-applying everything then rebuilt mpv's shaders each time
+    // and dropped bursts of frames at 120 fps.
+    let layerSignature = "edr=\(edr) scale=\(scale)"
+    let layerChanged = layerSignature != lastLayerSignature
+    if layerChanged {
+      lastLayerSignature = layerSignature
+      model.displayUpdates += 1
+      videoLayer.configureDisplay(edr: edr, scale: scale)
+      // Linear BT.2020 values are relative to SDR white; CA applies display color matching.
+      model.set("target-prim", edr ? "bt.2020" : "bt.709")
+      model.set("target-trc", edr ? "linear" : "srgb")
+      model.set("tone-mapping", "bt.2390")
+    }
+    // Only HDR sources use the headroom; follow it with hysteresis and at most every 5 s.
+    let hdrSource = ["pq", "hlg"].contains(model.mediaEvidence["video-params/gamma"] ?? "")
+    let drift = appliedPeak > 0 ? abs(peak - appliedPeak) / appliedPeak : 1
+    let due = Date().timeIntervalSince(appliedPeakAt) >= 5 && drift >= 0.15
+    if layerChanged || hdrSource != appliedForHDR || (hdrSource && due) {
+      appliedPeak = peak; appliedPeakAt = Date(); appliedForHDR = hdrSource
+      if !layerChanged { model.displayUpdates += 1 }
+      model.set("target-peak", String(Int(peak)))
+    }
+  }
+  func setPlaybackActive(_ active: Bool) { videoLayer?.setPlaybackActive(active) }
+  func refreshDanmakuPreferences() { metalView?.refreshPreferences() }
+  func danmakuTimelineChanged() { metalView?.timelineChanged() }
+  func captureVideoFrame(width: Int, height: Int) async -> CGImage? {
+    guard let videoLayer else { return nil }
+    return await withCheckedContinuation { continuation in
+      videoLayer.captureFrame(width: width, height: height) { continuation.resume(returning: $0) }
+    }
+  }
+  func stopRendering() {
+    displayTimer?.invalidate()
+    displayTimer = nil
+    for observer in observers { NotificationCenter.default.removeObserver(observer) }
+    observers.removeAll()
+    // The pool owns the render layer; park it hidden so the next surface can re-host it.
+    videoLayer?.setVisible(false)
+    videoLayer?.setPlaybackActive(false)
+    videoLayer?.removeFromSuperlayer()
+    videoLayer = nil
+    metalView.stop()
+    renderReady = false
+    if model.surface === self { model.surface = nil }
+  }
+  /// Leaving a window only hides the picture; `viewDidMoveToWindow` shows it again. Real
+  /// teardown happens in `PlayerSurface.dismantleNSView` or when a new surface takes over —
+  /// stopping here left the player permanently black after a temporary removal.
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    if newWindow == nil { videoLayer?.setVisible(false) }
+    super.viewWillMove(toWindow: newWindow)
+  }
+}
+
+// CA may enter drawing callbacks with the CGL context already locked. Always acquire
+// CGL before gate when both are needed; mpv's update callback only sets a C atomic.
+private final class WeakVideoLayer: @unchecked Sendable {
+  weak var layer: VideoLayer?
+  init(_ layer: VideoLayer) { self.layer = layer }
+}
+final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
+  private let gate = NSRecursiveLock()
+  private var engine: OpaquePointer?
+  private let context: CGLContextObj
+  private let pixel: CGLPixelFormatObj
+  let floating: Bool
+  private let renderQueue = DispatchQueue(
+    label: "io.github.pidean.manping.video.render", qos: .userInteractive)
+  private var displaySource: DispatchSourceTimer?
+  /// During playback frames are pumped on the display's vsync (a CVDisplayLink thread), so a
+  /// 120 fps stream on a 120 Hz panel is not phase-drifting against a fixed 8 ms poll.
+  /// `MANPING_RENDER_PACING=timer` restores the old poll for comparison.
+  static let pacesWithDisplay = ProcessInfo.processInfo.environment["MANPING_RENDER_PACING"] != "timer"
+  private var link: CVDisplayLink?
+  private var linkDisplay: CGDirectDisplayID = CGMainDisplayID()
+  /// Guards only `pumpQueued`. The display link callback must never take `gate`: stopping the
+  /// link while holding `gate` waits for an in-flight callback.
+  private let pumpLock = NSLock()
+  private var pumpQueued = false
+  private var force = true
+  private var visible = true
+  private var playbackActive = false
+  private var pollMilliseconds = 250
+  init(engine: OpaquePointer) throws {
+    var chosen: CGLPixelFormatObj?
+    var count: GLint = 0
+    let base: [CGLPixelFormatAttribute] = [
+      kCGLPFAOpenGLProfile,
+      CGLPixelFormatAttribute(kCGLOGLPVersion_3_2_Core.rawValue), kCGLPFAAccelerated,
+      kCGLPFADoubleBuffer,
+    ]
+    let hdr =
+      base + [
+        kCGLPFAColorSize, CGLPixelFormatAttribute(64), kCGLPFAColorFloat,
+        CGLPixelFormatAttribute(0),
+      ]
+    let result = CGLChoosePixelFormat(hdr, &chosen, &count)
+    floating = result == kCGLNoError && chosen != nil
+    if !floating {
+      CGLChoosePixelFormat(
+        base + [kCGLPFAColorSize, CGLPixelFormatAttribute(24), CGLPixelFormatAttribute(0)], &chosen,
+        &count)
+    }
+    guard let chosen else { throw NSError(domain: "CGL pixel format", code: Int(result.rawValue)) }
+    pixel = chosen
+    var ctx: CGLContextObj?
+    let status = CGLCreateContext(chosen, nil, &ctx)
+    guard let ctx else {
+      CGLReleasePixelFormat(chosen)
+      throw NSError(domain: "CGL context", code: Int(status.rawValue))
+    }
+    context = ctx
+    self.engine = engine
+    super.init()
+    contentsFormat = floating ? .RGBA16Float : .RGBA8Uint
+    isOpaque = true
+    CGLSetCurrentContext(context)
+    let render = bili_mpv_render_create(engine)
+    CGLSetCurrentContext(nil)
+    guard render >= 0 else {
+      self.engine = nil
+      throw NSError(domain: "mpv render", code: Int(render))
+    }
+    isAsynchronous = false
+    let timer = DispatchSource.makeTimerSource(queue: renderQueue)
+    timer.schedule(deadline: .now(), repeating: .milliseconds(250), leeway: .milliseconds(10))
+    // A Sendable weak box: the optimizer rejects `[weak self]` of this layer in a @Sendable closure.
+    let target = WeakVideoLayer(self)
+    timer.setEventHandler { @Sendable in target.layer?.pump() }
+    displaySource = timer
+    timer.resume()
+  }
+  /// Presents a frame if mpv has one (or a redraw was forced). Always runs on `renderQueue`.
+  fileprivate func pump() {
+    pumpLock.withLock { pumpQueued = false }
+    CGLLockContext(context)
+    gate.lock()
+    guard let engine, visible else {
+      gate.unlock()
+      CGLUnlockContext(context)
+      return
+    }
+    CGLSetCurrentContext(context)
+    let pending = bili_mpv_render_pending(engine) != 0
+    let display = pending || force
+    if display { force = true }
+    gate.unlock()
+    CGLUnlockContext(context)
+    // Never hold either render lock while acquiring Core Animation's transaction lock.
+    if display {
+      setNeedsDisplay()
+      self.display()
+      CATransaction.flush()
+    }
+  }
+  /// Called on the display link thread once per refresh; coalesces into one queued pump.
+  private func vsync() {
+    let queue = pumpLock.withLock { () -> Bool in
+      guard !pumpQueued else { return false }
+      pumpQueued = true
+      return true
+    }
+    if queue { renderQueue.async { [weak self] in self?.pump() } }
+  }
+  /// Call with `gate` held.
+  private func updateLink(running: Bool) {
+    if running {
+      if link == nil {
+        var created: CVDisplayLink?
+        guard CVDisplayLinkCreateWithCGDisplay(linkDisplay, &created) == kCVReturnSuccess, let created else { return }
+        CVDisplayLinkSetOutputHandler(created) { [weak self] _, _, _, _, _ in
+          self?.vsync()
+          return kCVReturnSuccess
+        }
+        link = created
+      }
+      if let link, !CVDisplayLinkIsRunning(link) { CVDisplayLinkStart(link) }
+    } else if let link, CVDisplayLinkIsRunning(link) {
+      CVDisplayLinkStop(link)
+    }
+  }
+  /// Follows the window to another screen so vsync matches the panel showing the video.
+  func setDisplay(_ id: CGDirectDisplayID) {
+    gate.lock()
+    defer { gate.unlock() }
+    guard id != linkDisplay else { return }
+    linkDisplay = id
+    if let link { CVDisplayLinkSetCurrentCGDisplay(link, id) }
+  }
+  override init(layer: Any) {
+    let source = layer as! VideoLayer
+    pixel = CGLRetainPixelFormat(source.pixel)
+    context = CGLRetainContext(source.context)
+    floating = source.floating
+    // Presentation copies must not own or access the live mpv engine.
+    super.init(layer: layer)
+  }
+  required init?(coder: NSCoder) { fatalError() }
+  deinit {
+    if let link { CVDisplayLinkStop(link) }
+    CGLReleaseContext(context)
+    CGLReleasePixelFormat(pixel)
+  }
+  override func copyCGLPixelFormat(forDisplayMask mask: UInt32) -> CGLPixelFormatObj {
+    CGLRetainPixelFormat(pixel)
+  }
+  override func copyCGLContext(forPixelFormat pf: CGLPixelFormatObj) -> CGLContextObj {
+    CGLRetainContext(context)
+  }
+  /// mpv's target is linear BT.2020 (EDR) rather than sRGB; captures convert accordingly.
+  private var edrOutput = false
+  func configureDisplay(edr: Bool, scale: CGFloat) {
+    gate.lock(); edrOutput = edr; gate.unlock()
+    invalidateFrame()
+    colorspace = CGColorSpace(name: edr ? CGColorSpace.extendedLinearITUR_2020 : CGColorSpace.sRGB)
+    wantsExtendedDynamicRangeContent = edr
+    contentsScale = scale
+  }
+  private func updatePacing() {
+    let active = visible && playbackActive && engine != nil
+    if Self.pacesWithDisplay { updateLink(running: active) }
+    // With the display link pumping frames the timer only keeps the idle 250 ms redraw check.
+    let interval = active && !Self.pacesWithDisplay ? 8 : 250
+    guard interval != pollMilliseconds else { return }
+    pollMilliseconds = interval
+    displaySource?.schedule(
+      deadline: .now(), repeating: .milliseconds(interval),
+      leeway: .milliseconds(interval == 8 ? 1 : 10))
+  }
+  func setVisible(_ value: Bool) {
+    gate.lock()
+    visible = value
+    updatePacing()
+    gate.unlock()
+  }
+  func setPlaybackActive(_ value: Bool) {
+    gate.lock()
+    playbackActive = value
+    updatePacing()
+    gate.unlock()
+  }
+  func invalidateFrame() {
+    gate.lock()
+    force = true
+    gate.unlock()
+  }
+  override func canDraw(
+    inCGLContext ctx: CGLContextObj, pixelFormat pf: CGLPixelFormatObj,
+    forLayerTime t: CFTimeInterval, displayTime ts: UnsafePointer<CVTimeStamp>?
+  ) -> Bool {
+    CGLLockContext(context)
+    defer { CGLUnlockContext(context) }
+    gate.lock()
+    defer { gate.unlock() }
+    guard let engine, visible else { return false }
+    CGLSetCurrentContext(context)
+    return bili_mpv_render_pending(engine) != 0 || force
+  }
+  override func draw(
+    inCGLContext ctx: CGLContextObj, pixelFormat pf: CGLPixelFormatObj,
+    forLayerTime t: CFTimeInterval, displayTime ts: UnsafePointer<CVTimeStamp>?
+  ) {
+    CGLLockContext(context)
+    defer { CGLUnlockContext(context) }
+    gate.lock()
+    defer { gate.unlock() }
+    guard let engine, visible else { return }
+    CGLSetCurrentContext(context)
+    force = false
+    _ = bili_mpv_render(engine, floating ? 1 : 0)
+    super.draw(inCGLContext: ctx, pixelFormat: pf, forLayerTime: t, displayTime: ts)
+    bili_mpv_report_swap(engine)
+  }
+  /// The current frame as mpv draws it (scaling, tone mapping, shaders), rendered offscreen at
+  /// `width` x `height`. mpv's own screenshot cannot read VideoToolbox frames.
+  func captureFrame(width: Int, height: Int, completion: @escaping @Sendable (CGImage?) -> Void) {
+    // A Sendable weak box: the optimizer rejects capturing this layer in the queue closure.
+    let target = WeakVideoLayer(self)
+    renderQueue.async { completion(target.layer?.captureOnRenderQueue(width: width, height: height)) }
+  }
+  /// Runs on `renderQueue` with the context and gate held.
+  fileprivate func captureOnRenderQueue(width: Int, height: Int) -> CGImage? {
+    CGLLockContext(context)
+    defer { CGLUnlockContext(context) }
+    gate.lock()
+    defer { gate.unlock() }
+    guard let engine else { return nil }
+    CGLSetCurrentContext(context)
+    // EDR output is linear BT.2020 in half floats (target-prim/trc set for EDR): read it as
+    // floats and colour-match to 8-bit sRGB; SDR output is already sRGB bytes.
+    let image: CGImage?
+    if floating && edrOutput {
+      var pixels = [Float](repeating: 0, count: width * height * 4)
+      guard bili_mpv_capture(engine, Int32(width), Int32(height), 1, &pixels) >= 0 else { return nil }
+      image = Self.sRGBImage(fromLinear2020: pixels, width: width, height: height)
+    } else {
+      var pixels = [UInt8](repeating: 0, count: width * height * 4)
+      guard bili_mpv_capture(engine, Int32(width), Int32(height), 0, &pixels) >= 0,
+        let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
+      image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+        bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
+    }
+    return image
+  }
+  private static func sRGBImage(fromLinear2020 pixels: [Float], width: Int, height: Int) -> CGImage? {
+    let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) }
+    guard let provider = CGDataProvider(data: data as CFData),
+      let linear = CGColorSpace(name: CGColorSpace.extendedLinearITUR_2020),
+      let source = CGImage(width: width, height: height, bitsPerComponent: 32, bitsPerPixel: 128,
+        bytesPerRow: width * 16, space: linear,
+        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue
+          | CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+      let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+    else { return nil }
+    // Highlights above SDR white clip, as in any SDR still.
+    context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+    return context.makeImage()
+  }
+  var isLive: Bool { gate.lock(); defer { gate.unlock() }; return engine != nil }
+  func statistics() -> String {
+    gate.lock()
+    defer { gate.unlock() }
+    guard let engine else { return "stopped" }
+    var result = [CChar](repeating: 0, count: 512)
+    bili_mpv_render_stats(engine, &result, result.count)
+    return String(cString: result) + " pollMilliseconds=\(pollMilliseconds)"
+  }
+  func stop() {
+    isAsynchronous = false
+    CGLLockContext(context)
+    defer { CGLUnlockContext(context) }
+    gate.lock()
+    defer { gate.unlock() }
+    displaySource?.cancel()
+    displaySource = nil
+    if let link { CVDisplayLinkStop(link) }
+    link = nil
+    guard let engine else { return }
+    CGLSetCurrentContext(context)
+    bili_mpv_render_destroy(engine)
+    CGLSetCurrentContext(nil)
+    // Queued CA/timer callbacks acquire both locks and see nil before touching mpv.
+    self.engine = nil
+  }
+}
+struct PlayerSurface: NSViewRepresentable {
+  let model: PlayerModel
+  func makeNSView(context: Context) -> VideoSurface { VideoSurface(model: model) }
+  func updateNSView(_ view: VideoSurface, context: Context) {}
+  static func dismantleNSView(_ view: VideoSurface, coordinator: ()) {
+    view.stopRendering()
+  }
+}

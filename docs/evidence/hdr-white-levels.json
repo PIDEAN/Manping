@@ -1,0 +1,41 @@
+{
+  "source": "HEVC Main10 PQ BT.2020",
+  "encodedLuma10bit": [
+    450,
+    573,
+    723
+  ],
+  "nominalNits": [
+    50,
+    203,
+    1000
+  ],
+  "expectedLinearRGB": [
+    0.24630541871921183,
+    1,
+    4.926108374384237
+  ],
+  "sampledLinearRGB": [
+    [
+      0.24267578125,
+      0.248779296875,
+      0.24169921875
+    ],
+    [
+      0.99072265625,
+      1.005859375,
+      0.98828125
+    ],
+    [
+      4.890625,
+      4.9453125,
+      4.8828125
+    ]
+  ],
+  "dimensions": [
+    2314,
+    1207
+  ],
+  "surface": "GL_RGBA16F, CA extendedLinearITUR_2020",
+  "headroomAtFinalReport": "edr=true current=16.0 potential=16.0 scale=2.0"
+}

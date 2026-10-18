@@ -1,0 +1,387 @@
+{
+  "actualProperties" : {
+    "correct-downscaling" : "yes",
+    "cscale" : "bilinear",
+    "dither-depth" : "no",
+    "dscale" : "bilinear",
+    "gamma-factor" : "1.000000",
+    "hwdec-current" : "videotoolbox",
+    "icc-profile" : "",
+    "icc-profile-auto" : "no",
+    "linear-downscaling" : "yes",
+    "osd-dimensions" : "{\"w\":1280,\"h\":720,\"par\":1.000000,\"aspect\":1.777778,\"mt\":0,\"mb\":0,\"ml\":0,\"mr\":0}",
+    "scale" : "bilinear",
+    "sigmoid-upscaling" : "yes",
+    "target-peak" : "3248",
+    "target-prim" : "bt.2020",
+    "target-trc" : "linear",
+    "tone-mapping" : "bt.2390",
+    "video-codec" : "H.264 \/ AVC \/ MPEG-4 AVC \/ MPEG-4 part 10",
+    "video-out-params\/colorlevels" : "limited",
+    "video-out-params\/colormatrix" : "bt.709",
+    "video-out-params\/gamma" : "bt.1886",
+    "video-out-params\/h" : "1080",
+    "video-out-params\/primaries" : "bt.709",
+    "video-out-params\/w" : "1920",
+    "video-output-levels" : "auto",
+    "video-params\/colorlevels" : "limited",
+    "video-params\/colormatrix" : "bt.709",
+    "video-params\/gamma" : "bt.1886",
+    "video-params\/h" : "1080",
+    "video-params\/primaries" : "bt.709",
+    "video-params\/w" : "1920"
+  },
+  "danmaku" : {
+    "activePages" : 0,
+    "bytesPerPage" : 4194304,
+    "cachedPages" : 0,
+    "copiedGlyphs" : 0,
+    "frameGlyphs" : 0,
+    "historyPageLimit" : 8,
+    "peakFramePages" : 0,
+    "peakHistoryPages" : 0,
+    "peakInFlight" : 1,
+    "peakInFlightPages" : 0,
+    "peakResidentPages" : 0,
+    "rasterized" : 0,
+    "submits" : 2,
+    "vertexGlyphs" : 0
+  },
+  "display" : "edr=true current=16.0 mappedHeadroom=16.0 potential=16.0 scale=2.0",
+  "duration" : 222.47343750000002,
+  "error" : "",
+  "events" : [
+    "libmpv_render: correct-downscaling requires non-bilinear scaler.\n",
+    "ao\/coreaudio: unable to set the input channel layout on the audio unit ([206][255][255][255]\/-50)\n"
+  ],
+  "hwdec" : "videotoolbox",
+  "media" : {
+    "audio-codec-name" : "aac",
+    "video-params\/colormatrix" : "bt.709",
+    "video-params\/gamma" : "bt.1886",
+    "video-params\/hw-pixelformat" : "nv12",
+    "video-params\/pixelformat" : "videotoolbox",
+    "video-params\/primaries" : "bt.709"
+  },
+  "metrics" : {
+    "decoder-frame-drop-count" : 0,
+    "demuxer-cache-duration" : 186.3528125,
+    "frame-drop-count" : 0,
+    "residentBytes" : 251265024,
+    "video-params\/sig-peak" : 0
+  },
+  "metricSamples" : [
+    {
+      "mediaSecond" : 0,
+      "residentBytes" : 88621056
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 13.138125,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 1,
+      "residentBytes" : 175210496,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 17.684312500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 2,
+      "residentBytes" : 181239808,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 19.144125000000003,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 3,
+      "residentBytes" : 185303040,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 23.2315,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 4,
+      "residentBytes" : 190808064,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 36.119374999999998,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 5,
+      "residentBytes" : 195149824,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 45.0033125,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 6,
+      "residentBytes" : 197001216,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 52.969562500000002,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 7,
+      "residentBytes" : 199294976,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 56.598187500000002,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 8,
+      "residentBytes" : 201605120,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 61.978562500000002,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 9,
+      "residentBytes" : 204308480,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 67.400624999999991,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 10,
+      "residentBytes" : 207273984,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 79.537750000000003,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 11,
+      "residentBytes" : 210993152,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 91.841750000000005,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 12,
+      "residentBytes" : 214269952,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 103.52006249999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 13,
+      "residentBytes" : 218365952,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 114.15568750000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 14,
+      "residentBytes" : 222740480,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 129.25412499999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 15,
+      "residentBytes" : 228212736,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 144.68618750000002,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 16,
+      "residentBytes" : 232701952,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 164.12225000000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 17,
+      "residentBytes" : 236830720,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 175.4669375,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 18,
+      "residentBytes" : 240320512,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 186.5196875,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 19,
+      "residentBytes" : 244776960,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 202.03512499999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 20,
+      "residentBytes" : 250019840,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 201.03412500000002,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 21,
+      "residentBytes" : 250183680,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 200.03312500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 22,
+      "residentBytes" : 250658816,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 199.03212500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 23,
+      "residentBytes" : 251002880,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 198.031125,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 24,
+      "residentBytes" : 250904576,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 196.9884375,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 25,
+      "residentBytes" : 250986496,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 196.02912499999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 26,
+      "residentBytes" : 251035648,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 195.02812499999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 27,
+      "residentBytes" : 251101184,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 194.02712500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 28,
+      "residentBytes" : 251002880,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 193.02612500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 29,
+      "residentBytes" : 251052032,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 191.98343750000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 30,
+      "residentBytes" : 251052032,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 191.024125,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 31,
+      "residentBytes" : 251101184,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 189.9814375,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 32,
+      "residentBytes" : 251068416,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 188.98043749999999,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 33,
+      "residentBytes" : 251133952,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 188.02112500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 34,
+      "residentBytes" : 251133952,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 187.02012500000001,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 35,
+      "residentBytes" : 251248640,
+      "video-params\/sig-peak" : 0
+    }
+  ],
+  "passes" : "",
+  "probes" : {
+
+  },
+  "render" : "frames=869 backgroundFrames=868 fbo=2 size=1280x720 componentType=0x1406 redBits=16 sampledPeak=0.342041 sampleHash=976c96c794f7557d sampleFrame=840 sampleTargetNits=3248 shaderLinks=3 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+  "renderReady" : true,
+  "representation" : {
+    "audioCodec" : "mp4a.40.2",
+    "bandwidth" : 1841713,
+    "codec" : "avc1.640032",
+    "height" : 1080,
+    "qn" : 80,
+    "requestedPixelViewport" : [
+      1280,
+      720
+    ],
+    "width" : 1920
+  },
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : false,
+  "time" : 35.744062499999998,
+  "viewportPixels" : [
+    1280,
+    720
+  ],
+  "windowNumber" : 16948
+}

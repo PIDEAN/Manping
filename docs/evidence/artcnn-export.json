@@ -1,0 +1,72 @@
+[
+  {
+    "file": "ArtCNN_C4F16.glsl",
+    "passes": 26,
+    "tokens": 12340,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "03d0b3d31cb82c898a94a46663021a3e8f02c5a21d69c5cfdf0208de4bfd453e",
+    "tensorTokenSHA256": "838862f564303879764225643ca700b8009ed97546ef5bf92a2462611b1cbbc8",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "a69e101a57ca13dd5183de9a3fd55b46585c387e617961e851d8fd9eab6c2ea9"
+  },
+  {
+    "file": "ArtCNN_C4F16_DN.glsl",
+    "passes": 26,
+    "tokens": 12340,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "047f33cd43ca3751b00c7c81206e076ac921c1fbc06d49f23010a0b428271acf",
+    "tensorTokenSHA256": "df5e438239418e9e84df12228732bc13948661f952636c153360407a52f55e8d",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "7a0d25db47b1c163aca28c60eb38b32ad26416f381e9146d870b1a3c9dfaf3e0"
+  },
+  {
+    "file": "ArtCNN_C4F16_DS.glsl",
+    "passes": 26,
+    "tokens": 12340,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "57df650fddec3969e17799f5522c9b03dd2d33b1aeace237fef216bf3858125a",
+    "tensorTokenSHA256": "632d60050a0c5ce98089f169d24d35989c0079c38ef83267468299c522088f0b",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "bdbab841fba241b2277a6fa6af9efacda46a65757793fdf371651a616156df1b"
+  },
+  {
+    "file": "ArtCNN_C4F32.glsl",
+    "passes": 50,
+    "tokens": 47716,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "f773bce6cf5fe7e5e5d599a695edd40df5cd7a20c3d08c4d164d07591d5bead3",
+    "tensorTokenSHA256": "b71db9871e4189407ebb20953ff51c15a731836cf84ff30e0fafc8a36729a31c",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "b8ceb3621f3b6577f4c851cef0606e577228d41f6d03183cffed17f78ec62166"
+  },
+  {
+    "file": "ArtCNN_C4F32_DN.glsl",
+    "passes": 50,
+    "tokens": 47716,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "6b51a6f7d75826c9492c3f78b5e60acffa24a71928e2d47c4a329423922a143c",
+    "tensorTokenSHA256": "53dd12f63e23b74e9643a338c40cb80843ee8fcb95e0605267cba6b71cfa6fb3",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "4cf7cf0a4b5e9148d102fad66b1ce164f8202eaab226cbdad61759c865982b7e"
+  },
+  {
+    "file": "ArtCNN_C4F32_DS.glsl",
+    "passes": 50,
+    "tokens": 47716,
+    "tensorTokensEqual": true,
+    "sourceSHA256": "a04c9cba6fbb8e6db9239d61848390208aedf8e348ef116e12174c803d22077e",
+    "tensorTokenSHA256": "6d5664672137adaeb8a660c60c596391ff5993fa6304c2ff7a66021b4240f921",
+    "boundary": "explicit zero padding (matches measured macvk compute OOB)",
+    "sha256": "32653e44ec598e9c83efb421215b3165f874e36b35a56064bd9c5c24cebe64d3"
+  },
+  {
+    "file": "Ani4Kv2_ArtCNN_C4F32_i2.glsl",
+    "change": "final LUMA COMPONENTS 4 -> 1 only",
+    "sha256": "24e33cb080c9fcbe7244f66f657b1cb1676a29c38c4a33785b0f7522b3b78c44"
+  },
+  {
+    "file": "AniSD_ArtCNN_C4F32_i4.glsl",
+    "change": "final LUMA COMPONENTS 4 -> 1 only",
+    "sha256": "4240327f87eacab862672e4ccd3dbbe9c77790f3a6c89b44674427580e15543c"
+  }
+]

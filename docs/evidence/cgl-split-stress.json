@@ -1,0 +1,82 @@
+{
+  "display" : "edr=false current=16.0 mappedHeadroom=16.0 potential=16.0 scale=2.0",
+  "duration" : 20,
+  "error" : "",
+  "events" : [
+    "ao\/coreaudio: unable to set the input channel layout on the audio unit ([206][255][255][255]\/-50)\n"
+  ],
+  "hwdec" : "videotoolbox",
+  "media" : {
+    "audio-codec-name" : "aac",
+    "video-params\/colormatrix" : "bt.601",
+    "video-params\/gamma" : "bt.1886",
+    "video-params\/hw-pixelformat" : "nv12",
+    "video-params\/pixelformat" : "videotoolbox",
+    "video-params\/primaries" : "bt.709"
+  },
+  "metrics" : {
+    "decoder-frame-drop-count" : 0,
+    "demuxer-cache-duration" : 1,
+    "frame-drop-count" : 0,
+    "residentBytes" : 247332864,
+    "video-params\/sig-peak" : 0
+  },
+  "metricSamples" : [
+    {
+      "mediaSecond" : 0,
+      "residentBytes" : 231882752
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 2,
+      "mediaSecond" : 4,
+      "residentBytes" : 239042560,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 8,
+      "residentBytes" : 246693888,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 9,
+      "residentBytes" : 246874112,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 10,
+      "residentBytes" : 246956032,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "demuxer-cache-duration" : 1,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 11,
+      "residentBytes" : 247070720,
+      "video-params\/sig-peak" : 0
+    }
+  ],
+  "passes" : "",
+  "probes" : {
+
+  },
+  "render" : "frames=143 backgroundFrames=142 fbo=1 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=ac6b6fe39efb7e1d sampleFrame=120 sampleTargetNits=203 shaderLinks=56 linkFailures=0 maxActiveAttributes=2 pollMilliseconds=8",
+  "renderReady" : true,
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : true,
+  "time" : 11.833333333333334,
+  "windowNumber" : 16276
+}

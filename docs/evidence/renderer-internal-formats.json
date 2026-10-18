@@ -1,0 +1,17 @@
+{
+  "preset": "ArtCNN_C4F32",
+  "referenceLogSHA256": "e2a66dc3d7d1e4965a119fe3941b74fa36a121bd5c29cff2ec7d2e8f9b216021",
+  "legacyLogSHA256": "50c535ab57f5cbb5a3521258734b459233f087d5aec95598532a0bc5082e28e4",
+  "originalShaderSHA256": "f773bce6cf5fe7e5e5d599a695edd40df5cd7a20c3d08c4d164d07591d5bead3",
+  "derivedShaderSHA256": "b8ceb3621f3b6577f4c851cef0606e577228d41f6d03183cffed17f78ec62166",
+  "actualComputeOutputDeclarations": [
+    "layout(binding=1, rgba16f) writeonly restrict uniform image2D _c;",
+    "layout(binding=2, rgba16f) writeonly restrict uniform image2D _11;"
+  ],
+  "actualLegacyFBOSelection": [
+    "Using FBO format rgba16f."
+  ],
+  "legacyAllocation": "pass_hook -> finish_pass_tex -> ra_tex_resize(... p->fbo_format); video/out/gpu/video.c",
+  "overrideApplied": false,
+  "conclusion": "Both actual intermediate storage formats are rgba16f. C4F32 names network channel width, not an explicit rgba32f texture format; no precision override experiment justified."
+}

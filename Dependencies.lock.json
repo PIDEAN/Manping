@@ -1,0 +1,403 @@
+{
+  "platform": "macOS 27 arm64",
+  "upstream": "896a06290ba440cb17776d292dff119bbd3383d6",
+  "mpv": "0.41.0+renderer-compatibility-v1",
+  "ffmpeg": "9.0.2",
+  "libraries": [
+    {
+      "library": "libSvtAv1Enc.4.2.0.dylib",
+      "formula": "svt-av1",
+      "version": "4.2.0",
+      "source": "/opt/homebrew/Cellar/svt-av1/4.2.0/lib/libSvtAv1Enc.4.2.0.dylib",
+      "sha256": "bac7066bcd47c31971f61e57cdd0eccabb2ec2ef3ca5aa1e08bd5ca51cd54608"
+    },
+    {
+      "library": "libass.9.dylib",
+      "formula": "libass",
+      "version": "0.17.5_1",
+      "source": "/opt/homebrew/Cellar/libass/0.17.5_1/lib/libass.9.dylib",
+      "sha256": "d33ad7743360f5858e5464c526053353c59b81647d5436c424fa1a27e6ce7d5c"
+    },
+    {
+      "library": "libavcodec.63.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavcodec.63.1.102.dylib",
+      "sha256": "f3359c960778d4f8469700a051d5e9adbacaeeeb7ffdc68c87a1d5d66cd74680"
+    },
+    {
+      "library": "libavdevice.63.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavdevice.63.1.102.dylib",
+      "sha256": "9e7e49632247d1b7fa3e5dd1b4ae929091ca46d7a34faff77027c298c85eb033"
+    },
+    {
+      "library": "libavfilter.12.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavfilter.12.1.102.dylib",
+      "sha256": "7370aba5ef05f70bedff45ef3c1662c3239691868ffea6a909b2c4c26b73cb90"
+    },
+    {
+      "library": "libavformat.63.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavformat.63.1.102.dylib",
+      "sha256": "7037cf9835b02aca3ae66b8cb2c2eed380e5083fa432c3f9ef71e3efebb61262"
+    },
+    {
+      "library": "libavutil.61.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libavutil.61.1.102.dylib",
+      "sha256": "d8735f7e878ea9f44d7ec15f0aee0bf473bacb5d44f7a46df1a299462372f664"
+    },
+    {
+      "library": "libbluray.4.dylib",
+      "formula": "libbluray",
+      "version": "1.5.0",
+      "source": "/opt/homebrew/Cellar/libbluray/1.5.0/lib/libbluray.4.dylib",
+      "sha256": "cdefbd68904359bd29902e84b462a084da213b0666867e00eaf0c82bc266a9ff"
+    },
+    {
+      "library": "libcrypto.3.dylib",
+      "formula": "openssl@3",
+      "version": "3.6.5",
+      "source": "/opt/homebrew/Cellar/openssl@3/3.6.5/lib/libcrypto.3.dylib",
+      "sha256": "6c7139ae515b274286b2f62d662a173e32d34854e1fc26cca46ee08efe16ae45"
+    },
+    {
+      "library": "libdav1d.7.dylib",
+      "formula": "dav1d",
+      "version": "1.5.4",
+      "source": "/opt/homebrew/Cellar/dav1d/1.5.4/lib/libdav1d.7.dylib",
+      "sha256": "60c3a42a79582241ac77bbbba4c0137c2209204aecbc59e5d6392c2dc0a5b439"
+    },
+    {
+      "library": "libfontconfig.1.dylib",
+      "formula": "fontconfig",
+      "version": "2.18.3",
+      "source": "/opt/homebrew/Cellar/fontconfig/2.18.3/lib/libfontconfig.1.dylib",
+      "sha256": "e1f5e06e8339b42f0e1af11cc77979ef6a8f48ffa7588e4dc243e4bd69ea656d"
+    },
+    {
+      "library": "libfreetype.6.dylib",
+      "formula": "freetype",
+      "version": "2.14.3",
+      "source": "/opt/homebrew/Cellar/freetype/2.14.3/lib/libfreetype.6.dylib",
+      "sha256": "e4b41d886673fd1c282764a3113224d83b09bd705d12db7c36366fb04b7592dc"
+    },
+    {
+      "library": "libfribidi.0.dylib",
+      "formula": "fribidi",
+      "version": "1.0.17",
+      "source": "/opt/homebrew/Cellar/fribidi/1.0.17/lib/libfribidi.0.dylib",
+      "sha256": "62eb4c3a15adb71884407c7bda6cdaad7b0e84d00472630a98f8870b346de1af"
+    },
+    {
+      "library": "libglib-2.0.0.dylib",
+      "formula": "glib",
+      "version": "2.90.0",
+      "source": "/opt/homebrew/Cellar/glib/2.90.0/lib/libglib-2.0.0.dylib",
+      "sha256": "934e63c138b92bb530478bc5d17abc694e99ee98ecd6252e583a6f612fc3c860"
+    },
+    {
+      "library": "libgraphite2.3.3.1.dylib",
+      "formula": "graphite2",
+      "version": "1.3.15",
+      "source": "/opt/homebrew/Cellar/graphite2/1.3.15/lib/libgraphite2.3.3.1.dylib",
+      "sha256": "fc59eeb61994433d7dcd349848db14951be1fac332349872ad03f86361473153"
+    },
+    {
+      "library": "libharfbuzz.0.dylib",
+      "formula": "harfbuzz",
+      "version": "14.5.0",
+      "source": "/opt/homebrew/Cellar/harfbuzz/14.5.0/lib/libharfbuzz.0.dylib",
+      "sha256": "5894ad09e43e8805edd1f97b2823bca44ab87e26a59472f8e6cc87f8dffbd596"
+    },
+    {
+      "library": "libintl.8.dylib",
+      "formula": "gettext",
+      "version": "1.0",
+      "source": "/opt/homebrew/Cellar/gettext/1.0/lib/libintl.8.dylib",
+      "sha256": "0c6d618e75fea85cc3d631e164a71766fba9341d19ce1f723300c52e63037c51"
+    },
+    {
+      "library": "libjpeg.8.3.2.dylib",
+      "formula": "jpeg-turbo",
+      "version": "3.2.0",
+      "source": "/opt/homebrew/Cellar/jpeg-turbo/3.2.0/lib/libjpeg.8.3.2.dylib",
+      "sha256": "e6585d0aee1969a63f288f97bbe3ef100ac787bc25ebcc4e6487b82b96cdbcae"
+    },
+    {
+      "library": "liblcms2.2.dylib",
+      "formula": "little-cms2",
+      "version": "2.19.1",
+      "source": "/opt/homebrew/Cellar/little-cms2/2.19.1/lib/liblcms2.2.dylib",
+      "sha256": "faf9c8f2322a2bb47d04d3077a79cc7103fba68a186697cf91e5f6ef467d1b77"
+    },
+    {
+      "library": "libluajit-5.1.2.1.1788856981.dylib",
+      "formula": "luajit",
+      "version": "2.1.1788856981",
+      "source": "/opt/homebrew/Cellar/luajit/2.1.1788856981/lib/libluajit-5.1.2.1.1788856981.dylib",
+      "sha256": "34ce866c86a66cf983c58588ebef4714e30900e740fab791ea6156d8c730c69a"
+    },
+    {
+      "library": "liblzma.5.dylib",
+      "formula": "xz",
+      "version": "5.8.4",
+      "source": "/opt/homebrew/Cellar/xz/5.8.4/lib/liblzma.5.dylib",
+      "sha256": "1b2e12cc1b920264f3dd15eeba22e85b8afd589595d8945d1d12a52afa694b09"
+    },
+    {
+      "library": "libmp3lame.0.dylib",
+      "formula": "lame",
+      "version": "4.0",
+      "source": "/opt/homebrew/Cellar/lame/4.0/lib/libmp3lame.0.dylib",
+      "sha256": "5150d16a2b09a8f6f3475dcc837fdf5435d4f97e817ca12306fec8da5614647c"
+    },
+    {
+      "library": "libmpg123.0.dylib",
+      "formula": "mpg123",
+      "version": "1.33.7",
+      "source": "/opt/homebrew/Cellar/mpg123/1.33.7/lib/libmpg123.0.dylib",
+      "sha256": "435f7bc76659569772b1a90b049a28fe17bc0d605525f1061f830c119807718a"
+    },
+    {
+      "source": ".build/mpv-build/libmpv.2.dylib",
+      "library": "libmpv.2.dylib",
+      "sha256": "df55dcaed22fad48b894a20722c51c9ed655cc5b7cd3ca931446646f1a251de8"
+    },
+    {
+      "library": "libmujs.dylib",
+      "formula": "mujs",
+      "version": "1.3.10",
+      "source": "/opt/homebrew/Cellar/mujs/1.3.10/lib/libmujs.dylib",
+      "sha256": "a5e331a3b524787a9c9e8e4027eac6c56c1328efd5e091c05059304e1ffe3055"
+    },
+    {
+      "library": "libopus.0.dylib",
+      "formula": "opus",
+      "version": "1.6.1",
+      "source": "/opt/homebrew/Cellar/opus/1.6.1/lib/libopus.0.dylib",
+      "sha256": "98dcd3cc62c6cf913b789051536ab246c56cc163c74bd8b4968ac467ec74b68b"
+    },
+    {
+      "library": "libpcre2-8.0.dylib",
+      "formula": "pcre2",
+      "version": "10.48",
+      "source": "/opt/homebrew/Cellar/pcre2/10.48/lib/libpcre2-8.0.dylib",
+      "sha256": "6b698ffc744550e149829d94045912448b8ac4b692cb267dce9fc2f3ed60659d"
+    },
+    {
+      "library": "libplacebo.360.dylib",
+      "formula": "libplacebo",
+      "version": "7.360.1",
+      "source": "/opt/homebrew/Cellar/libplacebo/7.360.1/lib/libplacebo.360.dylib",
+      "sha256": "a312f9dafbc689c2fcf0c02f4f4fa8dc1bffe460b4edd5b645bafb46375fdf3c"
+    },
+    {
+      "library": "libpng16.16.dylib",
+      "formula": "libpng",
+      "version": "1.6.58",
+      "source": "/opt/homebrew/Cellar/libpng/1.6.58/lib/libpng16.16.dylib",
+      "sha256": "0af10df88b17d1c23769d3669786dc35b6e09d45a0122889f769aec29f52dc33"
+    },
+    {
+      "library": "librubberband.3.dylib",
+      "formula": "rubberband",
+      "version": "4.0.0",
+      "source": "/opt/homebrew/Cellar/rubberband/4.0.0/lib/librubberband.3.dylib",
+      "sha256": "c826643344cafa1cd613de55a7c79152082d45fb7f5e5d64865cbef7289fea7b"
+    },
+    {
+      "library": "libsamplerate.0.2.2.dylib",
+      "formula": "libsamplerate",
+      "version": "0.2.2",
+      "source": "/opt/homebrew/Cellar/libsamplerate/0.2.2/lib/libsamplerate.0.2.2.dylib",
+      "sha256": "8080562154f56cbf3af1333cbfdc96b85e314f0db91de699ebabc644d9f7f0e1"
+    },
+    {
+      "library": "libshaderc_shared.1.dylib",
+      "formula": "shaderc",
+      "version": "2026.4",
+      "source": "/opt/homebrew/Cellar/shaderc/2026.4/lib/libshaderc_shared.1.dylib",
+      "sha256": "90987a60123cebb6c01221b03979ace770c8b8ace971f37814cd5261b3352354"
+    },
+    {
+      "library": "libssl.3.dylib",
+      "formula": "openssl@3",
+      "version": "3.6.5",
+      "source": "/opt/homebrew/Cellar/openssl@3/3.6.5/lib/libssl.3.dylib",
+      "sha256": "2b343dc7a88d6e49720ae6b939a178b5e688912e682044250203770b8acc2a08"
+    },
+    {
+      "library": "libswresample.7.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libswresample.7.1.102.dylib",
+      "sha256": "cb7096d9fbedbec10b878e68244167e2c9cc7ba8907f9840b6b39becc91969ad"
+    },
+    {
+      "library": "libswscale.10.1.102.dylib",
+      "formula": "ffmpeg",
+      "version": "9.0.2",
+      "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/lib/libswscale.10.1.102.dylib",
+      "sha256": "5677ad33d0c49eb31262e3a4a7fe0eec06544756b53e816f19f598cd8a94bd9e"
+    },
+    {
+      "library": "libuchardet.0.0.8.dylib",
+      "formula": "uchardet",
+      "version": "0.0.8",
+      "source": "/opt/homebrew/Cellar/uchardet/0.0.8/lib/libuchardet.0.0.8.dylib",
+      "sha256": "faea4b8ae57312217319f19e5482558e665461e05c29b26715a809b27d501384"
+    },
+    {
+      "library": "libudfread.3.dylib",
+      "formula": "libudfread",
+      "version": "1.2.0",
+      "source": "/opt/homebrew/Cellar/libudfread/1.2.0/lib/libudfread.3.dylib",
+      "sha256": "fcee189132250752a24e94ccae3306496d260edbd9fd745d4d3b6c0d6c01e20e"
+    },
+    {
+      "library": "libunibreak.8.dylib",
+      "formula": "libunibreak",
+      "version": "8.0",
+      "source": "/opt/homebrew/Cellar/libunibreak/8.0/lib/libunibreak.8.dylib",
+      "sha256": "956081523d9bc76c1d50cf3ca685d266e4626e9cbca45b7dcc41ca4cabad209c"
+    },
+    {
+      "library": "libvmaf.3.dylib",
+      "formula": "libvmaf",
+      "version": "3.2.1",
+      "source": "/opt/homebrew/Cellar/libvmaf/3.2.1/lib/libvmaf.3.dylib",
+      "sha256": "a825cdd3ff46fa6282aa1cb9328c701e9950e944f2c8821d88481779b3472d46"
+    },
+    {
+      "library": "libvpx.12.dylib",
+      "formula": "libvpx",
+      "version": "1.17.0",
+      "source": "/opt/homebrew/Cellar/libvpx/1.17.0/lib/libvpx.12.dylib",
+      "sha256": "443cd530535e976a7fe96a027f3e65acebf41a7055005732422309c207089937"
+    },
+    {
+      "library": "libvulkan.1.4.363.dylib",
+      "formula": "vulkan-loader",
+      "version": "1.4.363.0",
+      "source": "/opt/homebrew/Cellar/vulkan-loader/1.4.363.0/lib/libvulkan.1.4.363.dylib",
+      "sha256": "6453921b5e0562364d60a4d742fb2db12c3e4e8c2ac2fb6d5938b6453a644208"
+    },
+    {
+      "library": "libx264.165.dylib",
+      "formula": "x264",
+      "version": "r3222",
+      "source": "/opt/homebrew/Cellar/x264/r3222/lib/libx264.165.dylib",
+      "sha256": "dd765b37f50d44d3ce9593c2c1c2424b48bedac01c7999e93cef87e018bc65b4"
+    },
+    {
+      "library": "libx265.217.dylib",
+      "formula": "x265",
+      "version": "4.3",
+      "source": "/opt/homebrew/Cellar/x265/4.3/lib/libx265.217.dylib",
+      "sha256": "b3a50884e2d9cecf57fd29c4fba2c4e47b37cd7b4d7ff5d920919efca038d9ae"
+    },
+    {
+      "library": "libzimg.2.dylib",
+      "formula": "zimg",
+      "version": "3.0.6",
+      "source": "/opt/homebrew/Cellar/zimg/3.0.6/lib/libzimg.2.dylib",
+      "sha256": "21166740edf07d074de498d8d97aa4982bfd06a25218e47bffe748a3e13c5624"
+    }
+  ],
+  "mpvPatchedBuild": {
+    "version": "0.41.0",
+    "sourceSHA256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+    "deduplicatedTextureCoordinates": true,
+    "patches": {
+      "mpv-coreaudio-device-change.patch": "769b218df220738cc1cf9f81cf696c16518c5dfe56a5ef028e33b22536e0e924",
+      "mpv-0.41.0-deduplicate-quad-coordinates.patch": "106dd6766887aead29b8cb5e10cec44702d29cf841d5d371c1b82618be9e16c6",
+      "mpv-0.41.0-renderer-compatibility.patch": "15f1c7022e15099c22b228e99b95588d21201a32343f3d0cf641baa538ee7d19"
+    },
+    "meson": "1.10.1",
+    "options": [
+      "-Dbuildtype=release",
+      "-Dlibmpv=true",
+      "-Dcplayer=false",
+      "-Dbuild-date=false",
+      "-Dmanpage-build=disabled",
+      "-Dhtml-build=disabled",
+      "-Dvapoursynth=disabled",
+      "-Dmacos-cocoa-cb=disabled",
+      "-Dvulkan=disabled",
+      "-Dswift-flags="
+    ],
+    "librarySHA256": "df55dcaed22fad48b894a20722c51c9ed655cc5b7cd3ca931446646f1a251de8"
+  },
+  "biliKernelNuget": {
+    "version": "0.0.2-preview2",
+    "repositoryCommit": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+    "evidence": "nupkg nuspec repository; later e26f reference snapshot is not asserted identical",
+    "authenticationSource": {
+      "repository": "https://github.com/Richasy/bili-kernel",
+      "commit": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+      "evidence": "Authorizers.TV/Core nuspec repository and snupkg SourceLink; authentication files independently compared to raw source on 2026-10-13. BiliApis.cs differs in other API sections; Passport TV/refresh endpoint lines read from exact commit.",
+      "files": [
+        {
+          "path": "src/Authorizers/Authorizers.Tv/Core/TvAuthorizeClient.cs",
+          "sha256": "34f6818061fd46395627fb5846fa160cc4b9a2b7edd1946f281bc5c544dfa5c2",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/Authorizers/Authorizers.Tv/TvAuthenticationService.cs",
+          "sha256": "346d269e7ac3cb0c075ec0da3c1f2a9ad6eb7238b83fe9c6f9dbb641df311f4b",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/BiliKernel.Core/Authenticator/BiliAuthenticator.cs",
+          "sha256": "5f1fad3bea284fcb0243a1d4339370d4bf5c2d14e39190dbf1a0dd80f79e85a6",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/BiliKernel.Core/Authenticator/BiliAuthenticator.Extension.cs",
+          "sha256": "df57bf30452860b1439030495c76021ba889fb5d34a9b2de0037b329c3fd64b4",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/BiliKernel.Core/Authenticator/BiliAuthorizeExecutionSettings.cs",
+          "sha256": "9256345924887bee42209bdf2704df8ef5aff5b60f8f1d7bd8abec9bdaf622b5",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/BiliKernel.Abstractions/Models/Authorization/BiliToken.cs",
+          "sha256": "c948f9dfaadf4811fce6c898ebce16c37f5dbfede2a6cbeb06c4f1c66d77e4e7",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/Authorizers/Authorizers.Tv/Core/Models/TVQRCode.cs",
+          "sha256": "3a924d5300fcf024d11c14cca382ae574af6164ca9825937f352d6164dffaae8",
+          "referenceSnapshotByteIdentical": true
+        },
+        {
+          "path": "src/BiliKernel.Abstractions/Bili/BiliApis.cs",
+          "sha256": "33110096718d3bed4952790e5186a569fedb95cfb53061e904884688f5be1271",
+          "referenceSnapshotByteIdentical": false
+        }
+      ]
+    }
+  },
+  "ffmpegExecutable": {
+    "source": "/opt/homebrew/Cellar/ffmpeg/9.0.2/bin/ffmpeg",
+    "sha256": "c8173e9755795978bce8e104f8d7044fabe7d6d84044aba37d3648c6f4e4e1a8"
+  },
+  "swiftRPC": {
+    "packageLock": "Package.resolved",
+    "protocolLock": "Protocols/BiliKernel/manifest.json",
+    "codegenLock": "Protocols/codegen.lock.json",
+    "generatedLock": "Protocols/generated.lock.json",
+    "licenses": "ThirdPartyNotices/SwiftPackages/manifest.json",
+    "transportProduct": "GRPCNIOTransportHTTP2TransportServices",
+    "schemaRevision": "22fdf8ca04bab384b46536b05f6524a41f83a2d4"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "date": "2026-10-13",
+  "platform": "macOS 27.0.1 arm64 / Xcode 27 / Swift 6.4",
+  "schemaRevision": "22fdf8ca04bab384b46536b05f6524a41f83a2d4",
+  "scope": "native read RPC module; UI and production endpoints unverified",
+  "tests": {
+    "total": 70,
+    "skippedExistingLiveTests": 2,
+    "failures": 0,
+    "authTests": 31,
+    "rpcFixtureTests": 16,
+    "rpcHTTP2PipelineTests": 6,
+    "mediaPolicyTests": 7
+  },
+  "loopback": [
+    ">255-byte request and response (15KiB)",
+    "negotiated grpc-encoding=gzip",
+    "binary metadata",
+    "HTTP 503 maps unavailable",
+    "message followed by nonzero permission trailer fails",
+    "decompressed response >8MiB rejected",
+    "1MiB request and concurrent call limits",
+    "single stream cancellation isolation",
+    "shutdown grace=100ms (<2s asserted)",
+    "shutdown before first call starts no connection"
+  ],
+  "accountOperations": false,
+  "fixtures": "Tests/ManpingCoreTests/Fixtures/RPC/manifest.json",
+  "locks": [
+    "Package.resolved",
+    "Protocols/BiliKernel/manifest.json",
+    "Protocols/GoogleProtobuf/manifest.json",
+    "Protocols/codegen.lock.json",
+    "Protocols/generated.lock.json"
+  ],
+  "unverified": [
+    "production routes/permissions",
+    "remote TLS/ALPN",
+    "UI wiring and identity event consumption",
+    "all remote payload extensions",
+    "complete WinUI parity"
+  ],
+  "reviewFixes": {
+    "identityEvents": "Internal invalidation does not publish; only the outer operation publishes final state, including persistence failure. Refresh nested persistence does not publish or cancel itself.",
+    "popularFilter": "smallCoverV5 requires cardGoto=av and URI without bangumi; unsupported cards still contribute base.idx.",
+    "popularFields": [
+      "base.threePointV4.sharePlane.bvid",
+      "base.playerArgs.duration",
+      "coverRightText1 durationLabel"
+    ],
+    "popularCursor": "popularTopEntrance.base.idx participates in nextIndex maximum.",
+    "newFixtureTests": 5,
+    "awaitingObserverAndPersistenceFailureFixture": true,
+    "testLog": ".build/sigmoid-controls/final-swift-test.log"
+  }
+}

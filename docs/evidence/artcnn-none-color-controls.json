@@ -1,0 +1,102 @@
+{
+  "buildMode": "release",
+  "executableSHA256": "a204485ac136d8282ddfdd8ba1a317494135cc86d415fa5c233b4b00ea5664d0",
+  "nativeSHA256": "c35ad0225e44d722335c350bf22a7ee959375fef32b38b518c638b17f627e348",
+  "defaultBaseline": {
+    "mae": 0.0025323011288188495,
+    "max": 0.11061086063118705,
+    "psnr": 41.30946151280445
+  },
+  "productionSettingsChanged": false,
+  "shaderWeightsChanged": false,
+  "results": [
+    {
+      "control": "piecewise-srgb",
+      "referenceOptions": [
+        "--treat-srgb-as-power22=no"
+      ],
+      "actualReferenceProperties": {
+        "treat-srgb-as-power22": false,
+        "target-contrast": "auto",
+        "target-trc": "srgb",
+        "target-prim": "bt.709",
+        "target-peak": 203,
+        "video-params/gamma": "bt.1886",
+        "video-params/colorlevels": "limited",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        }
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "mae": 0.0025323011288188495,
+      "max": 0.11061086063118705,
+      "psnr": 41.30946151280445,
+      "referenceSHA256": "8466bbc77f6c627d08d410d5d0d1e0db32210af08340f68cda5d242162357432"
+    },
+    {
+      "control": "piecewise-srgb-infinite-contrast",
+      "referenceOptions": [
+        "--treat-srgb-as-power22=no",
+        "--target-contrast=inf"
+      ],
+      "actualReferenceProperties": {
+        "treat-srgb-as-power22": false,
+        "target-contrast": "inf",
+        "target-trc": "srgb",
+        "target-prim": "bt.709",
+        "target-peak": 203,
+        "video-params/gamma": "bt.1886",
+        "video-params/colorlevels": "limited",
+        "icc-profile": "",
+        "icc-profile-auto": false,
+        "osd-dimensions": {
+          "w": 1280,
+          "h": 720,
+          "par": 1.0,
+          "aspect": 1.777778,
+          "mt": 0,
+          "mb": 0,
+          "ml": 0,
+          "mr": 0
+        }
+      },
+      "size": [
+        1280,
+        720
+      ],
+      "mae": 0.0011793488862838777,
+      "max": 0.1330870599470941,
+      "psnr": 45.3951444238202,
+      "referenceSHA256": "c2669d92d13be3a276f20baac4e07f4db4f9aa5bac88a37b90a700a2d390d0e5"
+    }
+  ],
+  "sourceEvidence": {
+    "archiveSHA256": "ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209",
+    "path": "video/out/vo_gpu_next.c",
+    "sha256": "4f018a2360f7db5ca2da1e34e2224a4b76c33efec01f964c0d35994b794e81aa",
+    "outputTransferMapping": "PL_COLOR_TRC_SRGB -> PL_COLOR_TRC_GAMMA22 when treat_srgb_as_power22 & 2",
+    "infiniteTargetContrast": "apply_target_contrast maps -1 to min_luma=1e-7",
+    "libplaceboHeader": {
+      "path": "libplacebo/colorspace.h",
+      "sha256": "b41531922e02a03a821411674a710c5f22d5734fc13a388c0a19b535906a19d3",
+      "unknownSDRContrast": 1000
+    },
+    "legacyVideoShaders": {
+      "path": "video/out/gpu/video_shaders.c",
+      "sha256": "e578aca300b0b5766d37a18b2dbd8b5fe95f485b207a02fa4e8dd8ffa6264c43",
+      "bt1886": "pow(color.rgb, vec3(2.4))"
+    }
+  }
+}

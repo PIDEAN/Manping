@@ -1,0 +1,66 @@
+{
+  "display" : "edr=false current=16.0 mappedHeadroom=16.0 potential=16.0 scale=2.0",
+  "duration" : 0,
+  "error" : "",
+  "events" : [
+    "lavf: This format is marked by FFmpeg as having no timestamps!\n",
+    "lavf: FFmpeg will likely make up its own broken timestamps. For\n",
+    "lavf: video streams you can correct this with:\n",
+    "lavf:     --no-correct-pts --container-fps-override=VALUE\n",
+    "lavf: with VALUE being the real framerate of the stream. You can\n",
+    "lavf: expect seeking and buffering estimation to be generally\n",
+    "lavf: broken as well.\n",
+    "cplayer: Cannot seek in this stream.\n",
+    "cplayer: You can force it with '--force-seekable=yes'.\n",
+    "vd: No video PTS! Making something up. Using 25.000000 FPS.\n",
+    "vd: No video PTS! Making something up. Using 25.000000 FPS.\n",
+    "vd: Ignoring further missing PTS warnings.\n"
+  ],
+  "hwdec" : "videotoolbox",
+  "media" : {
+    "audio-codec-name" : "",
+    "video-params\/colormatrix" : "bt.601",
+    "video-params\/gamma" : "bt.1886",
+    "video-params\/hw-pixelformat" : "nv12",
+    "video-params\/pixelformat" : "videotoolbox",
+    "video-params\/primaries" : "bt.709"
+  },
+  "metrics" : {
+    "decoder-frame-drop-count" : 0,
+    "frame-drop-count" : 0,
+    "residentBytes" : 177684480,
+    "video-params\/sig-peak" : 0
+  },
+  "metricSamples" : [
+    {
+      "mediaSecond" : 0,
+      "residentBytes" : 98942976
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 1,
+      "residentBytes" : 177209344,
+      "video-params\/sig-peak" : 0
+    },
+    {
+      "decoder-frame-drop-count" : 0,
+      "frame-drop-count" : 0,
+      "mediaSecond" : 2,
+      "residentBytes" : 177651712,
+      "video-params\/sig-peak" : 0
+    }
+  ],
+  "passes" : "",
+  "probes" : {
+
+  },
+  "render" : "frames=59 backgroundFrames=58 fbo=7 size=2314x1207 componentType=0x1406 redBits=16 sampledPeak=0.999512 sampleHash=3f23628b1fe07614 sampleFrame=30 sampleTargetNits=203 shaderLinks=5 linkFailures=0 maxActiveAttributes=3 pollMilliseconds=8",
+  "renderReady" : true,
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : false,
+  "time" : 2.2000000000000011,
+  "windowNumber" : 16284
+}

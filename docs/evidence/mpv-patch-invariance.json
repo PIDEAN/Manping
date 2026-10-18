@@ -1,0 +1,13 @@
+{
+  "method": "Same current CGL renderer, same stable source after frame 30; stock vs patched libmpv; official fragment C4F16 clamp, no arithmetic change",
+  "size": [
+    1207,
+    2314,
+    3
+  ],
+  "pixelIdentical": true,
+  "mae": 0.0,
+  "max": 0.0,
+  "changedFraction": 0.0,
+  "excludedEarlierCapture": "Frame 10 comparison used different early H264 reconstructions; invalid control, replaced by frame 30 stable source."
+}

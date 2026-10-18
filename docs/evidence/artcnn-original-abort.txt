@@ -1,0 +1,1 @@
+Assertion failed: (*offset + count < sizeof(dst)), function copy_image, file video.c, line 1419.

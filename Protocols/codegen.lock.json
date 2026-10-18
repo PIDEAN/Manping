@@ -1,0 +1,17 @@
+{
+  "protoc": {
+    "version": "libprotoc 36.2",
+    "sha256": "acb9d966be4bc739afc77f1f55f14bd5d277e50efd31de49678edb7f3843d784"
+  },
+  "generators": {
+    "protoc-gen-swift": {
+      "version": "1.39.0",
+      "revision": "3d537cb81aef272a03cb3be815439e9bf0eb3bd3"
+    },
+    "protoc-gen-grpc-swift-2": {
+      "version": "2.4.1",
+      "revision": "176c5a434fd76f6f479848d1a8f7d44967534168"
+    }
+  },
+  "googleAny": "8e56f61e3078e9232d39ce1b1bab28613783af8191f93a910c3617933f87a179"
+}

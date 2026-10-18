@@ -1,0 +1,336 @@
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -141,6 +141,17 @@
+     struct mp_image *mpi;
+ };
+ 
++// One immutable color policy is prepared from the actual frame/FBO metadata.
++// Linear intermediates and final encoding must use the same source EOTF.
++struct sdr_black_policy {
++    bool enabled;
++    bool source_is_hdr;
++    const char *reason;
++    int contrast;
++    struct pl_color_space src, dst;
++    float a, b, dst_min, dst_max;
++};
++
+ struct gl_video {
+     struct ra *ra;
+ 
+@@ -246,6 +257,7 @@
+     struct gl_transform texture_offset; // texture transform without rotation
+     int components;
+     bool use_linear;
++    struct sdr_black_policy sdr_policy;
+     float user_gamma;
+ 
+     // pass info / metrics
+@@ -2534,9 +2546,212 @@
+     *tr = transform;
+ }
+ 
++// Use libplacebo's metadata inference and BT.1886 equations (v7.360.1,
++// src/colorspace.c and src/shaders/colorspace.c). Support only mappings that
++// need neither black-point adaptation, tone mapping, nor gamut compression.
++static struct sdr_black_policy make_sdr_black_policy(struct gl_video *p,
++                                                    const struct pl_color_space *fbo,
++                                                    const struct mp_image *frame)
++{
++    struct sdr_black_policy policy = {.contrast = p->opts.target_contrast};
++#define SDR_FALLBACK(text) do { policy.reason = text; return policy; } while (0)
++    if (!frame)
++        SDR_FALLBACK("no current video frame");
++    // gl_video_config compares only static params. Read per-frame HDR metadata
++    // here without changing the legacy HDR pipeline's configured parameters.
++    struct pl_color_space src = p->image_params.color;
++    src.hdr = frame->params.color.hdr;
++    policy.source_is_hdr = pl_color_space_is_hdr(&src);
++    if (src.transfer != PL_COLOR_TRC_BT_1886 ||
++        p->image_params.light != MP_CSP_LIGHT_DISPLAY || policy.source_is_hdr)
++        SDR_FALLBACK("source is not display-referred SDR BT.1886");
++    if (p->dumb_mode || p->has_alpha || p->use_lut_3d || p->opts.interpolation)
++        SDR_FALLBACK("alpha, ICC LUT, interpolation or dumb mode needs legacy pipeline");
++    if (p->opts.target_gamut || p->opts.tone_map.inverse ||
++        p->opts.tone_map.gamut_mode == GAMUT_WARN)
++        SDR_FALLBACK("explicit gamut or inverse tone mapping needs legacy pipeline");
++
++    struct pl_color_space dst = {
++        .transfer = p->opts.target_trc ? p->opts.target_trc : fbo->transfer,
++        .primaries = p->opts.target_prim ? p->opts.target_prim : fbo->primaries,
++        .hdr.max_luma = p->opts.target_peak ? p->opts.target_peak : fbo->hdr.max_luma,
++        .hdr.min_luma = fbo->hdr.min_luma,
++    };
++    if (!dst.primaries) {
++        dst.primaries = PL_COLOR_PRIM_BT_709;
++        if (src.primaries == PL_COLOR_PRIM_BT_601_525 ||
++            src.primaries == PL_COLOR_PRIM_BT_601_625)
++            dst.primaries = src.primaries;
++    }
++    if (!dst.transfer)
++        dst.transfer = src.transfer;
++    if (dst.transfer != PL_COLOR_TRC_SRGB && dst.transfer != PL_COLOR_TRC_LINEAR)
++        SDR_FALLBACK("target transfer is neither sRGB nor linear");
++    if (dst.transfer == PL_COLOR_TRC_SRGB &&
++        (src.primaries != dst.primaries || pl_color_space_is_hdr(&dst)))
++        SDR_FALLBACK("sRGB target requires the same SDR primaries");
++    if (dst.transfer == PL_COLOR_TRC_LINEAR &&
++        (src.primaries != PL_COLOR_PRIM_BT_709 ||
++         (dst.primaries != PL_COLOR_PRIM_BT_709 && dst.primaries != PL_COLOR_PRIM_BT_2020)))
++        SDR_FALLBACK("linear target requires BT.709 source and BT.709/BT.2020 destination");
++
++    // Match vo_gpu_next target-contrast: zero is unknown/auto, not zero black.
++    if (p->opts.target_contrast == -1) {
++        dst.hdr.min_luma = 1e-7f;
++    } else if (p->opts.target_contrast > 0) {
++        pl_color_space_nominal_luma_ex(pl_nominal_luma_params(
++            .color = &dst, .metadata = PL_HDR_METADATA_HDR10,
++            .scaling = PL_HDR_NITS, .out_max = &dst.hdr.max_luma));
++        dst.hdr.min_luma = dst.hdr.max_luma / p->opts.target_contrast;
++    }
++    pl_color_space_infer_map(&src, &dst);
++    if ((dst.transfer == PL_COLOR_TRC_SRGB && src.hdr.max_luma != dst.hdr.max_luma) ||
++        src.hdr.max_luma > dst.hdr.max_luma || src.hdr.min_luma != dst.hdr.min_luma)
++        SDR_FALLBACK("source/target require tone or black-point adaptation");
++    if (!pl_raw_primaries_equal(&src.hdr.prim, pl_raw_primaries_get(src.primaries)) ||
++        !pl_raw_primaries_equal(&dst.hdr.prim, pl_raw_primaries_get(dst.primaries)) ||
++        !pl_primaries_superset(&dst.hdr.prim, &src.hdr.prim))
++        SDR_FALLBACK("source/target require gamut mapping");
++
++    float src_min, src_max;
++    pl_color_space_nominal_luma_ex(pl_nominal_luma_params(
++        .color = &src, .metadata = PL_HDR_METADATA_HDR10, .scaling = PL_HDR_NORM,
++        .out_min = &src_min, .out_max = &src_max));
++    pl_color_space_nominal_luma_ex(pl_nominal_luma_params(
++        .color = &dst, .metadata = PL_HDR_METADATA_HDR10, .scaling = PL_HDR_NORM,
++        .out_min = &policy.dst_min, .out_max = &policy.dst_max));
++    if (!(src_max > src_min && policy.dst_max > policy.dst_min &&
++          src_min >= 0 && policy.dst_min >= 0))
++        SDR_FALLBACK("invalid nominal luminance range");
++    float lb = powf(src_min, 1.0f / 2.4f), lw = powf(src_max, 1.0f / 2.4f);
++    policy.a = powf(lw - lb, 2.4f);
++    policy.b = lb / (lw - lb);
++    policy.src = src;
++    policy.dst = dst;
++    policy.enabled = true;
++    policy.reason = "supported";
++    return policy;
++#undef SDR_FALLBACK
++}
++
++static void prepare_sdr_black_policy(struct gl_video *p, const struct pl_color_space *fbo,
++                                     const struct mp_image *frame)
++{
++    struct sdr_black_policy next = make_sdr_black_policy(p, fbo, frame);
++    const struct sdr_black_policy *old = &p->sdr_policy;
++    bool changed = old->enabled != next.enabled || old->contrast != next.contrast ||
++                   old->source_is_hdr != next.source_is_hdr ||
++                   !pl_color_space_equal(&old->src, &next.src) ||
++                   !pl_color_space_equal(&old->dst, &next.dst);
++    if (changed)
++        p->output_tex_valid = false;
++    if (next.enabled) {
++        MP_VERBOSE(p, "shader compatibility: BT.1886 black map src=%g/%g dst=%g/%g nits contrast=%d\n",
++                   next.src.hdr.min_luma, next.src.hdr.max_luma,
++                   next.dst.hdr.min_luma, next.dst.hdr.max_luma, next.contrast);
++    } else {
++        MP_VERBOSE(p, "shader compatibility: legacy color fallback: %s\n", next.reason);
++        if (next.contrast && (changed || !old->reason || strcmp(old->reason, next.reason)))
++            MP_WARN(p, "target-contrast is not applied by legacy renderer: %s\n", next.reason);
++    }
++    p->sdr_policy = next;
++}
++
++static void pass_sdr_linearize(struct gl_video *p)
++{
++    if (!p->sdr_policy.enabled) {
++        pass_linearize(p->sc, p->image_params.color.transfer);
++        return;
++    }
++    pass_describe(p, "metadata BT.1886 EOTF");
++    GLSL(color.rgb = max(color.rgb, vec3(0.0));)
++    gl_sc_uniform_vec2(p->sc, "sdr_eotf", (float[]){p->sdr_policy.a, p->sdr_policy.b});
++    GLSL(color.rgb = sdr_eotf.x * pow(color.rgb + vec3(sdr_eotf.y), vec3(2.4));)
++}
++
++static void pass_sdr_delinearize(struct gl_video *p)
++{
++    if (!p->sdr_policy.enabled) {
++        pass_delinearize(p->sc, p->image_params.color.transfer);
++        return;
++    }
++    pass_describe(p, "metadata BT.1886 inverse EOTF");
++    GLSL(color.rgb = max(color.rgb, vec3(0.0));)
++    gl_sc_uniform_vec2(p->sc, "sdr_eotf", (float[]){p->sdr_policy.a, p->sdr_policy.b});
++    GLSL(color.rgb = pow(color.rgb / sdr_eotf.x, vec3(1.0/2.4)) - vec3(sdr_eotf.y);)
++}
++
++static bool has_scaling_hook(struct gl_video *p, const char *name)
++{
++    for (int i = 0; i < p->num_tex_hooks; i++) {
++        for (int n = 0; n < SHADER_MAX_HOOKS; n++) {
++            const char *stage = p->tex_hooks[i].hook_tex[n];
++            if (stage && !strcmp(stage, name))
++                return true;
++        }
++        for (int n = 0; n < SHADER_MAX_BINDS; n++) {
++            const char *binding = p->tex_hooks[i].bind_tex[n];
++            if (binding && !strcmp(binding, name))
++                return true;
++        }
++    }
++    return false;
++}
++
++// Free plane sampling is only valid when no stage needs a source-sized RGB
++// texture. Keep the general pipeline for hooks, subtitles, transforms and HDR.
++// This matches libplacebo's SAMPLER_DIRECT/!need_fbo case, including skipping
++// linear/sigmoid conversion that otherwise introduces a materialized RGB FBO.
++static bool can_sample_planes_directly(struct gl_video *p)
++{
++    if (p->num_tex_hooks || p->num_user_textures || p->has_alpha ||
++        p->opts.interpolation || p->opts.blend_subs != BLEND_SUBS_NO ||
++        p->pass_compute.active || p->use_linear ||
++        p->sdr_policy.source_is_hdr ||
++        p->image_params.rotate ||
++        p->src_rect.x0 || p->src_rect.y0 ||
++        p->src_rect.x1 != p->image_params.w ||
++        p->src_rect.y1 != p->image_params.h ||
++        p->image_params.w % 2 || p->image_params.h % 2 ||
++        !gl_transform_eq(p->texture_offset, identity_trans))
++        return false;
++
++    for (int i = SCALER_SCALE; i <= SCALER_CSCALE; i++) {
++        int filter = p->opts.scaler[i].kernel.function;
++        if (filter == SCALER_INHERIT)
++            filter = p->opts.scaler[SCALER_SCALE].kernel.function;
++        if (filter != SCALER_BILINEAR)
++            return false;
++    }
++
++    // Subsampling must divide the source exactly. pass_read_video has already
++    // resolved chroma location, range and plane alignment in the bound UVs.
++    if (p->image_params.w % p->ra_format.chroma_w ||
++        p->image_params.h % p->ra_format.chroma_h)
++        return false;
++    for (int i = 0; i < p->num_pass_imgs; i++) {
++        const struct image *img = &p->pass_imgs[i];
++        if (!img->tex || img->transform.m[0][1] || img->transform.m[1][0] ||
++            img->transform.m[0][0] <= 0 || img->transform.m[1][1] <= 0)
++            return false;
++    }
++    return p->num_pass_imgs > 0;
++}
++
+ // Takes care of the main scaling and pre/post-conversions
+ static void pass_scale_main(struct gl_video *p)
+ {
++    if (can_sample_planes_directly(p)) {
++        int w = mp_rect_w(p->dst_rect), h = mp_rect_h(p->dst_rect);
++        pass_describe(p, "direct bilinear planes %dx%d -> %dx%d",
++                      p->texture_w, p->texture_h, w, h);
++        MP_VERBOSE(p, "shader compatibility: direct bilinear planes %dx%d -> %dx%d\n",
++                   p->texture_w, p->texture_h, w, h);
++        p->texture_w = w;
++        p->texture_h = h;
++        return;
++    }
++
+     // Figure out the main scaler.
+     double xy[2];
+     get_scale_factors(p, true, xy);
+@@ -2594,13 +2809,17 @@
+         use_linear = p->opts.linear_upscaling || p->opts.sigmoid_upscaling;
+     }
+ 
++    bool hook_sigmoid = p->sdr_policy.enabled && has_scaling_hook(p, "SIGMOID");
++    if (p->sdr_policy.enabled && (has_scaling_hook(p, "LINEAR") || hook_sigmoid))
++        use_linear = true;
+     if (use_linear) {
+         p->use_linear = true;
+-        pass_linearize(p->sc, p->image_params.color.transfer);
++        pass_sdr_linearize(p);
+         pass_opt_hook_point(p, "LINEAR", NULL);
+     }
+ 
+-    bool use_sigmoid = use_linear && p->opts.sigmoid_upscaling && upscaling;
++    bool use_sigmoid = use_linear &&
++                       ((p->opts.sigmoid_upscaling && upscaling) || hook_sigmoid);
+     float sig_center, sig_slope, sig_offset, sig_scale;
+     if (use_sigmoid) {
+         // Coefficients for the sigmoidal transform are taken from the
+@@ -2643,6 +2862,47 @@
+         GLSLF("color.rgb = (1.0/(1.0 + exp(%f * (%f - color.rgb))) - %f) * 1.0/%f;\n",
+                 sig_slope, sig_center, sig_offset, sig_scale);
+     }
++}
++
++// The input is either encoded BT.1886 or the policy's absolute linear light.
++// No post-capture correction is involved; this is the actual output shader.
++static bool pass_sdr_black_map(struct gl_video *p, struct pl_color_space *src,
++                               struct pl_color_space *dst, bool osd)
++{
++    const struct sdr_black_policy *policy = &p->sdr_policy;
++    if (osd || !policy->enabled)
++        return false;
++    if (!p->use_linear)
++        pass_sdr_linearize(p);
++    if (policy->src.primaries != policy->dst.primaries) {
++        pl_matrix3x3 m = pl_get_color_mapping_matrix(
++            pl_raw_primaries_get(policy->src.primaries),
++            pl_raw_primaries_get(policy->dst.primaries),
++            PL_INTENT_RELATIVE_COLORIMETRIC);
++        gl_sc_uniform_mat3(p->sc, "sdr_cms_matrix", true, &m.m[0][0]);
++        GLSL(color.rgb = sdr_cms_matrix * color.rgb;)
++    }
++    // Linear targets encode nits / 203, never normalized by target-peak.
++    if (policy->dst.transfer == PL_COLOR_TRC_SRGB) {
++        gl_sc_uniform_vec2(p->sc, "sdr_target_range", (float[]){
++            1.0f / (policy->dst_max - policy->dst_min),
++            -policy->dst_min / (policy->dst_max - policy->dst_min)});
++        GLSL(color.rgb = sdr_target_range.x * color.rgb + vec3(sdr_target_range.y);)
++        GLSL(color.rgb = max(color.rgb, vec3(0.0));)
++        GLSLF("color.rgb = mix(color.rgb * vec3(12.92),\n"
++              "vec3(1.055) * pow(color.rgb, vec3(1.0/2.4)) - vec3(0.055),\n"
++              "%s(lessThanEqual(vec3(0.0031308), color.rgb)));\n",
++              gl_sc_bvec(p->sc, 3));
++        // Bounded SDR encoding, even when the destination attachment is float.
++        // This boundary must not be applied to linear EDR or PQ/HLG.
++        GLSL(color.rgb = clamp(color.rgb, 0.0, 1.0);)
++    }
++    pass_describe(p, "metadata SDR BT.1886 to %s%s",
++                  policy->dst.transfer == PL_COLOR_TRC_LINEAR ? "linear" : "sRGB",
++                  p->use_linear ? " (prelinearized)" : "");
++    *src = policy->src;
++    *dst = policy->dst;
++    return true;
+ }
+ 
+ // Adapts the colors to the right output color space. (Final pass during
+@@ -2816,7 +3076,8 @@
+     }
+ 
+     // Adapt from src to dst as necessary
+-    pass_color_map(p->sc, p->use_linear && !osd, &src, &dst, src_light, dst_light, &tone_map);
++    if (!pass_sdr_black_map(p, &src, &dst, osd))
++        pass_color_map(p->sc, p->use_linear && !osd, &src, &dst, src_light, dst_light, &tone_map);
+ 
+     if (!osd) {
+         struct mp_csp_params cparams = MP_CSP_PARAMS_DEFAULTS;
+@@ -3155,7 +3416,7 @@
+         rect.mt *= scale[1]; rect.mb *= scale[1];
+         // We should always blend subtitles in non-linear light
+         if (p->use_linear) {
+-            pass_delinearize(p->sc, p->image_params.color.transfer);
++            pass_sdr_delinearize(p);
+             p->use_linear = false;
+         }
+         finish_pass_tex(p, &p->blend_subs_tex, p->texture_w, p->texture_h);
+@@ -3431,6 +3692,7 @@
+                            const struct ra_fbo *fbo, int flags)
+ {
+     gl_video_update_options(p);
++    prepare_sdr_black_policy(p, &fbo->color_space, frame->current);
+ 
+     struct mp_rect target_rc = {0, 0, fbo->tex->params.w, fbo->tex->params.h};
+ 

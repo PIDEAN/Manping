@@ -1,0 +1,28 @@
+dynamic_list {
+  history_offset: "next-fixture" update_baseline: "baseline-fixture" has_more: true
+  list { card_type: word extend { dyn_id_str: "word-fixture" }
+    modules { module_type: module_desc module_desc { text: "Text fixture" } }
+  }
+  list { card_type: av extend { dyn_id_str: "video-fixture" business_id: "123" }
+    modules { module_type: module_author module_author { author { mid: 42 name: "Fixture author" face: "https://example.invalid/avatar.png" } ptime_label_text: "today" } }
+    modules { module_type: module_desc module_desc { text: "Video [smile]" desc { type: desc_type_emoji text: "[smile]" uri: "https://example.invalid/smile.png" } } }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_archive dyn_archive { avid: 123 cid: 321 bvid: "BV-fixture" title: "Video fixture" cover: "https://example.invalid/cover.png" duration: 120 view: 10 } } }
+    modules { module_type: module_stat module_stat { like: 5 reply: 6 repost: 7 like_info { is_like: true } } }
+  }
+  list { card_type: draw extend { dyn_id_str: "draw-fixture" business_id: "234" }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_draw dyn_draw { items { src: "https://example.invalid/draw.png" } } } }
+  }
+  list { card_type: article extend { dyn_id_str: "article-fixture" business_id: "345" }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_article dyn_article { id: 345 title: "Article fixture" desc: "Article text" covers: "https://example.invalid/article.png" uri: "https://example.invalid/article" } } }
+  }
+  list { card_type: pgc extend { dyn_id_str: "episode-fixture" }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_pgc dyn_pgc { aid: 456 cid: 654 epid: 789 season_id: 10 title: "Episode fixture" } } }
+  }
+  list { card_type: forward extend { dyn_id_str: "forward-fixture" }
+    modules { module_type: module_author_forward module_author_forward { uid: 42 title { text: "Forward author" } ptime_label_text: "yesterday" } }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_forward dyn_forward { item { card_type: word extend { dyn_id_str: "original-fixture" } modules { module_type: module_desc module_desc { text: "Original" } } } } } }
+  }
+  list { card_type: music extend { dyn_id_str: "unsupported-fixture" }
+    modules { module_type: module_dynamic module_dynamic { type: mdl_dyn_music } }
+  }
+}

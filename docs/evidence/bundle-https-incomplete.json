@@ -1,0 +1,17 @@
+{
+  "duration" : 0,
+  "error" : "",
+  "events" : [
+
+  ],
+  "hdr" : "not-verified",
+  "hwdec" : "",
+  "passes" : "",
+  "renderReady" : true,
+  "shaderEvents" : [
+
+  ],
+  "shaderRequested" : false,
+  "time" : 0,
+  "windowNumber" : 15587
+}
