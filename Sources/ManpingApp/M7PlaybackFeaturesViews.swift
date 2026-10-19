@@ -195,6 +195,8 @@ struct PlaybackTimeline: View {
   /// Hovered position as a fraction of the track.
   @State private var hoverFraction: Double? = PlaybackTimeline.debugHover
   @State private var trackWidth: CGFloat = 1
+  /// The hover preview's own size, measured so it can be centred on the pointer.
+  @State private var previewSize: CGSize = .zero
   #if DEBUG
   /// `--ui-seek-preview 0.4` pins the hover for screenshot checks.
   static let debugHover: Double? = {
@@ -322,10 +324,15 @@ struct PlaybackTimeline: View {
       }
       .fixedSize()
       .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
-      .alignmentGuide(.top) { $0[.bottom] + 4 }
-      .alignmentGuide(.leading) { [width = trackWidth, at = trackWidth * CGFloat(clamp(fraction))] dimensions in
-        -min(max(0, at - dimensions.width / 2), max(0, width - dimensions.width))
-      }
+      // Placed by offset from its measured size, centred on the pointer and kept within the
+      // track, 4pt above it. Explicit alignment guides are not used: SwiftUI drops them for
+      // content inside this `if`, which pinned the preview to the panel's bottom-left corner.
+      .onGeometryChange(for: CGSize.self) { $0.size } action: { previewSize = $0 }
+      .offset(x: min(max(0, trackWidth * CGFloat(clamp(fraction)) - previewSize.width / 2), max(0, trackWidth - previewSize.width)),
+        y: -(previewSize.height + 4))
+      .opacity(previewSize == .zero ? 0 : 1)
+      // Measured afresh each time it appears, so it never shows for a frame at an old size.
+      .onDisappear { previewSize = .zero }
       .allowsHitTesting(false)
       .transition(.opacity)
     }

@@ -5,7 +5,7 @@
 <p align="center">为 Mac 重新打造的第三方哔哩哔哩客户端。<br>
 原生 SwiftUI / AppKit 界面、液态玻璃控件、mpv 播放，Metal 弹幕跟随屏幕刷新率匀速滚动。<br>
 <sub>A native, unofficial Bilibili client for macOS — SwiftUI/AppKit, Liquid Glass, mpv playback and Metal danmaku.</sub><br>
-<sub>当前版本 0.1.3 · 需要 macOS 27 · Apple 芯片</sub></p>
+<sub>当前版本 0.1.4 · 需要 macOS 27 · Apple 芯片</sub></p>
 
 <p align="center">
   <img src="docs/images/hero.gif" width="880" alt="首页悬停一张视频卡片后点开，视频页开始播放，弹幕从右向左匀速流过；玻璃控制面板浮在画面底部，指针悬停进度条时显示预览画面和章节名，指针移开后控件淡出">
