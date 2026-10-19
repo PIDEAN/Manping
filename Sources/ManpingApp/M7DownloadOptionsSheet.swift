@@ -83,7 +83,7 @@ struct M7DownloadOptionsSheet: View {
               if !allPages {
                 HStack(spacing: 10) {
                   Text("分集序号").font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-                  TextField("例如 1,3,5-8", text: $selectedPages).textFieldStyle(AppTextFieldStyle())
+                  TextField("例如 1,3,5-8", text: $selectedPages, prompt: Text("例如 1,3,5-8")).labelsHidden().textFieldStyle(AppTextFieldStyle())
                 }
               }
               if content != .video { unavailable("批量选择用于视频下载；其他内容导出当前分集。") }

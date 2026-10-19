@@ -228,11 +228,12 @@ public struct AIMaterialSettings: Sendable, Equatable, Codable {
   public var disabled: Set<AIMaterialKind>
   /// Preferred subtitle languages, most preferred first (BCP-47 prefixes, e.g. zh-Hans, zh-CN, en).
   public var subtitleLanguages: [String]
-  /// Mirrors 设置 › 隐藏 AI 字幕: AI-generated subtitles are never used when true.
+  /// 设置 › AI › 使用 AI 字幕 turned off: Bilibili's AI-generated subtitles are never sent.
+  /// Independent of 下载 › 隐藏 AI 字幕, which only filters the download and subtitle lists.
   public var excludeAISubtitles: Bool
   public static let defaultLanguages = ["zh-Hans", "zh-CN", "zh", "zh-Hant", "zh-TW", "zh-HK", "en"]
   public init(disabled: Set<AIMaterialKind> = [], subtitleLanguages: [String] = AIMaterialSettings.defaultLanguages,
-    excludeAISubtitles: Bool = true) {
+    excludeAISubtitles: Bool = false) {
     self.disabled = disabled.filter(\.isSwitchable); self.subtitleLanguages = subtitleLanguages
     self.excludeAISubtitles = excludeAISubtitles
   }
@@ -241,17 +242,16 @@ public struct AIMaterialSettings: Sendable, Equatable, Codable {
   }
   public static let disabledKey = "Manping.AI.materials.disabled"
   public static let languagesKey = "Manping.AI.subtitleLanguages"
-  public static let filterAIKey = "Manping.filterAISubtitle"
+  public static let excludeAIKey = "Manping.AI.excludeAISubtitles"
   public static func load(_ defaults: UserDefaults) -> AIMaterialSettings {
     let disabled = Set((defaults.stringArray(forKey: disabledKey) ?? []).compactMap(AIMaterialKind.init(rawValue:)))
     let languages = defaults.stringArray(forKey: languagesKey).flatMap { $0.isEmpty ? nil : $0 } ?? defaultLanguages
-    return AIMaterialSettings(disabled: disabled, subtitleLanguages: languages, excludeAISubtitles: filtersAISubtitles(defaults))
+    return AIMaterialSettings(disabled: disabled, subtitleLanguages: languages,
+      excludeAISubtitles: defaults.bool(forKey: excludeAIKey))
   }
-  /// The shared 隐藏 AI 字幕 switch (on unless set).
-  public static func filtersAISubtitles(_ defaults: UserDefaults) -> Bool { defaults.object(forKey: filterAIKey) as? Bool ?? true }
-  /// Writes only the AI keys; the shared 隐藏 AI 字幕 switch belongs to the app settings.
   public func save(_ defaults: UserDefaults) {
     defaults.set(disabled.map(\.rawValue).sorted(), forKey: Self.disabledKey)
     defaults.set(subtitleLanguages, forKey: Self.languagesKey)
+    defaults.set(excludeAISubtitles, forKey: Self.excludeAIKey)
   }
 }

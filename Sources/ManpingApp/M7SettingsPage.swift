@@ -421,7 +421,7 @@ private struct DanmakuShieldSection: View {
       }
       LabeledContent {
         HStack(spacing: 6) {
-          TextField("关键词，或 /正则/", text: $draftRule).frame(width: 200).onSubmit(addRule)
+          TextField("关键词，或 /正则/", text: $draftRule, prompt: Text("关键词，或 /正则/")).labelsHidden().frame(width: 200).onSubmit(addRule)
           Button("添加", action: addRule).disabled(draftRule.trimmingCharacters(in: .whitespaces).isEmpty)
         }
       } label: {

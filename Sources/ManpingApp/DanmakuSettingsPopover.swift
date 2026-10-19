@@ -159,7 +159,7 @@ struct DanmakuSettingsPopover: View {
       VStack(alignment: .leading, spacing: 6) {
         Text("屏蔽词（\(store.filter.rules.count)）").font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
         HStack(spacing: 6) {
-          TextField("关键词，或 /正则/", text: $draftRule)
+          TextField("关键词，或 /正则/", text: $draftRule, prompt: Text("关键词，或 /正则/")).labelsHidden()
             .textFieldStyle(AppTextFieldStyle(height: Theme.compactControlHeight))
             .onSubmit(addRule)
           Button("添加", action: addRule).buttonStyle(.bordered).controlSize(.small)

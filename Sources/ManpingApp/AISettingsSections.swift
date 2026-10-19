@@ -156,7 +156,13 @@ struct AISettingsSections: View {
         }
       }
       Hairline().padding(.leading, 16)
-      row("字幕语言顺序", "按此顺序在人工字幕中挑选；开启 设置 › 下载与截图 › 隐藏 AI 字幕 时不使用 B 站 AI 字幕。") {
+      row("使用 AI 字幕", "没有人工字幕时，使用 B 站自动识别的字幕。识别可能有误，回答会注明来源。与「下载」里的隐藏 AI 字幕无关。") {
+        toggle("使用 AI 字幕", isOn: Binding(get: { !presets.materials.excludeAISubtitles }, set: { on in
+          var value = presets.materials; value.excludeAISubtitles = !on; presets.materials = value
+        }))
+      }
+      Hairline().padding(.leading, 16)
+      row("字幕语言顺序", "按此顺序挑选字幕，人工字幕优先。") {
         Menu {
           ForEach(AIContextPopover.languageOrders, id: \.title) { order in
             Button(order.title) {
@@ -256,7 +262,7 @@ private struct AIPresetEditor: View {
       Text(draft.isNew ? "新建预设" : "编辑预设").font(Theme.Font.section)
       HStack(spacing: 12) {
         Text("名称").font(Theme.Font.body).frame(width: 64, alignment: .leading)
-        TextField("预设名称", text: $draft.preset.name).textFieldStyle(AppTextFieldStyle())
+        TextField("预设名称", text: $draft.preset.name, prompt: Text("预设名称")).labelsHidden().textFieldStyle(AppTextFieldStyle())
       }
       HStack(spacing: 12) {
         Text("用于").font(Theme.Font.body).frame(width: 64, alignment: .leading)

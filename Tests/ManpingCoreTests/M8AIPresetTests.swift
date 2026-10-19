@@ -113,23 +113,22 @@ final class M8AIPresetTests: XCTestCase {
     XCTAssertNotNil(AIPresetAvailability.needsMaterial(.danmaku).reason)
   }
 
-  @MainActor func testSharedHideAISubtitlesSwitchIsFollowedAtRuntime() async throws {
+  @MainActor func testAISubtitlesAreOnByDefaultAndIndependentOfTheDownloadSwitch() throws {
     let (defaults, suite) = try defaults()
     defer { defaults.removePersistentDomain(forName: suite) }
+    // 下载 › 隐藏 AI 字幕 (on by default) filters only downloads and subtitle lists.
+    defaults.set(true, forKey: "Manping.filterAISubtitle")
     let store = AIPresetStore(defaults: defaults)
-    XCTAssertTrue(store.currentMaterials.excludeAISubtitles)
-    // The app settings turn 隐藏 AI 字幕 off after launch: the next request reads it at once …
-    defaults.set(false, forKey: AIMaterialSettings.filterAIKey)
-    XCTAssertFalse(store.currentMaterials.excludeAISubtitles)
-    // … and the stored settings follow (open panels and previews republish).
-    for _ in 0..<100 where store.materials.excludeAISubtitles { try await Task.sleep(for: .milliseconds(10)) }
     XCTAssertFalse(store.materials.excludeAISubtitles)
-    defaults.set(true, forKey: AIMaterialSettings.filterAIKey)
-    store.syncSharedSettings()
-    XCTAssertTrue(store.materials.excludeAISubtitles)
-    XCTAssertTrue(store.currentMaterials.excludeAISubtitles)
+    // 设置 › AI › 使用 AI 字幕 is its own setting and persists.
+    var value = store.materials; value.excludeAISubtitles = true; store.materials = value
+    XCTAssertTrue(defaults.bool(forKey: AIMaterialSettings.excludeAIKey))
+    XCTAssertTrue(AIPresetStore(defaults: defaults).materials.excludeAISubtitles)
+    defaults.set(false, forKey: "Manping.filterAISubtitle")
+    XCTAssertTrue(AIPresetStore(defaults: defaults).materials.excludeAISubtitles)
     // Fixtures never read the real defaults.
-    XCTAssertTrue(AIPresetStore(fixtures: true, defaults: defaults).currentMaterials.excludeAISubtitles)
+    XCTAssertFalse(AIPresetStore(fixtures: true, defaults: defaults).materials.excludeAISubtitles)
   }
+
 
 }

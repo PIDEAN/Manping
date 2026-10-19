@@ -221,7 +221,7 @@ struct CommentComposerBar: View {
       }
       HStack(alignment: .bottom, spacing: 8) {
         if signedIn {
-          TextField("发一条友善的评论", text: $draft, axis: .vertical).textFieldStyle(.plain).font(Theme.Font.body)
+          TextField("发一条友善的评论", text: $draft, prompt: Text("发一条友善的评论"), axis: .vertical).labelsHidden().textFieldStyle(.plain).font(Theme.Font.body)
             .lineLimit(1...4).onSubmit { if canSend { send() } }.disabled(busy)
             .padding(.horizontal, 12).padding(.vertical, 7).frame(minHeight: 32)
             .background(field)

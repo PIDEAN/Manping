@@ -32,7 +32,7 @@ struct M3UserSpacePage: View {
     VStack(spacing: 0) {
       if showingSearch && submitted.isEmpty {
         HStack(spacing: 8) {
-          TextField("搜索这位 UP 主的投稿", text: $keyword).textFieldStyle(AppTextFieldStyle()).onSubmit(submit)
+          TextField("搜索这位 UP 主的投稿", text: $keyword, prompt: Text("搜索这位 UP 主的投稿")).labelsHidden().textFieldStyle(AppTextFieldStyle()).onSubmit(submit)
           Button("搜索", action: submit).buttonStyle(AppButtonStyle(role: .primary))
         }.frame(maxWidth: 560).padding(.horizontal, Theme.gridPadding).padding(.top, 16)
       }

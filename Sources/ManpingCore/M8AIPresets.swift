@@ -271,7 +271,6 @@ public struct AIPresetState: Codable, Sendable, Equatable {
   @Published public var retentionDays: Int { didSet { defaults?.set(retentionDays, forKey: Self.retentionKey) } }
   @Published public var answerDetail: AIAnswerDetail { didSet { defaults?.set(answerDetail.rawValue, forKey: Self.detailKey) } }
   private let defaults: UserDefaults?
-  private var sharedObservation: AnyCancellable?
 
   /// Fixtures use memory only and never read or write the real defaults domain.
   public init(fixtures: Bool = false, defaults: UserDefaults = .standard) {
@@ -284,25 +283,6 @@ public struct AIPresetState: Codable, Sendable, Equatable {
     saveConversations = source?.object(forKey: Self.saveKey) as? Bool ?? true
     retentionDays = source?.object(forKey: Self.retentionKey) as? Int ?? 30
     answerDetail = source?.string(forKey: Self.detailKey).flatMap(AIAnswerDetail.init(rawValue:)) ?? .standard
-    // 隐藏 AI 字幕 belongs to the app settings and may change at any time; follow it.
-    if let source {
-      sharedObservation = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: source)
-        .receive(on: DispatchQueue.main).sink { [weak self] _ in MainActor.assumeIsolated { self?.syncSharedSettings() } }
-    }
-  }
-
-  /// The material settings with the shared 隐藏 AI 字幕 switch as it is now. Requests and previews
-  /// are built from this, so a change in the app settings applies without waiting for a notification.
-  public var currentMaterials: AIMaterialSettings {
-    var value = materials
-    if let defaults { value.excludeAISubtitles = AIMaterialSettings.filtersAISubtitles(defaults) }
-    return value
-  }
-  /// Copies the shared switch into `materials` when it changed (republishing to open panels).
-  public func syncSharedSettings() {
-    guard let defaults else { return }
-    let current = AIMaterialSettings.filtersAISubtitles(defaults)
-    if materials.excludeAISubtitles != current { materials.excludeAISubtitles = current }
   }
 
   /// Built-ins with edits applied plus custom presets, in the user's order (new ones appended).

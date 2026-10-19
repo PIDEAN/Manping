@@ -126,15 +126,15 @@ struct ProxySettingsCard: View {
       }
       if model.kind != .none {
         row("服务器") {
-          TextField("例如 proxy.example.com 或 203.0.113.5", text: $model.host).textFieldStyle(AppTextFieldStyle())
-          TextField("端口", text: $model.port).textFieldStyle(AppTextFieldStyle()).monospacedDigit().frame(width: 92)
+          TextField("服务器地址", text: $model.host, prompt: Text("proxy.example.com 或 203.0.113.5")).labelsHidden().textFieldStyle(AppTextFieldStyle())
+          TextField("端口", text: $model.port, prompt: Text("端口")).labelsHidden().textFieldStyle(AppTextFieldStyle()).monospacedDigit().frame(width: 92)
         }
         if model.kind == .socks5 {
-          row("用户名") { TextField("可选", text: $model.username).textFieldStyle(AppTextFieldStyle()) }
+          row("用户名") { TextField("用户名", text: $model.username, prompt: Text("可选")).labelsHidden().textFieldStyle(AppTextFieldStyle()) }
         }
         if model.kind == .shadowsocks || (model.kind == .socks5 && !model.username.isEmpty) {
           row("密码") {
-            SecureField(model.passwordPlaceholder, text: $model.password).textFieldStyle(AppTextFieldStyle())
+            SecureField(model.passwordPlaceholder, text: $model.password, prompt: Text(model.passwordPlaceholder)).labelsHidden().textFieldStyle(AppTextFieldStyle())
             if model.kind == .shadowsocks {
               Menu {
                 Picker("加密方式", selection: $model.cipher) { ForEach(ShadowsocksTunnel.Cipher.allCases) { Text($0.rawValue).tag($0) } }

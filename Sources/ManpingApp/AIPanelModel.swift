@@ -29,6 +29,8 @@ import UniformTypeIdentifiers
     let message: String
     let usageLimit: Bool
     let request: Request
+    /// Only AI subtitles exist and 使用 AI 字幕 is off: the card offers to turn it on.
+    var aiSubtitlesOff: Bool { message.contains(AITranscriptSelector.aiSubtitlesOffNote) }
   }
   enum Official: Equatable {
     case idle, loading
@@ -95,7 +97,7 @@ import UniformTypeIdentifiers
   var hasService: Bool { !providers.isEmpty && !modelID.isEmpty && runtime.conversations != nil }
   var busy: Bool { pending != nil }
   var settings: AIMaterialSettings {
-    var value = presets.currentMaterials
+    var value = presets.materials
     value.disabled.formUnion(sessionOff)
     if let sessionLanguages { value.subtitleLanguages = sessionLanguages }
     return value
@@ -223,6 +225,11 @@ import UniformTypeIdentifiers
     pending = nil
   }
   func dismissFailure() { failure = nil }
+  /// 「使用 AI 字幕」 on the failure card: turns the AI setting on and runs the request again.
+  func allowAISubtitlesAndRetry() {
+    var value = presets.materials; value.excludeAISubtitles = false; presets.materials = value
+    retry()
+  }
 
   private func apply(_ event: AIConversationEvent, request: Request) async {
     switch event {

@@ -76,7 +76,7 @@ struct M6ConversationPage: View {
             }
           }.padding(12)
         }
-      TextField("发送私信…", text: $messages.draft, axis: .vertical)
+      TextField("发送私信…", text: $messages.draft, prompt: Text("发送私信…"), axis: .vertical).labelsHidden()
         .textFieldStyle(.plain).font(Theme.Font.body).lineLimit(1...5).padding(.horizontal, 14).padding(.vertical, 8)
         .frame(minHeight: 32).background(Theme.fill(scheme), in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).strokeBorder(Theme.separator(scheme), lineWidth: 0.5))

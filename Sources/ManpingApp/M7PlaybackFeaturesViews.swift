@@ -58,7 +58,7 @@ struct PlaybackDanmakuInput: View {
         }
       } label: { Text("Aa").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.85)) }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help("弹幕样式")
-      TextField("发一条友善的弹幕", text: $features.input)
+      TextField("发一条友善的弹幕", text: $features.input, prompt: Text("发一条友善的弹幕")).labelsHidden()
         .textFieldStyle(.plain).font(Theme.Font.caption).foregroundStyle(.white).onSubmit(send).disabled(features.sending)
       Button(action: send) {
         if features.sending { ProgressView().controlSize(.mini) }

@@ -1011,7 +1011,9 @@ import WebKit
     let settings = ProxySettings.load(from: PerformanceEnvironment.defaults)
     proxySettingsModel.load(settings, hasSecret: false, status: settings.kind == .none ? "未配置" : "等待启动")
     proxySettingsModel.apply = { [weak self] settings, secret in
-      await self?.applyProxy(settings, secret: secret, saveSecret: true) ?? "应用已关闭"
+      // nil is success; only a released model reports an error here.
+      guard let self else { return "应用已关闭" }
+      return await self.applyProxy(settings, secret: secret, saveSecret: true)
     }
     proxySettingsModel.test = { [weak self] in
       guard let self else { return (.failure(BiliError.invalidResponse("应用已关闭")), nil) }

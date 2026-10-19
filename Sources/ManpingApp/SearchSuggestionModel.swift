@@ -128,7 +128,7 @@ struct M3SearchBox: View {
         Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .medium))
           .foregroundStyle(Theme.secondaryText(scheme)).frame(width: 20, height: 28)
       }.buttonStyle(.plain).help("全站搜索")
-      TextField("搜索视频、番剧或 UP 主", text: $text).textFieldStyle(.plain).focused($focused)
+      TextField("搜索视频、番剧或 UP 主", text: $text, prompt: Text("搜索视频、番剧或 UP 主")).labelsHidden().textFieldStyle(.plain).focused($focused)
         .onChange(of: text) { _, value in if suggestionsEnabled { suggestions.update(value, currentScopeName: currentScopeName) }; showingSuggestions = focused && suggestionsEnabled }
         .onChange(of: focused) { _, value in
           showingSuggestions = value && suggestionsEnabled

@@ -236,7 +236,7 @@ private struct AIPanelContent: View {
         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.warning(scheme))
         VStack(alignment: .leading, spacing: 2) {
           Text("没能生成回答").font(Theme.Font.headline)
-          Text(failure.message + (panel.turns.isEmpty ? "" : " 已保存的回答仍可查看。"))
+          Text(failure.message + (panel.turns.isEmpty ? "" : (failure.message.hasSuffix("。") ? "" : "。") + "已保存的回答仍可查看。"))
             .font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme)).fixedSize(horizontal: false, vertical: true)
         }
       }
@@ -245,6 +245,11 @@ private struct AIPanelContent: View {
           // OpenAI guidance: managing usage is the primary action; no silent fallback to other billing.
           Button("管理用量") { NSWorkspace.shared.open(M8AISettingsModel.manageUsageURL) }
             .buttonStyle(AppButtonStyle(role: .primary, size: .small))
+        }
+        if failure.aiSubtitlesOff {
+          Button("使用 AI 字幕") { panel.allowAISubtitlesAndRetry() }
+            .buttonStyle(AppButtonStyle(role: .primary, size: .small))
+            .help("打开 设置 › AI ›「使用 AI 字幕」并重试")
         }
         Button("重试") { panel.retry() }.buttonStyle(AppButtonStyle(size: .small))
         if panel.models.values.joined().count > 1 {
@@ -398,7 +403,7 @@ private struct AIComposerContent: View {
   @FocusState private var focused: Bool
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      TextField(placeholder, text: $panel.question, axis: .vertical)
+      TextField(placeholder, text: $panel.question, prompt: Text(placeholder), axis: .vertical).labelsHidden()
         .textFieldStyle(.plain).font(Theme.Font.body).lineLimit(1...5)
         .focused($focused)
         .disabled(!panel.hasService)

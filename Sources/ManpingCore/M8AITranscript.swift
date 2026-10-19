@@ -1,8 +1,11 @@
 import Foundation
 
 /// Picks the subtitle track sent to AI: human subtitles in the preferred language order; AI
-/// subtitles only when no human track exists and 隐藏 AI 字幕 is off.
+/// subtitles only when no human track exists and 设置 › AI › 使用 AI 字幕 is on.
 public enum AITranscriptSelector {
+  /// The note when a video has only AI subtitles and 设置 › AI › 使用 AI 字幕 is off; the panel
+  /// offers to turn it on from the failure card.
+  public static let aiSubtitlesOffNote = "只有 AI 字幕，已在 设置 › AI 中关闭「使用 AI 字幕」"
   public static func choose(_ tracks: [DownloadSubtitleTrack], settings: AIMaterialSettings) -> DownloadSubtitleTrack? {
     let human = tracks.filter { !$0.isAI }
     if let track = preferred(human, languages: settings.subtitleLanguages) ?? human.first { return track }

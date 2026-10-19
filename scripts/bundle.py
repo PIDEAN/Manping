@@ -196,7 +196,7 @@ def main():
         if not (icon_build / produced).is_file(): raise RuntimeError('actool did not produce ' + produced)
         shutil.copy2(icon_build / produced, resources / produced)
     shutil.rmtree(icon_build)
-    plist = {'CFBundleName':'满屏', 'CFBundleDisplayName':'满屏', 'CFBundleExecutable':'Manping', 'CFBundleIdentifier':'io.github.pidean.manping', 'CFBundleVersion':'1', 'CFBundleShortVersionString':'0.1', 'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'27.0', 'NSHighResolutionCapable':True, 'CFBundleIconFile':'AppIcon', 'CFBundleIconName':'AppIcon', 'NSAppTransportSecurity':{'NSAllowsArbitraryLoads':False}, 'CFBundleURLTypes':[{'CFBundleURLName':'io.github.pidean.manping.link', 'CFBundleURLSchemes':['manping'], 'CFBundleTypeRole':'Viewer'}]}
+    plist = {'CFBundleName':'满屏', 'CFBundleDisplayName':'满屏', 'CFBundleExecutable':'Manping', 'CFBundleIdentifier':'io.github.pidean.manping', 'CFBundleVersion':'2', 'CFBundleShortVersionString':'0.1.1', 'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'27.0', 'NSHighResolutionCapable':True, 'CFBundleIconFile':'AppIcon', 'CFBundleIconName':'AppIcon', 'NSAppTransportSecurity':{'NSAllowsArbitraryLoads':False}, 'CFBundleURLTypes':[{'CFBundleURLName':'io.github.pidean.manping.link', 'CFBundleURLSchemes':['manping'], 'CFBundleTypeRole':'Viewer'}]}
     with (app / 'Contents' / 'Info.plist').open('wb') as handle: plistlib.dump(plist, handle)
     copied = {}
     origins = {}

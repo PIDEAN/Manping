@@ -71,7 +71,7 @@ struct M3HistoryPage: View {
       Button { searchText = ""; Task { await history.exitSearch() } } label: { Label("退出搜索", systemImage: "xmark") }
         .toolbarActionStyle()
     }
-    TextField("在历史记录中搜索", text: $searchText).textFieldStyle(AppTextFieldStyle(height: Theme.toolbarControlHeight)).frame(width: 150)
+    TextField("在历史记录中搜索", text: $searchText, prompt: Text("在历史记录中搜索")).labelsHidden().textFieldStyle(AppTextFieldStyle(height: Theme.toolbarControlHeight)).frame(width: 150)
       .onSubmit { Task { await history.load(business: tab, keyword: searchText) } }
     if history.keyword.isEmpty {
       Button { history.requestClear() } label: { Label("清空", systemImage: "trash") }

@@ -119,7 +119,7 @@ struct CDNPanel: View {
       }.frame(height: nodes.isEmpty ? 44 : min(CGFloat(nodes.count) * 48, 6 * 48))
         .overlay { if nodes.isEmpty { Text("播放视频后显示候选节点").font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)) } }
       HStack(spacing: 6) {
-        TextField("自定义节点，例如 upos-sz-mirrorhw.bilivideo.com", text: $customHost)
+        TextField("自定义节点，例如 upos-sz-mirrorhw.bilivideo.com", text: $customHost, prompt: Text("自定义节点，例如 upos-sz-mirrorhw.bilivideo.com")).labelsHidden()
           .textFieldStyle(AppTextFieldStyle(height: Theme.compactControlHeight))
           .onSubmit(addCustom)
         Button("添加", action: addCustom).buttonStyle(AppButtonStyle(role: .primary, size: .small))

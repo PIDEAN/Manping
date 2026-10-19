@@ -43,7 +43,7 @@ public struct AIBiliMaterialProvider: AIMaterialProvider {
             catch { try await check(); bundle.transcriptNote = "字幕下载失败"; bundle.transient = true }
           } else {
             bundle.transcriptNote = tracks.contains(where: \.isAI) && settings.excludeAISubtitles
-              ? "只有 AI 字幕，已按「隐藏 AI 字幕」设置不使用" : "没有可用字幕"
+              ? AITranscriptSelector.aiSubtitlesOffNote : "没有可用字幕"
           }
         } else { bundle.transcriptNote = "没能读取字幕信息" }
       }

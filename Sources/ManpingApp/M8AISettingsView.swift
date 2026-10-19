@@ -241,10 +241,10 @@ private struct M8AIProviderCard: View {
     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
   }
   private func textField(_ prompt: String, text: Binding<String>) -> some View {
-    TextField(prompt, text: text).textFieldStyle(AppTextFieldStyle()).frame(width: 260)
+    TextField(prompt, text: text, prompt: Text(prompt)).labelsHidden().textFieldStyle(AppTextFieldStyle()).frame(width: 260)
   }
   private func secureField(_ prompt: String, text: Binding<String>) -> some View {
-    SecureField(prompt, text: text).textFieldStyle(.plain).font(Theme.Font.body)
+    SecureField(prompt, text: text, prompt: Text(prompt)).labelsHidden().textFieldStyle(.plain).font(Theme.Font.body)
       .padding(.horizontal, 10).frame(width: 260, height: Theme.controlHeight)
       .background(Theme.fill(scheme), in: RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
       .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).strokeBorder(Theme.separator(scheme), lineWidth: 0.5))
