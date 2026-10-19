@@ -97,6 +97,13 @@ Anthropic 条款只允许 Claude 订阅（Free／Pro／Max）用于 Claude.ai �
 
 renderer/shader/mpv 渲染算法和画质保持冻结；允许修复已定位的生命周期资源释放。实际字幕/章节、独立窗口切换、外部工具、系统媒体键、通知授权和磁盘下载仍需在使用者在场时集中复验；物理 HDR/外屏、睡眠恢复和长期运行的未验范围见 KnownIssues。
 
+## 消息「全部已读」的口径与验证
+
+- 回复、@、点赞会请求第一页，并以服务器回读的真实未读数确认结果；私信完整枚举已关注与未关注会话后，只 ACK 到本次首次看到的 `max_seqno`，操作期间新到的消息仍保留未读。
+- 角标口径为回复 + @ + 点赞 + `follow_unread` + `unfollow_unread`；`single_unread` 显式使用 `show_dustbin=0`。不包含拦截会话和粉丝团，因而不调用无截止序号的 `batch_update_dustbin_ack`。
+- 本地自动验证只用 fake transport / fixture，绝不向真实账号发送 POST。真实账号由用户手动验证：先记录侧栏、消息分类与 Dock 未读数；点击后查看进度与各分类结果，再在手机 B 站核对原消息已读；操作期间用另一账号发送一条新私信，确认它仍显示未读。遇到部分失败可重试，并观察未成功分类保留角标。
+- 调试截图使用 `--ui-fixture --ui-page messages`；在启动命令前加 `MANPING_UI_MESSAGE_STATE=running` 或 `MANPING_UI_MESSAGE_STATE=partial` 可展示执行中或部分失败，该环境变量仅在 fixture 模式生效，计数来自进程内样例接口。
+
 ## Release 离线性能复验
 
 正常桌面会话中运行以下命令，先完成全部构建，不同时编码素材、编译或运行其它播放器：

@@ -18,7 +18,7 @@ import MediaPlayer
     clear()
     self.player = player; self.title = title; self.artist = artist; self.live = live
     let center = MPRemoteCommandCenter.shared()
-    install(center.playCommand) { [weak player] in player?.set("pause", "no") }
+    install(center.playCommand) { [weak player] in player?.requestPlay() }
     install(center.pauseCommand) { [weak player] in player?.set("pause", "yes") }
     install(center.togglePlayPauseCommand) { [weak player] in player?.togglePause() }
     if let previous { install(center.previousTrackCommand, action: previous) }

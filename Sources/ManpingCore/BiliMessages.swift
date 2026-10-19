@@ -1,4 +1,5 @@
 import Foundation
+import CoreFoundation
 
 extension BiliService {
   public func notificationMessages(_ section: MessageSection, offsetID: Int64 = 0, offsetTime: Int64 = 0,
@@ -10,18 +11,51 @@ extension BiliService {
     return try NotificationPage.parse(try await appObject(route,
       fields: ["id": String(offsetID), "\(section.rawValue)_time": String(offsetTime)], expectedIdentity: expectedIdentity), section: section)
   }
-  /// Unread counts for the sidebar and Dock badge: replies, @, likes and private messages.
-  /// Read-only; nothing is marked read. Private messages need the Web login and count as zero
-  /// when it is missing, so the badge still reflects the feed counts.
+  /// Followed and unfollowed private messages only; dustbin and fan groups are excluded.
+  /// Any unread read failure leaves the caller's previous badge intact.
   public func unreadMessages(expectedIdentity: AuthSnapshot? = nil) async throws -> UnreadMessages {
     let identity = expectedIdentity ?? authSnapshot()
-    let feed = try await appObject(.messageUnread, fields: [:], expectedIdentity: identity)
-    var chat: Int64 = 0
-    if let raw = try? await messageWebREST(.unread, fields: ["unread_type": "0"], expectedIdentity: identity) as? [String: Any] {
-      chat = max(0, messageInteger(raw["follow_unread"])) + max(0, messageInteger(raw["unfollow_unread"]))
+    let feed = try await messageFeedUnread(expectedIdentity: identity)
+    let chat = try await messageChatUnread(expectedIdentity: identity)
+    try checkRESTIdentity(identity)
+    return UnreadMessages(reply: feed[.reply]!, at: feed[.at]!, like: feed[.like]!, chat: chat)
+  }
+  /// A fresh polling snapshot. Missing categories are unknown; independent reads
+  /// and feed fields retain successful evidence without carrying over old counts.
+  public func unreadMessageCounts(expectedIdentity: AuthSnapshot? = nil) async throws -> MessageUnreadCounts {
+    let identity = expectedIdentity ?? authSnapshot()
+    try checkRESTIdentity(identity)
+    var unread = MessageUnreadCounts()
+    do {
+      let feed = try await appObject(.messageUnread, expectedIdentity: identity)
+      for section in [MessageSection.reply, .at, .like] {
+        do { unread.values[section] = try messageRequiredCount(feed[section.rawValue]) }
+        catch { try checkRESTIdentity(identity) }
+      }
+    } catch is CancellationError { throw CancellationError() }
+    catch { try checkRESTIdentity(identity) }
+    do { unread.values[.chat] = try await messageChatUnread(expectedIdentity: identity) }
+    catch is CancellationError { throw CancellationError() }
+    catch { try checkRESTIdentity(identity) }
+    try checkRESTIdentity(identity)
+    return unread
+  }
+  func messageFeedUnread(expectedIdentity: AuthSnapshot) async throws -> [MessageSection: Int64] {
+    let feed = try await appObject(.messageUnread, expectedIdentity: expectedIdentity)
+    return try Dictionary(uniqueKeysWithValues: [MessageSection.reply, .at, .like].map {
+      ($0, try messageRequiredCount(feed[$0.rawValue]))
+    })
+  }
+  func messageChatUnread(expectedIdentity: AuthSnapshot) async throws -> Int64 {
+    guard let raw = try await messageWebREST(.unread,
+      fields: ["unread_type": "0", "show_dustbin": "0"], expectedIdentity: expectedIdentity) as? [String: Any] else {
+      throw BiliError.invalidResponse("Invalid unread private messages")
     }
-    return UnreadMessages(reply: max(0, messageInteger(feed["reply"])), at: max(0, messageInteger(feed["at"])),
-      like: max(0, messageInteger(feed["like"])), chat: chat)
+    let followed = try messageRequiredCount(raw["follow_unread"])
+    let unfollowed = try messageRequiredCount(raw["unfollow_unread"])
+    let (total, overflow) = followed.addingReportingOverflow(unfollowed)
+    guard !overflow else { throw BiliError.invalidResponse("Invalid unread private messages") }
+    return total
   }
   public func chatSessions(offset: Int64 = 0, expectedIdentity: AuthSnapshot? = nil) async throws -> ChatSessionPage {
     guard offset >= 0 else { throw BiliError.invalidResponse("Invalid chat offset") }
@@ -44,7 +78,8 @@ extension BiliService {
       guard id > 0, known.insert(id).inserted, let message = row["last_msg"] as? [String: Any] else { return nil }
       return ChatSession(user: people[id] ?? MessageUser(id: id, name: String(id), avatar: nil),
         lastMessage: try ConversationMessage.parse(message), unread: messageInteger(row["unread_count"]),
-        timestamp: messageInteger(row["session_ts"]))
+        timestamp: messageInteger(row["session_ts"]), sessionType: messageInteger(row["session_type"]),
+        maxSequence: messageInteger(row["max_seqno"]), acknowledgedSequence: messageInteger(row["ack_seqno"]))
     }
     return ChatSessionPage(sessions: sessions, offset: messageInteger(list.last?["session_ts"]),
       hasMore: messageInteger(raw["has_more"]) == 1 && !list.isEmpty)
@@ -71,5 +106,20 @@ public struct UnreadMessages: Sendable, Equatable {
   public init(reply: Int64, at: Int64, like: Int64, chat: Int64) {
     self.reply = reply; self.at = at; self.like = like; self.chat = chat
   }
-  public var total: Int64 { reply + at + like + chat }
+  public var total: Int64 { [reply, at, like, chat].reduce(0) { min(Int64.max - $0, $1) + $0 } }
+  public subscript(_ section: MessageSection) -> Int64 {
+    switch section { case .reply: reply; case .at: at; case .like: like; case .chat: chat }
+  }
+}
+
+func messageRequiredCount(_ raw: Any?) throws -> Int64 {
+  if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+    throw BiliError.invalidResponse("Invalid boolean message count")
+  }
+  let value = messageInteger(raw)
+  guard value >= 0, raw is String || raw is NSNumber,
+    String(value) == (raw as? String) || (raw as? NSNumber)?.stringValue == String(value) else {
+    throw BiliError.invalidResponse("Missing or invalid message count")
+  }
+  return value
 }

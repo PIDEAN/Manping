@@ -168,8 +168,12 @@ import SwiftUI
     // Performance diagnostics run as an accessory (no Dock icon, never activated by launch) so they do
     // not take focus or keystrokes from the user's frontmost app. `.prohibited` stops the display
     // link from driving the window at all, so it cannot be used here.
-    NSApp.setActivationPolicy(PerformanceOptions.requested ? .accessory : .regular)
     let args = ProcessInfo.processInfo.arguments
+    var quietLaunch = PerformanceOptions.requested
+    #if DEBUG
+    quietLaunch = quietLaunch || args.contains("--ui-quiet")
+    #endif
+    NSApp.setActivationPolicy(quietLaunch ? .accessory : .regular)
     let options: DiagnosticArguments
     var diagnosticArgs = [args[0]]
     var skipAuthentication = false
@@ -213,6 +217,15 @@ import SwiftUI
           }
           launchWindowSize = NSSize(width: width, height: height)
           index += 3; continue
+        }
+        if ["--ui-quiet", "--ui-space-fallback", "--ui-space-detail", "--ui-space-model-checks"].contains(args[index]) {
+          index += 1; continue
+        }
+        if args[index] == "--ui-space-tab", index + 1 < args.count {
+          guard ["主页", "投稿", "合集和系列", "动态"].contains(args[index + 1]) else {
+            model.shutdown(); NSApp.terminate(nil); return
+          }
+          index += 2; continue
         }
         if args[index] == "--ui-fixture" {
           skipAuthentication = true
@@ -313,6 +326,20 @@ import SwiftUI
     }
 
     #if DEBUG
+      if args.contains("--ui-space-model-checks") {
+        guard DebugUIFixtures.enabled else { print("FAIL space checks require --ui-fixture"); NSApp.terminate(nil); return }
+        Task {
+          let passed = await SpaceLibraryModelChecks.run()
+          print(passed ? "PASS all space LibraryModel checks" : "FAIL space LibraryModel checks")
+          model.shutdown(); NSApp.terminate(nil)
+        }
+        Task {
+          try? await Task.sleep(for: .seconds(20))
+          print("FAIL space LibraryModel checks timed out")
+          NSApp.terminate(nil)
+        }
+        return
+      }
       if let runtimeChecks {
         guard DebugUIFixtures.enabled else { print("FAIL runtime checks require --ui-fixture"); NSApp.terminate(nil); return }
         Task {
@@ -367,7 +394,7 @@ import SwiftUI
     }
     // Performance diagnostics run beside whatever the user is doing: the window shows (it must be on
     // screen to draw) but the app never takes focus from the frontmost app.
-    let quietDiagnostics = PerformanceOptions.requested
+    let quietDiagnostics = quietLaunch
     if quietDiagnostics { window.ignoresMouseEvents = true; window.orderFrontRegardless() } else { window.makeKeyAndOrderFront(nil) }
     // 设置 › 在菜单栏显示, now and whenever it changes.
     updateStatusItem(visible: model.appSettings.bool(.menuBarItem))
@@ -398,9 +425,20 @@ import SwiftUI
           // Screen recording may be unavailable to the check script; the app renders its own window.
           DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak captured] in
             guard let view = captured?.contentView?.superview ?? captured?.contentView,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+              FileHandle.standardError.write(Data("UI snapshot failed: window view unavailable\n".utf8)); return
+            }
             view.cacheDisplay(in: view.bounds, to: rep)
-            try? rep.representation(using: .png, properties: [:])?.write(to: destination)
+            guard let data = rep.representation(using: .png, properties: [:]) else {
+              FileHandle.standardError.write(Data("UI snapshot failed: PNG encoding unavailable\n".utf8)); return
+            }
+            do {
+              // Publish only a complete PNG to the diagnostic driver's ready check.
+              try data.write(to: destination, options: .atomic)
+              FileHandle.standardOutput.write(Data("UI snapshot ready\n".utf8))
+            } catch {
+              FileHandle.standardError.write(Data("UI snapshot failed: PNG write error\n".utf8))
+            }
           }
         }
         print("Debug window number: \(captured.windowNumber)")

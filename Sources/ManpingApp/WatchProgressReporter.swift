@@ -17,6 +17,7 @@ import Foundation
   private let enabled: () -> Bool
   private weak var player: PlayerModel?
   private var item: Item?
+  private var identity: AuthSnapshot?
   private var timer: Timer?
   private var lastSent: (item: Item, seconds: Int)?
 
@@ -25,9 +26,9 @@ import Foundation
   }
 
   /// Starts reporting for the media now loaded in `player`, closing out the previous one.
-  func begin(_ next: Item, player: PlayerModel) {
+  func begin(_ next: Item, player: PlayerModel, identity: AuthSnapshot?) {
     if item != next { flush() }
-    item = next; self.player = player
+    item = next; self.player = player; self.identity = identity
     timer?.invalidate()
     timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.send(requirePlaying: true) }
@@ -38,11 +39,22 @@ import Foundation
   func flush() {
     send(requirePlaying: false)
     timer?.invalidate(); timer = nil
-    item = nil; player = nil
+    item = nil; player = nil; identity = nil
+  }
+
+  /// Identity changes revoke the old session without flushing it to another account.
+  func discard() {
+    timer?.invalidate(); timer = nil
+    item = nil; player = nil; identity = nil; lastSent = nil
+  }
+
+  func identityChanged(to snapshot: AuthSnapshot) {
+    guard let identity, identity.epoch != snapshot.epoch || identity.identityRevision != snapshot.identityRevision else { return }
+    discard()
   }
 
   private func send(requirePlaying: Bool) {
-    guard let item, let player, enabled() else { return }
+    guard let item, let player, let identity, identity.state != .needsLogin, enabled() else { return }
     let position = player.time
     guard position.isFinite, position >= 1, !requirePlaying || !player.paused else { return }
     let seconds = Int(position)
@@ -53,7 +65,7 @@ import Foundation
     Task {
       // Bound to the identity checked for sign-in: a report that is late for an account switch
       // is dropped instead of being written to the new account.
-      _ = try? await service.reportProgressForCurrentAccount(aid: item.aid, cid: item.cid, seconds: seconds, episode: episode)
+      _ = try? await service.reportProgress(aid: item.aid, cid: item.cid, seconds: seconds, episode: episode, expectedIdentity: identity)
     }
   }
 }

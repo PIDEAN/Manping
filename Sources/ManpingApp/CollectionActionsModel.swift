@@ -159,20 +159,25 @@ import SwiftUI
     playAllProgress = 0
     playAllTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      var collector = PlaylistCollector()
+      var collected: [Video] = []
       do {
-        while !collector.finished {
+        let sourcePage = self.page, service = self.service
+        let result = try await CursorPlaylistCollector.collect(progress: { [weak self] count in
+          await self?.updatePlayAllProgress(count, revision: revision)
+        }) { cursor in
+          let number = Int(cursor ?? "1") ?? 1
           let batch: LibraryPage<LibraryEntry>
-          if page == .later {
-            batch = try await service.collectionViewLater(page: collector.nextPage, expectedIdentity: identity)
+          if sourcePage == .later {
+            batch = try await service.collectionViewLater(page: number, expectedIdentity: identity)
           } else if let folder {
-            batch = try await service.collectionContents(folder: folder, page: collector.nextPage, expectedIdentity: identity)
+            batch = try await service.collectionContents(folder: folder, page: number, expectedIdentity: identity)
           } else { throw CancellationError() }
-          try await checkPlayAll(revision, section: section, identity: identity)
-          collector.add(batch)
-          playAllProgress = collector.videos.count
+          return CursorPlaylistPage(page: batch, nextCursor: batch.hasMore ? String(number + 1) : nil)
         }
-        guard !collector.videos.isEmpty else {
+        collected = result.videos
+        try await checkPlayAll(revision, section: section, identity: identity)
+        guard result.complete else { throw BiliError.dependency(result.notice ?? "没能加载完整列表") }
+        guard !collected.isEmpty else {
           finishPlayAll(revision)
           playAllNoticeStorage = PlayAllNotice(message: "这个列表里没有可以播放的视频。",
             videos: [], identity: identity, context: context)
@@ -180,8 +185,8 @@ import SwiftUI
         }
         // The task stays the owner while the list is handed over: a cancel before the queue
         // changes still stops it (the hand-off checks this read and list once more right before).
-        _ = await play(makeHandoff(collector.videos, identity: identity, context: context,
-          revision: revision, notice: collector.truncationNotice))
+        _ = await play(makeHandoff(collected, identity: identity, context: context,
+          revision: revision, notice: result.notice))
         finishPlayAll(revision)
       } catch is CancellationError {
         finishPlayAll(revision)
@@ -192,13 +197,17 @@ import SwiftUI
         guard currentPlaylistContext == context else { return }
         // Whatever is longer: the pages read just now, or the rows already on screen.
         let shown = loadedVideos
-        let fallback = collector.videos.count >= shown.count ? collector.videos : shown
+        let fallback = collected.count >= shown.count ? collected : shown
         let limit = PlaylistCollector.defaultLimit
         let capped = fallback.count > limit ? "（最多播放前 \(limit) 个）" : ""
         playAllNoticeStorage = PlayAllNotice(message: "没能加载完整列表：\(message(error))\(capped)",
           videos: Array(fallback.prefix(limit)), identity: identity, context: context)
       }
     }
+  }
+  private func updatePlayAllProgress(_ count: Int, revision: UUID) {
+    guard playAllGeneration == revision else { return }
+    playAllProgress = count
   }
   /// 播放已加载的 N 个: plays what a failed read gathered, only while the page is shown and
   /// still shows the list (and account) it was read from; otherwise the notice is dropped.

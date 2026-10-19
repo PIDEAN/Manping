@@ -32,7 +32,7 @@ import QuartzCore
 
   /// Plays a validated result on the media it belongs to; anything else is ignored.
   func start(_ result: AIClipsResult, media: String, turnID: String) {
-    guard result.valid, currentMedia() == media, let player = activePlayer() else { return }
+    guard result.valid, activePlayer()?.browsingSuspended != true, currentMedia() == media, let player = activePlayer() else { return }
     stop(.stopped)
     let actions = machine.start(clips: result.clips.map { AITimeRange(start: $0.start, end: $0.end) }, media: media,
       position: player.time, now: CACurrentMediaTime())

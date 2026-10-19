@@ -1,3 +1,6 @@
+public enum LibraryUserSearchOrder: String, CaseIterable, Sendable {
+  case relevance = "0", followers = "fans", level = "level"
+}
 import Foundation
 
 public enum LibrarySearchType: String, CaseIterable, Sendable {
@@ -30,18 +33,33 @@ public struct LibraryUser: Identifiable, Equatable, Sendable {
   public let name: String
   public let avatar: URL?
   public let signature: String
-  public let followers: Int
-  public let following: Int
-  public let videos: Int
-  public let likes: Int
+  public let followers: Int?
+  public let following: Int?
+  public let videos: Int?
+  public let likes: Int?
   public let level: Int
   public let isVIP: Bool
+  public let isUpUser: Bool
+  public let officialRole: Int?
+  public let officialTitle: String?
+  public let officialDescription: String?
+  public let officialType: Int?
+  public let banner: URL?
+  public let plays: Int?
+  public let isLive: Bool
+  public let roomID: Int64?
   public init(id: Int64, name: String, avatar: URL? = nil, signature: String = "",
-              followers: Int = 0, following: Int = 0, videos: Int = 0,
-              likes: Int = 0, level: Int = 0, isVIP: Bool = false) {
+              followers: Int? = nil, following: Int? = nil, videos: Int? = nil,
+              likes: Int? = nil, level: Int = 0, isVIP: Bool = false,
+              isUpUser: Bool = false, officialRole: Int? = nil, officialTitle: String? = nil,
+              officialDescription: String? = nil, officialType: Int? = nil, banner: URL? = nil,
+              plays: Int? = nil, isLive: Bool = false, roomID: Int64? = nil) {
     self.id = id; self.name = name; self.avatar = avatar; self.signature = signature
     self.followers = followers; self.following = following; self.videos = videos
     self.likes = likes; self.level = level; self.isVIP = isVIP
+    self.isUpUser = isUpUser; self.officialRole = officialRole; self.officialTitle = officialTitle
+    self.officialDescription = officialDescription; self.officialType = officialType
+    self.banner = banner; self.plays = plays; self.isLive = isLive; self.roomID = roomID
   }
 }
 public struct LibraryGroup: Identifiable, Equatable, Sendable {
@@ -163,6 +181,12 @@ extension BiliService {
   public func librarySearch(_ keyword: String, type: LibrarySearchType = .video,
                             order: LibrarySearchOrder = .relevance, page: Int = 1)
     async throws -> LibraryPage<LibraryEntry> {
+    if type == .user {
+      let result = try await searchUsers(term: keyword, page: page)
+      return LibraryPage(items: result.items.map { user in
+        LibraryEntry(id: "user\(user.id)", title: user.name, subtitle: user.signature, cover: user.avatar, destination: .user(user.id))
+      }, hasMore: result.hasMore, total: result.total)
+    }
     try libraryPageNumber(page)
     guard !keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw BiliError.invalidResponse("Empty search keyword")
@@ -198,14 +222,28 @@ extension BiliService {
     return LibraryPage(items: items, hasMore: page < JSONValue.int(data["numPages"]),
                        total: JSONValue.int(data["numResults"]))
   }
+  public func searchUsers(term: String, order: LibraryUserSearchOrder = .relevance, page: Int = 1)
+    async throws -> LibraryPage<LibraryUser> {
+    try libraryPageNumber(page)
+    guard !term.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw BiliError.invalidResponse("Empty search keyword")
+    }
+    let data = try await json("/x/web-interface/wbi/search/type", params: [
+      "keyword": term, "search_type": "bili_user", "order": order.rawValue,
+      "order_sort": "0", "page": String(page)], signed: true)
+    return LibraryPage(items: try Self.libraryList(data, key: "result").map(Self.libraryUser),
+      hasMore: page < JSONValue.int(data["numPages"]), total: JSONValue.int(data["numResults"]))
+  }
   public func libraryProfile(mid: Int64) async throws -> LibraryUser {
     try libraryID(mid)
-    let data = try await json("/x/web-interface/card", params: ["mid": String(mid)])
+    let data = try await json("/x/web-interface/card", params: ["mid": String(mid), "photo": "true"])
     guard var card = data["card"] as? [String: Any] else {
       throw BiliError.invalidResponse("Missing user card")
     }
     card["archive_count"] = data["archive_count"]
     // UserCardDetailResponse keeps community counters outside the profile card.
+    card["banner"] = (data["space"] as? [String: Any])?["l_img"]
+    card["fans"] = data["follower"] ?? data["fans"] ?? card["fans"]
     for key in ["fans", "follow", "like_num"] {
       if let value = data[key] { card[key] = value }
     }
@@ -320,18 +358,30 @@ extension BiliService {
     }
     let vip = item["vip"] as? [String: Any] ?? [:]
     let level = item["level_info"] as? [String: Any] ?? [:]
+    let official = item["Official"] as? [String: Any] ?? item["official_verify"] as? [String: Any] ?? [:]
+    func optionalInt(_ value: Any?) -> Int? { JSONValue.int64(value).map(Int.init) }
     return LibraryUser(id: id, name: libraryPlain(name), avatar: JSONValue.url(item["face"] ?? item["upic"]),
       signature: item["sign"] as? String ?? item["usign"] as? String ?? "",
-      followers: JSONValue.int(item["fans"]), following: JSONValue.int(item["follow"] ?? item["attention"]),
-      videos: JSONValue.int(item["archive_count"] ?? item["videos"]),
-      likes: JSONValue.int(item["like_num"]), level: JSONValue.int(level["current_level"]),
-      isVIP: JSONValue.int(vip["status"]) >= 1)
+      followers: optionalInt(item["fans"]), following: optionalInt(item["follow"] ?? item["attention"]),
+      videos: optionalInt(item["archive_count"] ?? item["videos"]),
+      likes: optionalInt(item["like_num"]), level: JSONValue.int(item["level"] ?? level["current_level"]),
+      isVIP: JSONValue.int(vip["status"]) >= 1, isUpUser: JSONValue.int(item["is_upuser"]) == 1,
+      officialRole: optionalInt(official["role"]), officialTitle: official["title"] as? String,
+      officialDescription: official["desc"] as? String, officialType: optionalInt(official["type"]),
+      banner: JSONValue.url(item["banner"]), plays: optionalInt(item["plays"]),
+      isLive: JSONValue.int(item["is_live"]) == 1, roomID: JSONValue.int64(item["room_id"]))
   }
   static func libraryVideo(_ item: [String: Any]) throws -> Video {
     var normalized = item
     if normalized["aid"] == nil { normalized["aid"] = item["id"] }
     if normalized["pic"] == nil { normalized["pic"] = item["cover"] }
-    if let upper = item["upper"] as? [String: Any] { normalized["owner"] = upper }
+    let owner = item["owner"] as? [String: Any] ?? [:]
+    let upper = item["upper"] as? [String: Any] ?? [:]
+    var author = owner
+    author["mid"] = JSONValue.int64(owner["mid"]) ?? JSONValue.int64(upper["mid"]) ?? JSONValue.int64(item["mid"])
+    author["name"] = owner["name"] ?? upper["name"] ?? item["author"]
+    author["face"] = owner["face"] ?? upper["face"] ?? item["upic"]
+    normalized["owner"] = author
     if let count = item["cnt_info"] as? [String: Any] { normalized["stat"] = ["view": count["play"] ?? 0] }
     if let duration = item["duration"] as? String {
       normalized["duration"] = duration.split(separator: ":").reduce(0) { $0 * 60 + (Int($1) ?? 0) }

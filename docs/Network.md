@@ -418,3 +418,18 @@ python3 scripts/network_stability_suite.py --app .build/task-b-v3/final-v3/满�
 - 第一次选用的视频比 330 秒短。
 
 本机装有防火墙时，第一次运行需要先放行 App 联网。
+
+### 公开 UP 主空间与用户搜索（2026-10-19 匿名查证）
+
+| 能力 | 路由 | 实际能力与处理 |
+| --- | --- | --- |
+| 完整投稿 | `/x/space/wbi/arc/search` | WBI、设备 Cookie、`web_location=1550101` 与 `dm_img_*`；支持 pubdate/click/stow、tid 和 tlist。匿名实测 -352/HTTP 412，只有这两类错误触发备用接口。 |
+| 备用投稿 | App `/x/v2/space/archive/cursor` | App 签名，无 token 要求；`vmid/order/ps/aid`，末项 `param` 为下一页 aid；仅 pubdate/click，无 tid。返回 count/item/has_next，条目使用 title/cover/param/author/length/play。 |
+| 投稿关键词 | gRPC `Space/SearchArchive` | 复用 `LibraryRPCService.userVideos`；仅最新顺序，无分区能力。 |
+| 资料与主页 | `card?photo=true`、`upstat`、`top/arc`、`masterpiece`、`navnum` | `card.Official` 为认证，`space.l_img` 为头图；follower/like_num/archive_count 为可选统计。匿名 upstat 空对象时隐藏播放。无置顶 -404 视为空。 |
+| 合集和系列 | `seasons_series_list` | 匿名可用，`items_lists` 内含 page/seasons_list/series_list；kind 与 ID 共同标识列表。 |
+| 合集明细 | Web `seasons_archives_list` | 匿名，无 App token；page_num/page_size，`sort_reverse=true/false` 由服务端完成倒序。 |
+| 系列明细 | `/x/series/archives` | 匿名，pn/ps、sort=asc/desc；不在本地翻转当前页。 |
+| 用户搜索 | WBI `search/type?search_type=bili_user` | 独立 order=0/fans/level、order_sort；解析顶层 level/is_upuser/official_verify/is_live/room_id/upic。视频作者优先 owner/upper，再回退顶层 mid/upic。 |
+
+投稿 cursor 绑定完整请求条件与 provider。WBI 在翻页时遇风控会重新从 app 第一页读取，并通知页面替换列表；界面展示实际顺序和分区能力。备用选择仅保留在同一个查询的 120 秒冷却期内，重试完整列表和账号切换会清除。取消、身份、认证与解析错误不作为降级依据。全部播放使用可注入的 cursor 分页收集器，去重、限制 1000 条、防游标循环；后页失败保留已读部分，用户明确点击后才播放。

@@ -33,7 +33,7 @@ struct M3SearchPage: View {
       Hairline(axis: .vertical)
       VStack(spacing: 0) {
         if term.isEmpty { discovery }
-        else { LibraryResults(library: library, model: model) }
+        else { LibraryResults(library: library, model: model) { type = .user } }
       }
     }
       .pageToolbar(title: term.isEmpty ? "搜索" : "「\(term)」", subtitle: library.total > 0 ? "\(library.total) 个结果" : nil,

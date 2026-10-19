@@ -57,6 +57,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       let reference = EngineReference(engine)
       // Stop decoding and network I/O; the next loadfile replaces the playlist entry.
       queue.sync {
+        bili_mpv_release_load(reference.pointer)
+        bili_mpv_pause_intent(reference.pointer, 0)
         let stop = strdup("stop")
         var args: [UnsafePointer<CChar>?] = [UnsafePointer(stop), nil]
         _ = args.withUnsafeMutableBufferPointer { bili_mpv_command(reference.pointer, $0.baseAddress) }
@@ -123,6 +125,29 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   }
   private let eofGeneration = PlaybackEOFGeneration()
   @Published var paused = false
+  private var confirmedEnginePause: Bool?
+  private(set) var liveTextPauseAnalyses = 0
+  private(set) var liveTextResumeClears = 0
+  let playbackIdentity = UUID()
+  private(set) var browsingSuspended = false
+  private(set) var playbackIntended = true
+  var powerAssertionHeld: Bool { sleepGuard.held }
+  var onExplicitPlay: (() -> Void)?
+  /// All loads and playback entry points obey the same gate, including delayed CDN loads.
+  func suspendForBrowsing() {
+    browsingSuspended = true
+    set("pause", "yes")
+    surface?.setPlaybackActive(false)
+    sleepGuard.release()
+  }
+  func finishBrowsing(resume: Bool) {
+    browsingSuspended = false
+    set("pause", resume ? "no" : "yes")
+  }
+  func requestPlay() {
+    if browsingSuspended { onExplicitPlay?() }
+    set("pause", "no")
+  }
   /// 仅播放声音: video decoding off for this session (music, podcasts, saving power).
   @Published private(set) var audioOnly = PlayerModel.sessionAudioOnly
   static var sessionAudioOnly = false
@@ -308,6 +333,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       PerformanceRun.log("PERF media_isolation requested=1 verified=\(mediaIsolationVerified ? 1 : 0) ytdl=\(isolationMask & 1 != 0 ? "no" : "unverified") load_scripts=\(isolationMask & 2 != 0 ? "no" : "unverified") cookies=\(isolationMask & 4 != 0 ? "no" : "unverified")")
     }
     engine = handle
+    bili_mpv_pause_intent(handle, paused ? 1 : 0)
     engineSignature = signature
     enginePath = path
     engineProfile = profile
@@ -475,11 +501,16 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         if let sampledPasses { self.passes = sampledPasses }
         // A live stream's "duration" grows every poll; publishing it re-rendered the page 10×/s.
         if self.tracksDuration, self.duration != duration { self.duration = duration }
-        if self.paused != paused {
-          self.paused = paused
-          if paused, self.liveTextEnabled, !idle {
+        let effectivePause = paused || self.browsingSuspended
+        if self.paused != effectivePause { self.paused = effectivePause }
+        // UI intent is published immediately by set(); OCR follows the confirmed engine edge.
+        if !idle, self.confirmedEnginePause != paused {
+          self.confirmedEnginePause = paused
+          if paused, self.liveTextEnabled, !idle, !self.browsingSuspended {
+            self.liveTextPauseAnalyses += 1
             self.liveText.analyse(self)
           } else {
+            self.liveTextResumeClears += 1
             self.liveText.clear()
           }
         }
@@ -488,8 +519,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         if self.chapters != chapters { self.chapters = chapters }
         if self.buffering != waitingForCache { self.buffering = waitingForCache }
         self.bufferedAhead = cacheKnown ? cacheAhead : 0
-        self.surface?.setPlaybackActive(!paused && !idle)
-        self.sleepGuard.update(playing: !paused && !idle && !reachedEnd)
+        self.surface?.setPlaybackActive(!self.browsingSuspended && !paused && !idle)
+        self.sleepGuard.update(playing: !self.browsingSuspended && !paused && !idle && !reachedEnd)
         if let sampledHardware, self.hardware != sampledHardware { self.hardware = sampledHardware }
         // An error sampled before the newest loadfile belongs to the previous stream.
         if self.generation == sampledGeneration, self.pending == nil,
@@ -520,11 +551,15 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     PerformanceOptions.configureAudio(self)
   }
   func load(video: URL, audio: URL?, start: Double = 0, paused: Bool = false) {
+    let paused = paused || browsingSuspended
+    if !browsingSuspended { playbackIntended = !paused; self.paused = paused }
     self.start()
+    if let engine { bili_mpv_pause_intent(engine, paused ? 1 : 0) }
     generation += 1
     terminalFailure = false
     terminalFailureAt = nil
     resetPlaybackEnd()
+    confirmedEnginePause = nil
     chapters = []
     danmakuClock.reset()
     liveText.clear()
@@ -597,6 +632,53 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     guard generation == sampledGeneration, !closing else { return (nil, nil) }
     return sample
   }
+  func diagnosticPauseFlag() async -> Bool? {
+    guard PerformanceOptions.requested, let engine, !closing else { return nil }
+    let reference = EngineReference(engine)
+    return await withCheckedContinuation { continuation in
+      queue.async { continuation.resume(returning: bili_mpv_flag(reference.pointer, "pause") == 1) }
+    }
+  }
+  /// A real mpv barrier, before captured loadfile options apply. Never blocks the worker.
+  func diagnosticHoldNextLoad() async -> Bool {
+    guard PerformanceOptions.requested, PerformanceOptions.playsLocalMedia,
+      let engine, mediaIsolationVerified, !closing else { return false }
+    let reference = EngineReference(engine)
+    return await withCheckedContinuation { continuation in
+      queue.async { continuation.resume(returning: bili_mpv_hold_next_load(reference.pointer) >= 0) }
+    }
+  }
+  func diagnosticReleaseLoad() async {
+    guard let engine, PerformanceOptions.requested, !closing else { return }
+    let reference = EngineReference(engine)
+    await withCheckedContinuation { continuation in
+      queue.async { bili_mpv_release_load(reference.pointer); continuation.resume() }
+    }
+  }
+  struct DiagnosticLoadSample {
+    let held: Bool, loadedFiles: Int, paused: Bool, audioSelected: Bool, eof: Bool
+    let time: Double?, audioTime: Double?, audioOutput: String
+  }
+  func diagnosticLoadSample() async -> DiagnosticLoadSample? {
+    guard PerformanceOptions.requested, PerformanceOptions.playsLocalMedia,
+      let engine, !closing else { return nil }
+    let reference = EngineReference(engine)
+    return await withCheckedContinuation { continuation in
+      queue.async {
+        let engine = reference.pointer
+        func number(_ name: String) -> Double? {
+          var value = 0.0
+          return bili_mpv_number_checked(engine, name, &value) >= 0 && value.isFinite ? value : nil
+        }
+        var output = [CChar](repeating: 0, count: 64)
+        _ = bili_mpv_string(engine, "current-ao", &output, output.count)
+        continuation.resume(returning: DiagnosticLoadSample(held: bili_mpv_load_held(engine) != 0,
+          loadedFiles: Int(bili_mpv_loaded_files(engine)), paused: bili_mpv_flag(engine, "pause") != 0,
+          audioSelected: (number("aid") ?? 0) > 0, eof: bili_mpv_flag(engine, "eof-reached") != 0, time: number("time-pos"),
+          audioTime: number("audio-pts"), audioOutput: DiagnosticAudioTuning.outputCategory(String(cString: output))))
+      }
+    }
+  }
   #if DEBUG
   func simulatePlaybackEnd() {
     guard DebugUIFixtures.enabled else { return }
@@ -604,6 +686,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   }
   #endif
   func command(_ args: [String]) {
+    if args == ["cycle", "pause"] { togglePause(); return }
+    if args.count >= 3, args[0] == "set", args[1] == "pause" { set("pause", args[2]); return }
     if let external, !closing { external.command(args); return }
     guard let engine, !closing else { return }
     let reference = EngineReference(engine)
@@ -619,6 +703,17 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     }
   }
   func set(_ name: String, _ value: String) {
+    if name == "pause" {
+      if browsingSuspended && value != "yes" { return }
+      playbackIntended = value == "no"
+      paused = value == "yes"
+      // Publish before queueing the property: an already submitted loadfile may be
+      // applying its older file-local options on the engine thread right now.
+      if let engine { bili_mpv_pause_intent(engine, paused ? 1 : 0) }
+      if var next = pending { next.paused = paused; pending = next }
+      if paused { surface?.setPlaybackActive(false); sleepGuard.release() }
+      else { liveText.clear() }
+    }
     if let external, !closing { external.set(name, value); return }
     guard let engine, !closing else { return }
     let reference = EngineReference(engine)
@@ -771,7 +866,10 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       command(args)
     }
   }
-  func togglePause() { command(["cycle", "pause"]) }
+  func togglePause() {
+    if browsingSuspended { requestPlay() }
+    else { set("pause", paused ? "no" : "yes") }
+  }
   func shutdown() {
     guard !closing else { return }
     closing = true
@@ -785,8 +883,14 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     surface?.stopRendering()
     if let engine {
       // Drain queued commands for this player before handing the engine on.
-      queue.sync {}
-      MpvEnginePool.shared.checkin(engine, signature: engineSignature, reusable: error == nil)
+      let reference = EngineReference(engine)
+      let inflight = queue.sync {
+        bili_mpv_release_load(reference.pointer)
+        return bili_mpv_load_inflight(reference.pointer) != 0
+      }
+      // A pending hook must not be parked without its event consumer. Destroying
+      // that client releases its hooks; completed engines retain normal pooling.
+      MpvEnginePool.shared.checkin(engine, signature: engineSignature, reusable: error == nil && !inflight)
     }
     engine = nil
   }
@@ -805,6 +909,14 @@ final class VideoSurface: NSView {
   var renderReady = false
   var displayEvidence = ""
   var renderEvidence: String { videoLayer?.statistics() ?? "" }
+  /// Retain the counter, not the surface, while navigation dismantles its NSView.
+  func diagnosticFrameCounter() -> () -> Int {
+    let layer = videoLayer
+    return {
+      let first = layer?.statistics().split(separator: " ").first ?? ""
+      return first.hasPrefix("frames=") ? Int(first.dropFirst(7)) ?? 0 : 0
+    }
+  }
   /// Width / height of the picture on a playback stage (DesignSystem.md §11). The surface then
   /// fills the stage: the video layer is fitted to this shape and centred, the danmaku layer
   /// covers the whole stage, and the area around the picture stays clear so the stage backdrop

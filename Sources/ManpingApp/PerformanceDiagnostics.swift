@@ -463,13 +463,14 @@ enum PerformanceCoverData {
     let first = text.split(separator: " ").first ?? ""
     return first.hasPrefix("frames=") ? Int(first.dropFirst(7)) ?? 0 : 0
   }
-  private func openLocal(file: URL, model: AppModel) async throws {
+  private func openLocal(file: URL, model: AppModel, checkDelayedLoad: Bool = false) async throws {
     model.open(Video(bvid: DebugUIFixtures.bvid, title: "4K60 本地性能测试", aid: 100))
     try await wait { model.videoDetails != nil && model.player.surface != nil }
     guard model.player.mediaIsolationVerified else { throw PerformanceOptions.Failure.playbackUnavailable }
     model.player.commentsEnabled = false
     model.player.set("volume", "0")
-    model.player.load(video: file, audio: nil)
+    if checkDelayedLoad { try await delayedNavigationLoad(file: file, model: model, phase: "initial", start: 0) }
+    else { model.player.load(video: file, audio: nil) }
     try await wait {
       model.player.duration > 0 && model.player.time > 0.1 && model.player.engine != nil &&
         renderFrames(model.player) > 0
@@ -490,13 +491,20 @@ enum PerformanceCoverData {
   private func danmakuSubmits() -> Int { DanmakuView.diagnosticEvidence["submits"] ?? 0 }
   private func playback(file: URL, model: AppModel) async throws {
     let fps = PerformanceOptions.sourceFPS
+    let navigationCheck = ProcessInfo.processInfo.environment["MANPING_NAVIGATION_CHECK"] == "1"
     Self.log("PERF playback START file=\(file.lastPathComponent) warmup_s=5 source_fps=\(fps) danmaku=\(PerformanceOptions.danmakuPattern ?? "off") profile=\(MacSettings.load(from: PerformanceEnvironment.defaults).text(.mpvProfile)) hwdec_request=videotoolbox")
-    try await openLocal(file: file, model: model)
+    try await openLocal(file: file, model: model, checkDelayedLoad: navigationCheck)
     if let pattern = PerformanceOptions.danmakuPattern {
       model.player.commentsEnabled = true
       model.player.timeline = Self.danmakuTimeline(pattern, duration: model.player.duration)
     }
     try await wait { model.player.time >= 5 }
+    if navigationCheck {
+      try await pausedBrowsing(model: model)
+      try await delayedNavigationLoad(file: file, model: model, phase: "reload", start: model.player.time)
+      try await delayedNavigationLoad(file: file, model: model, phase: "user-pause", start: model.player.time, browsing: false)
+      return
+    }
     let player = model.player
     let startTime = player.time
     let startRenderFrames = renderFrames(player)
@@ -518,6 +526,121 @@ enum PerformanceCoverData {
     let hardwarePass = player.hardware.hasPrefix("videotoolbox")
     Self.log("PERF playback render_frames_delta=\(renderFrames(player) - startRenderFrames) render_evidence=\(player.surface?.renderEvidence ?? "unavailable")")
     Self.log(String(format: "PERF playback END file=%@ start_s=%.3f end_s=%.3f expected_cfr_frames=%.1f vo_drop_delta=%.0f decoder_drop_delta=%.0f total_drop_pct=%.6f hwdec_current=%@ estimated_vf_fps=%@ threshold_pct=0.1 result=%@", file.lastPathComponent, startTime, player.time, expectedFrames, vo, decoder, dropPercent, player.hardware, player.metrics["estimated-vf-fps"].map { String(format: "%.3f", $0) } ?? "unavailable", dropPercent < 0.1 && hardwarePass ? "PASS" : "FAIL"))
+  }
+  private func waitForLoad(_ player: PlayerModel, until predicate: (PlayerModel.DiagnosticLoadSample) -> Bool) async throws -> PlayerModel.DiagnosticLoadSample {
+    let deadline = CACurrentMediaTime() + 12
+    while CACurrentMediaTime() < deadline {
+      if let sample = await player.diagnosticLoadSample(), predicate(sample) { return sample }
+      await delay(0.05)
+    }
+    if let sample = await player.diagnosticLoadSample() {
+      Self.log("PERF navigation LOAD_TIMEOUT held=\(sample.held) loaded=\(sample.loadedFiles) pause=\(sample.paused) time=\(String(describing: sample.time)) audio_pts=\(String(describing: sample.audioTime)) audio_selected=\(sample.audioSelected) ao=\(sample.audioOutput)")
+    }
+    throw PerformanceOptions.Failure.timedOut
+  }
+  /// Pause after loadfile returned, but before mpv applies its captured pause=no.
+  /// The production on_load hook must repair that stale option before audio starts.
+  private func delayedNavigationLoad(file: URL, model: AppModel, phase: String, start: Double, browsing: Bool = true) async throws {
+    let player = model.player
+    guard let counter = player.surface?.diagnosticFrameCounter(),
+      let before = await player.diagnosticLoadSample(),
+      await player.diagnosticHoldNextLoad() else { throw PerformanceOptions.Failure.playbackUnavailable }
+    player.load(video: file, audio: nil, start: start, paused: false)
+    let held = try await waitForLoad(player) { $0.held }
+    Self.log("PERF navigation LOAD_BARRIER phase=\(phase) held=\(held.held) loaded_before=\(before.loadedFiles) raw_pause=\(held.paused)")
+    guard held.loadedFiles == before.loadedFiles else { throw PerformanceOptions.Failure.countersUnavailable }
+    if browsing {
+      model.openOverlay(.userSpace(946974))
+      try await wait { player.surface == nil && player.browsingSuspended && player.paused }
+    } else { player.set("pause", "yes") }
+    let entered = await player.diagnosticLoadSample()
+    await player.diagnosticReleaseLoad()
+    Self.log("PERF navigation LOAD_RELEASE phase=\(phase) entered_pause=\(String(describing: entered?.paused))")
+    _ = try await waitForLoad(player) {
+      !$0.held && $0.loadedFiles > before.loadedFiles && $0.time != nil
+    }
+    await delay(0.4)
+    guard let first = await player.diagnosticLoadSample(), let firstTime = first.time else {
+      throw PerformanceOptions.Failure.countersUnavailable
+    }
+    let frames = counter(), submits = danmakuSubmits()
+    await delay(1.5)
+    guard let last = await player.diagnosticLoadSample(), let lastTime = last.time else {
+      throw PerformanceOptions.Failure.countersUnavailable
+    }
+    let drift = abs(lastTime - firstTime)
+    let audioDrift = first.audioTime.flatMap { first in last.audioTime.map { abs($0 - first) } }
+    // mpv exposes audio-pts only from STATUS_PLAYING onward (command.c). A paused
+    // initial/replacement file can have an initialized AO without ever starting it.
+    let audioNeverStarted = first.audioTime == nil && last.audioTime == nil && !first.eof && !last.eof
+    func seconds(_ value: Double?) -> String { value.map { String(format: "%.6f", $0) } ?? "unavailable" }
+    let renderDelta = counter() - frames, danmakuDelta = danmakuSubmits() - submits
+    let passed = entered?.paused == true && first.paused && last.paused && first.audioSelected && last.audioSelected &&
+      ["coreaudio", "avfoundation"].contains(first.audioOutput) && first.audioOutput == last.audioOutput && drift < 0.05 &&
+      (audioNeverStarted || (audioDrift.map { $0 < 0.05 } ?? false)) &&
+      renderDelta == 0 && danmakuDelta == 0 && !player.powerAssertionHeld
+    Self.log(String(format: "PERF navigation DELAYED_LOAD phase=%@ captured_pause=no before_start_held=%@ loaded_before=%d loaded_after=%d entered_pause=%@ raw_pause=%@ audio_selected=%@ ao=%@ observation_s=1.5 time_start_s=%.6f time_end_s=%.6f drift_s=%.6f audio_start_s=%@ audio_end_s=%@ audio_drift_s=%@ audio_state=%@ render_delta=%d danmaku_delta=%d power=%@ result=%@",
+      phase, held.held ? "yes" : "no", before.loadedFiles, last.loadedFiles, entered?.paused == true ? "yes" : "no",
+      last.paused ? "yes" : "no", last.audioSelected ? "yes" : "no", last.audioOutput,
+      firstTime, lastTime, drift, seconds(first.audioTime), seconds(last.audioTime), seconds(audioDrift),
+      audioNeverStarted ? "not-started" : "frozen", renderDelta, danmakuDelta,
+      player.powerAssertionHeld ? "held" : "released", passed ? "PASS" : "FAIL"))
+    guard passed else { throw PerformanceOptions.Failure.countersUnavailable }
+    if browsing { model.goBack() } else { player.requestPlay() }
+    try await wait { player.surface != nil && !player.paused && player.time > lastTime + 0.3 }
+    guard await player.diagnosticPauseFlag() == false else { throw PerformanceOptions.Failure.playbackUnavailable }
+    let resumed = try await waitForLoad(player) { $0.audioTime != nil }
+    await delay(0.4)
+    guard let resumedEnd = await player.diagnosticLoadSample(), let audioStart = resumed.audioTime,
+      let audioEnd = resumedEnd.audioTime, audioEnd > audioStart + 0.1 else { throw PerformanceOptions.Failure.countersUnavailable }
+    Self.log(String(format: "PERF navigation DELAYED_RESUME phase=%@ raw_pause=no resumed_s=%.6f audio_start_s=%.6f audio_end_s=%.6f audio_advance_s=%.6f result=PASS",
+      phase, player.time, audioStart, audioEnd, audioEnd - audioStart))
+  }
+  /// Opt-in with the existing local-media command; never opens, activates or moves a window.
+  private func pausedBrowsing(model: AppModel) async throws {
+    let player = model.player
+    guard let counter = player.surface?.diagnosticFrameCounter(), player.engine != nil else {
+      throw PerformanceOptions.Failure.playbackUnavailable
+    }
+    let heldBefore = player.powerAssertionHeld
+    let originalPosition = player.time
+    model.openOverlay(.userSpace(946974))
+    try await wait { player.surface == nil && player.paused && !player.powerAssertionHeld }
+    await delay(0.4)
+    let rawPause = await player.diagnosticPauseFlag()
+    let pausedPosition = (await player.diagnosticNetworkEngineSample()).time ?? -.infinity
+    let frames = counter(), submits = danmakuSubmits()
+    await delay(1.5)
+    let pausedEnd = (await player.diagnosticNetworkEngineSample()).time ?? .infinity
+    let rendered = counter() - frames, danmaku = danmakuSubmits() - submits
+    let delta = abs(pausedEnd - pausedPosition)
+    let suspended = rawPause == true && !player.powerAssertionHeld && rendered == 0 && danmaku == 0 && delta < 0.05
+    Self.log(String(format: "PERF navigation PAUSE raw_pause=%@ power_before=%@ power_after=%@ surface_owners=%d render_delta=%d danmaku_delta=%d enter_s=%.3f paused_s=%.3f paused_end_s=%.3f drift_s=%.6f result=%@",
+      rawPause == true ? "yes" : "no", heldBefore ? "held" : "released", player.powerAssertionHeld ? "held" : "released",
+      player.surface == nil ? 0 : 1, rendered, danmaku, originalPosition, pausedPosition, pausedEnd, delta, suspended ? "PASS" : "FAIL"))
+    guard suspended else { throw PerformanceOptions.Failure.countersUnavailable }
+    model.goBack()
+    let returnPosition = player.time
+    try await wait { player.surface != nil && !player.paused && player.time > pausedPosition + 0.3 }
+    let rawResumed = await player.diagnosticPauseFlag()
+    let resumed = rawResumed == false && player.powerAssertionHeld && abs(returnPosition - pausedPosition) < 0.1
+    Self.log(String(format: "PERF navigation RESUME raw_pause=%@ power=%@ surface_owners=%d paused_s=%.3f return_s=%.3f resumed_s=%.3f position_error_s=%.6f result=%@",
+      rawResumed == true ? "yes" : "no", player.powerAssertionHeld ? "held" : "released", player.surface == nil ? 0 : 1,
+      pausedPosition, returnPosition, player.time, abs(returnPosition - pausedPosition), resumed ? "PASS" : "FAIL"))
+    guard resumed else { throw PerformanceOptions.Failure.playbackUnavailable }
+    var settings = MacSettings.load(from: PerformanceEnvironment.defaults)
+    _ = settings.set(.liveText, .bool(true), capabilities: [.liveText])
+    player.configureRuntime(settings: settings)
+    let analyses = player.liveTextPauseAnalyses, clears = player.liveTextResumeClears
+    player.set("pause", "yes")
+    try await wait { player.liveTextPauseAnalyses > analyses }
+    if player.liveText.isSupported { try await wait(seconds: 12) { player.liveText.analysis != nil } }
+    let obtainedAnalysis = player.liveText.analysis != nil
+    player.requestPlay()
+    try await wait { player.liveTextResumeClears > clears && !player.paused }
+    let cleared = player.liveText.analysis == nil
+    Self.log("PERF navigation LIVETEXT pause_analyses=\(player.liveTextPauseAnalyses - analyses) resume_clears=\(player.liveTextResumeClears - clears) supported=\(player.liveText.isSupported) analysis_obtained=\(obtainedAnalysis) analysis_cleared=\(cleared) result=\(cleared ? "PASS" : "FAIL")")
+    guard cleared else { throw PerformanceOptions.Failure.playbackUnavailable }
   }
   /// Loads through the production CDN prepare/attach/relay path. Only the origins and cache
   /// budget are diagnostic; no recovery, seek, retry or quality switch is triggered by this loop.

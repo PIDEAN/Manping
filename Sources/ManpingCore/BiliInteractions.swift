@@ -17,7 +17,7 @@ enum BiliAppRoute {
   case playback, favoriteFolders, like, coin, triple, favorite, following
   case followGroups, followGroupUsers, followers, libraryGallery, libraryFolders
   case libraryContents, librarySeasonContents, viewLater, favoriteBangumi, favoriteCinema
-  case relationship, searchTrending, searchRecommend
+  case relationship, searchTrending, searchRecommend, spaceArchiveCursor
   case laterDelete, laterClear, favoriteRemove, pgcFavoriteRemove
   case replyLike, replyAdd, danmakuSend
   case pgcTimeline, pgcConditions, pgcIndex, pgcDetails, pgcPlayback
@@ -80,6 +80,7 @@ enum BiliAppRoute {
     case .viewLater: "https://api.bilibili.com/x/v2/history/toview"
     case .favoriteBangumi: "https://api.bilibili.com/pgc/app/follow/v2/bangumi"
     case .favoriteCinema: "https://api.bilibili.com/pgc/app/follow/v2/cinema"
+    case .spaceArchiveCursor: "https://app.bilibili.com/x/v2/space/archive/cursor"
     case .relationship: "https://api.bilibili.com/x/relation"
     case .searchTrending: "https://app.bilibili.com/x/v2/search/trending/ranking"
     case .searchRecommend: "https://app.bilibili.com/x/v2/search/recommend"

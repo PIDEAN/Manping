@@ -10,7 +10,8 @@ public enum MessageSection: String, CaseIterable, Sendable {
 
 /// Closed Web routes: history loading never acknowledges or marks a conversation read.
 public enum BiliMessageWebRoute: Sendable {
-  case sessions, history, users, send, unread
+  case sessions, history, users, send, unread, updateAcknowledgement, batchDustbinAcknowledgement
+  var isPOST: Bool { self == .send || self == .updateAcknowledgement || self == .batchDustbinAcknowledgement }
   public var url: String {
     let path = switch self {
       case .sessions: "/session_svr/v1/session_svr/get_sessions"
@@ -18,6 +19,8 @@ public enum BiliMessageWebRoute: Sendable {
       case .history: "/svr_sync/v1/svr_sync/fetch_session_msgs"
       case .users: "/account/v1/user/cards"
       case .send: "/web_im/v1/web_im/send_msg"
+      case .updateAcknowledgement: "/session_svr/v1/session_svr/update_ack"
+      case .batchDustbinAcknowledgement: "/session_svr/v1/session_svr/batch_update_dustbin_ack"
     }
     return "https://api.vc.bilibili.com" + path
   }
@@ -135,6 +138,9 @@ public struct ChatSession: Identifiable, Sendable {
   public let lastMessage: ConversationMessage
   public let unread: Int64
   public let timestamp: Int64
+  public var sessionType: Int64 = 1
+  public var maxSequence: Int64 = 0
+  public var acknowledgedSequence: Int64 = 0
 }
 public struct ChatSessionPage: Sendable {
   public let sessions: [ChatSession]
@@ -145,4 +151,39 @@ public struct ChatSessionPage: Sendable {
 func messageInteger(_ value: Any?) -> Int64 {
   if let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() { return 0 }
   return (value as? NSNumber)?.int64Value ?? (value as? String).flatMap(Int64.init) ?? 0
+}
+
+/// A fixed acknowledgement boundary; never substitute a message key for a sequence.
+public struct MessageAcknowledgementTarget: Sendable, Equatable {
+  public let talkerID: Int64
+  public let sessionType: Int64
+  public let maxSequence: Int64
+}
+public enum MessageReadOutcome: Sendable, Equatable {
+  case success, partialFailure(count: Int), cancelled, unknown
+}
+/// Missing entries are unknown, never zero. Values always come from unread endpoints.
+public struct MessageUnreadCounts: Sendable, Equatable {
+  public var values: [MessageSection: Int64]
+  public init(values: [MessageSection: Int64] = [:]) { self.values = values }
+  public init(_ unread: UnreadMessages) {
+    values = Dictionary(uniqueKeysWithValues: MessageSection.allCases.map { ($0, unread[$0]) })
+  }
+  public subscript(_ section: MessageSection) -> Int64? { values[section] }
+  /// A lower bound while any category remains unknown.
+  public var knownTotal: Int64 { values.values.reduce(0) { min(Int64.max - $0, $1) + $0 } }
+  public var total: Int64? {
+    guard values.count == MessageSection.allCases.count else { return nil }
+    return knownTotal
+  }
+  public func canMarkAllRead(isRunning: Bool, needsRetry: Bool) -> Bool {
+    !isRunning && (needsRetry || !MessageSection.allCases.allSatisfy { self[$0] == 0 })
+  }
+}
+public struct MarkAllMessagesReadResult: Sendable, Equatable {
+  public let outcomes: [MessageSection: MessageReadOutcome]
+  public let unread: MessageUnreadCounts
+  public init(outcomes: [MessageSection: MessageReadOutcome], unread: MessageUnreadCounts) {
+    self.outcomes = outcomes; self.unread = unread
+  }
 }

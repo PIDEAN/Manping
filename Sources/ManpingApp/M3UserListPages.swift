@@ -176,8 +176,10 @@ struct M3UserCard: View {
 private struct FollowButtonStyle: ViewModifier {
   let compact: Bool
   let followed: Bool
+  var prominent = false
   func body(content: Content) -> some View {
-    if compact { content.buttonStyle(ChromeButtonStyle(selected: followed, icon: true, capsule: true)) }
+    if prominent { content.buttonStyle(.plain) }
+    else if compact { content.buttonStyle(ChromeButtonStyle(selected: followed, icon: true, capsule: true)) }
     else { content.toolbarIconStyle() }
   }
 }
@@ -188,15 +190,17 @@ struct M3UserFollowButton: View {
   @ObservedObject var relations: UserRelationsModel
   @ObservedObject var model: AppModel
   var compact = false
+  var prominent = false
   private var followed: Bool { relations.relations[mid]?.isFollowing == true }
   var body: some View {
     Button { Task { await relations.toggle(mid: mid) { model.showingLogin = true } } } label: {
       Group {
         if relations.busy.contains(mid) { ProgressView().controlSize(.mini) }
+        else if prominent { Label(followed ? "已关注" : "关注", systemImage: followed ? "checkmark" : "plus").font(Theme.Font.caption.weight(.semibold)).padding(.horizontal, 14).frame(height: 32).foregroundStyle(followed ? Theme.text(scheme) : Color.black).background(followed ? Theme.fill(scheme) : Theme.accent, in: Capsule()) }
         else if compact { Image(systemName: followed ? "heart.fill" : "heart").font(.system(size: 10)) }
         else { ToolbarIcon(followed ? "heart.fill" : "heart").foregroundStyle(followed ? Theme.accentText(scheme) : Theme.text(scheme)) }
       }.frame(width: compact ? 24 : nil, height: compact ? 24 : nil)
-    }.modifier(FollowButtonStyle(compact: compact, followed: followed))
+    }.modifier(FollowButtonStyle(compact: compact, followed: followed, prominent: prominent))
       .disabled(!relations.canToggle(mid))
       .help(relations.errors[mid] ?? (mid == relations.selfID ? "当前账号" :
         relations.relations[mid]?.isFollowing == nil ? "关注状态尚未确认；可在菜单刷新" : followed ? "取消关注" : "关注"))

@@ -639,7 +639,7 @@ public actor BiliService {
     guard cookies.contains(where: { $0.name == "SESSDATA" && !$0.value.isEmpty }) else {
       throw BiliError.dependency("私信需要有效的网页登录信息，请重新登录。")
     }
-    if route == .send {
+    if route.isPOST {
       guard let csrf = cookies.first(where: { $0.name == "bili_jct" && !$0.value.isEmpty })?.value else {
         throw AuthFailure.missingCSRF
       }
@@ -649,7 +649,7 @@ public actor BiliService {
     values["build"] = "80200100"
     values["appkey"] = route == .users ? "aa1e74ee4874176e" : AppForm.appKey
     values["platform"] = route == .users ? "web" : "ios"
-    values["mobi_app"] = route == .users ? nil : "iphone"
+    values["mobi_app"] = route == .users ? nil : (route.isPOST && route != .send ? "web" : "iphone")
     values["ts"] = String(route == .users ? Int64(now().timeIntervalSince1970 * 1000) : seconds)
     values["wts"] = String(seconds)
     // Exact SDK GenerateRID signs raw values, preserving message punctuation in the form body.
@@ -657,9 +657,9 @@ public actor BiliService {
     values["w_rid"] = WBI.md5(query + (try WBI.mixinKey(imageKey: keys.0, subKey: keys.1)))
     let form = AppForm.encoded(values)
     var components = URLComponents(url: target, resolvingAgainstBaseURL: false)!
-    if route != .send { components.percentEncodedQuery = String(decoding: form, as: UTF8.self) }
+    if !route.isPOST { components.percentEncodedQuery = String(decoding: form, as: UTF8.self) }
     var request = request(components.url!)
-    if route == .send {
+    if route.isPOST {
       request.httpMethod = "POST"; request.httpBody = form
       request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
     }

@@ -366,17 +366,33 @@ struct VideoDetailPage: View {
     player.endTemporarySpeed()
   }
 
+  @State private var uploaderHovered = Self.previewUploaderHover
+  private static var previewUploaderHover: Bool {
+    #if DEBUG
+    DebugUIFixtures.enabled && ProcessInfo.processInfo.environment["MANPING_UPLOADER_HOVER"] == "1"
+    #else
+    false
+    #endif
+  }
   private func detailInformation(_ details: VideoDetails) -> some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 10) {
-        CachedImage(url: details.uploader.avatar)
-          .frame(width: 38, height: 38).clipShape(Circle())
-          .overlay(Circle().strokeBorder(Theme.separator(scheme), lineWidth: 0.5))
-        VStack(alignment: .leading, spacing: 2) {
-          Text(details.uploader.name).font(Theme.Font.headline)
-          Text("\(count(details.uploader.followers)) 粉丝")
-            .font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme))
+        Button { model.openOverlay(.userSpace(details.uploader.mid)) } label: {
+          HStack(spacing: 10) {
+            CachedImage(url: details.uploader.avatar)
+              .frame(width: 38, height: 38).clipShape(Circle())
+              .overlay(Circle().strokeBorder(Theme.separator(scheme), lineWidth: 0.5))
+            VStack(alignment: .leading, spacing: 2) {
+              Text(details.uploader.name).font(Theme.Font.headline)
+              Text("\(count(details.uploader.followers)) 粉丝")
+                .font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme))
+            }
+          }
+          .padding(5)
+          .background(uploaderHovered ? Theme.selectedFill(scheme) : Color.clear, in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
         }
+        .buttonStyle(.plain).disabled(details.uploader.mid <= 0)
+        .help("进入 UP 主空间").onHover { uploaderHovered = $0 }
         Spacer()
         Button(interactions.following.map { $0 ? "已关注" : "关注" } ?? "关注状态…") {
           guard let aid = details.video.aid, aid > 0 else { return }

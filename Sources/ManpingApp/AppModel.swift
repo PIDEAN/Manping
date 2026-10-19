@@ -143,7 +143,49 @@ import WebKit
   /// the main window puts it back on top.
   @Published private(set) var browsingBesidePlayback = false
   /// The main window shows the playback page (or, while playback is elsewhere, its placeholder).
-  var mainShowsPlayer: Bool { hasPlayback && !browsingBesidePlayback }
+  var mainShowsPlayer: Bool { hasPlayback && !browsingBesidePlayback && !pausedBrowsing.isBrowsing }
+  @Published private(set) var pausedBrowsing = PlaybackBrowsingState()
+  private var browsingBinding: PlaybackBrowsingState.Binding {
+    .init(player: player.playbackIdentity, media: sessionMediaKey, generation: clipGeneration,
+      epoch: accountDisplayIdentity?.epoch ?? 0, revision: accountDisplayIdentity?.revision ?? 0)
+  }
+  private func beginPausedBrowsing() {
+    guard selected != nil, !playbackElsewhere else { return }
+    // Browsing is a newer user choice than the open's not-yet-applied default placement.
+    pendingOpenMode = nil
+    let effects = pausedBrowsing.enter(binding: browsingBinding, depth: overlays.count, playing: player.playbackIntended)
+    if effects.cancelNextPlayback { cancelNextPlayback() }
+    clipPlayback.stop(.stopped)
+    if effects.pause { player.suspendForBrowsing() }
+  }
+  private func resumeVisiblePlayback() {
+    let visible = currentOverlay == playbackRoute
+    guard let resume = pausedBrowsing.returnToPlayback(binding: browsingBinding,
+      depth: overlays.count, playbackVisible: visible) else { return }
+    player.finishBrowsing(resume: resume)
+    retryDeferredVideo(resume: resume)
+  }
+  /// Explicit media-key Play returns to the current video before enabling playback.
+  private func revealAndPlay() {
+    guard selected != nil else { return }
+    if pausedBrowsing.isBrowsing {
+      if let index = overlays.lastIndex(where: Self.isPlayerRoute) {
+        overlays = Array(overlays.prefix(index + 1))
+      } else if let route = playbackRoute { overlays.append(route) }
+      pausedBrowsing.reset()
+      forwardRoutes = []
+    }
+    player.finishBrowsing(resume: true)
+    retryDeferredVideo(resume: true)
+  }
+  /// User-requested placement ends suspended browsing and resumes only the captured intent.
+  private func finishBrowsingForPlacement() {
+    guard pausedBrowsing.isBrowsing else { return }
+    let resume = pausedBrowsing.presentationChanged(.externalWindow, binding: browsingBinding) ?? false
+    player.finishBrowsing(resume: resume)
+    retryDeferredVideo(resume: resume, preservingOverlay: true)
+    browsingBesidePlayback = currentOverlay != playbackRoute
+  }
   /// The selection the open episode page was opened with (its route and its page key).
   @Published private(set) var pgcSelection: PGCSelection?
   private static func isPlayerRoute(_ route: OverlayRoute) -> Bool {
@@ -156,16 +198,22 @@ import WebKit
   private var playbackRoute: OverlayRoute? {
     if let livePlayback { return .live(livePlayback.roomID) }
     if pgcPlayback != nil, let pgcSelection { return .pgc(pgcSelection) }
-    if let selected { return .video(selected.id) }
+    if selected != nil { return .video(sessionMediaKey) }
     return nil
   }
-  /// Navigation away from the playback page. Playback in the main window stops; playback in the
-  /// mini window or the standalone window keeps going while the main window browses.
+  /// UGC main-window navigation keeps the engine/reporter and removes its surface. onDisappear
+  /// cancels page-local work only; returning reattaches the parked render layer without loadfile.
+  /// Window table: suspended -> mini/detached ends browsing, retains the original play intent;
+  /// returning/closing external windows restores the playback page. Native fullscreen keeps
+  /// the overlay paused; the explicit player-fullscreen action returns to playback first.
+  /// PGC/live keep their old close-on-main-navigation behavior; external playback keeps going.
   private func leavePlaybackPage() {
     guard hasPlayback else { return }
     if playbackElsewhere {
       browsingBesidePlayback = true
       overlays.removeAll(where: Self.isPlayerRoute)
+    } else if selected != nil {
+      beginPausedBrowsing()
     } else {
       closePlayer()
     }
@@ -290,22 +338,46 @@ import WebKit
   @Published var unreadMessageCount = 0 {
     didSet { if oldValue != unreadMessageCount { updateDockBadge() } }
   }
+  @Published private(set) var messageUnreadCounts = MessageUnreadCounts()
   private var unreadTask: Task<Void, Never>?
+  private var unreadGeneration = MessageUnreadGeneration()
+  private var messageReadOperation: UUID?
+  /// Invalidate any in-flight poll before the explicit operation starts.
+  func beginMessageReadOperation() -> UUID {
+    let token = unreadGeneration.invalidate()
+    unreadTask?.cancel(); unreadTask = nil; messageReadOperation = token
+    return token
+  }
+  func updateMessageReadOperation(_ token: UUID, unread: MessageUnreadCounts) {
+    guard messageReadOperation == token else { return }
+    messageUnreadCounts = unread
+    unreadMessageCount = Int(min(unread.knownTotal, 9_999))
+  }
+  func finishMessageReadOperation(_ token: UUID, result: MarkAllMessagesReadResult?) {
+    guard messageReadOperation == token else { return }
+    if let result { updateMessageReadOperation(token, unread: result.unread) }
+    messageReadOperation = nil
+    restartUnreadPolling()
+  }
+  func refreshMessageUnreadCounts() { if messageReadOperation == nil { restartUnreadPolling() } }
   /// Reads unread replies, @, likes and private messages every two minutes while signed in.
   private func restartUnreadPolling() {
+    let generation = unreadGeneration.invalidate()
     unreadTask?.cancel(); unreadTask = nil
-    guard !usesUIFixtures else { return }
-    guard accountMID != nil else { unreadMessageCount = 0; return }
+    guard accountMID != nil else {
+      messageReadOperation = nil; messageUnreadCounts = MessageUnreadCounts(); unreadMessageCount = 0; return
+    }
+    guard messageReadOperation == nil else { return }
     let service = self.service
     unreadTask = Task { [weak self] in
       while !Task.isCancelled {
         let before = await service.authSnapshot()
-        if let unread = try? await service.unreadMessages(expectedIdentity: before) {
+        if let unread = try? await service.unreadMessageCounts(expectedIdentity: before) {
           let after = await service.authSnapshot()
-          guard let self, !Task.isCancelled else { return }
-          // A count read for another account must not land on this one.
+          guard let self, !Task.isCancelled, self.unreadGeneration.accepts(generation) else { return }
           if after.epoch == before.epoch, after.identityRevision == before.identityRevision, self.accountMID != nil {
-            self.unreadMessageCount = Int(min(unread.total, 9_999))
+            self.messageUnreadCounts = unread
+            self.unreadMessageCount = Int(min(unread.knownTotal, 9_999))
           }
         }
         do { try await Task.sleep(for: .seconds(120)) } catch { return }
@@ -325,6 +397,8 @@ import WebKit
   private var queueIdentityTask: Task<Void, Never>?
   private var eofObservation: AnyCancellable?
   private var clipGeneration = UUID()
+  private var sessionMediaKey = ""
+  private var reportIdentity: AuthSnapshot?
   private var queueLoadIdentity: AuthSnapshot?
   #if DEBUG
   var launchCuratedPlaylist = false
@@ -333,6 +407,18 @@ import WebKit
   var debugAfterIdentityEvent: ((AuthIdentityEvent) async -> Void)?
   var debugCuratedRequest: Task<Void, Never>? { curatedTask }
   var debugVideoLoadRequest: Task<Void, Never>? { loadTask }
+  var debugSuppressPlaybackWindows = false
+  var debugAllowFixtureQualityChanges = false
+  var debugAfterQualityPrepare: (() async -> Void)?
+  var debugQualityRequest: Task<Void, Never>?
+  var debugHasDeferredVideoRetry: Bool { deferredVideoRetry != nil }
+  func debugSetDefaultOpenMode(_ mode: MacOpenMode) {
+    for (key, value) in mode.values { _ = appSettings.set(key, value, capabilities: [key]) }
+  }
+  func debugRequestNextPlayback() { requestNextPlayback() }
+  func debugWaitForIdentity() async {
+    while reportIdentity == nil { await Task.yield() }
+  }
   #endif
   /// 小窗 is open: the picture lives in the floating mini panel (`MiniPlayerCoordinator`).
   @Published private(set) var compactPlayer = false
@@ -486,7 +572,7 @@ import WebKit
       noteNavigation()
       pgcFavoriteIntent = nil
       cancelCuratedPlaylist()
-      leavePlaybackPage()
+      if hasPlayback && playbackElsewhere { leavePlaybackPage() } else { closePlayer() }
       overlays = [route]
       forwardRoutes = []
     }
@@ -714,7 +800,7 @@ import WebKit
         // The launch video already failed anonymously: try it once more with the account.
         if let launch = selected, anonymousLoadFailure == clipGeneration, manifest == nil {
           anonymousLoadFailure = nil
-          startVideo(launch, preservingQueue: false, identityRetry: true)
+          retryVideoForIdentity(launch)
         }
       }
     } catch {
@@ -796,10 +882,13 @@ import WebKit
     noteNavigation()
     guard let route = overlays.last else { return }
     switch route {
-    case .video, .pgc, .live: leavePlaybackPage()
+    case .video, .pgc, .live:
+      if playbackElsewhere { leavePlaybackPage() } else { closePlayer() }
     default: forwardRoutes.append(route); overlays.removeLast()
     }
-    Task { await refresh() }
+    resumeVisiblePlayback()
+    // Returning to retained UGC playback must not restart an engine still awaiting its surface.
+    if !mainShowsPlayer || selected == nil { Task { await refresh() } }
   }
   /// 前进 (⌘]): reopens the route last left with 返回.
   func goForward() {
@@ -815,10 +904,10 @@ import WebKit
   }
   func refresh() async {
     // While the main window browses beside the mini or standalone window, it refreshes its page.
-    if !browsingBesidePlayback, let pgcPlayback { await pgcPlayback.refresh(); return }
+    if mainShowsPlayer, let pgcPlayback { await pgcPlayback.refresh(); return }
     // List refreshes (launch, account restore) must not interrupt a healthy live stream.
-    if !browsingBesidePlayback, let livePlayback { livePlayback.refreshIfNeeded(); return }
-    if !browsingBesidePlayback, let selected {
+    if mainShowsPlayer, let livePlayback { livePlayback.refreshIfNeeded(); return }
+    if mainShowsPlayer, let selected {
       // A video that is playing keeps playing; ⌘R then only refreshes its side data.
       if manifest != nil, player.error == nil, player.duration > 0 {
         await refreshVideoDetails(selected)
@@ -1191,7 +1280,32 @@ import WebKit
   }
   /// The clip generation of a launch video whose anonymous load failed (not cancelled).
   private var anonymousLoadFailure: UUID?
-  private func startVideo(_ video: Video, preservingQueue: Bool, identityRetry: Bool = false) {
+  private var deferredVideoRetry: (video: Video, generation: UUID)?
+  private func retryVideoForIdentity(_ video: Video) {
+    if pausedBrowsing.isBrowsing {
+      pausedBrowsing.invalidate()
+      player.suspendForBrowsing()
+      deferredVideoRetry = (video, clipGeneration)
+    } else {
+      startVideo(video, preservingQueue: false, identityRetry: true, initiallyPaused: !player.playbackIntended)
+    }
+  }
+  private func retryDeferredVideo(resume: Bool, preservingOverlay: Bool = false) {
+    guard let retry = deferredVideoRetry, retry.generation == clipGeneration else { return }
+    let routes = overlays, forward = forwardRoutes
+    deferredVideoRetry = nil
+    startVideo(retry.video, preservingQueue: false, identityRetry: true, initiallyPaused: !resume)
+    if preservingOverlay, let route = playbackRoute {
+      var restored = routes.filter { !Self.isPlayerRoute($0) }
+      let index = min(routes.firstIndex(where: Self.isPlayerRoute) ?? restored.count, restored.count)
+      restored.insert(route, at: index)
+      overlays = restored
+    }
+    forwardRoutes = forward.filter { !Self.isPlayerRoute($0) }
+  }
+  private func startVideo(_ video: Video, preservingQueue: Bool, identityRetry: Bool = false,
+    initiallyPaused: Bool = false) {
+    deferredVideoRetry = nil
     cdn.detach()
     noteNavigation()
     clipPlayback.stop(.mediaChanged)
@@ -1213,14 +1327,16 @@ import WebKit
     eofObservation = nil; clipGeneration = UUID()
     // A new video replaces what plays; the main window shows its page (or placeholder) again.
     browsingBesidePlayback = false
-    if case .video = overlays.last {
-      overlays[overlays.count - 1] = .video(video.id)
-    } else {
-      overlays.append(.video(video.id))
-    }
+    pausedBrowsing.reset()
+    overlays.removeAll(where: Self.isPlayerRoute)
+    forwardRoutes.removeAll(where: Self.isPlayerRoute)
+    overlays.append(.video(video.id))
     loadTask?.cancel()
     player.shutdown()
+    sessionMediaKey = video.id
     player = PlayerModel()
+    player.onExplicitPlay = { [weak self] in self?.revealAndPlay() }
+    if initiallyPaused { player.set("pause", "yes") }
     Self.configurePlayerPreferences(player, settings: appSettings)
     selected = video
     manifest = nil
@@ -1231,6 +1347,7 @@ import WebKit
     let expected = preservingQueue ? queueLoadIdentity : nil
     loadTask = Task {
       do {
+        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
         let details = try await service.videoDetails(video, expectedIdentity: expected).selectingPart(cid: video.cid)
         #if DEBUG
@@ -1256,13 +1373,13 @@ import WebKit
           try await checkCurrentLoad(loadGeneration, expected: expected)
           // nil: a quality change made during startup already loaded the newer stream.
           if let prepared {
-            player.load(video: prepared.video, audio: prepared.audio); Self.configurePlayerPreferences(player)
+            player.load(video: prepared.video, audio: prepared.audio, paused: !player.playbackIntended); Self.configurePlayerPreferences(player)
             await attachCDN(to: player, ticket: prepared.ticket)
             try await checkCurrentLoad(loadGeneration, expected: expected)
           }
         }
         observePlaybackEnd()
-        playbackDidLoad()
+        playbackDidLoad(identity: reportIdentity)
         if let cid = details.video.cid {
           do {
             let comments = try await service.comments(cid: cid, expectedIdentity: expected)
@@ -1278,7 +1395,7 @@ import WebKit
         // An identity change (credentials restored, login sheet opened) cancels in-flight requests
         // without the user leaving the video: reload it once instead of leaving a dead page.
         if !Task.isCancelled, !identityRetry, expected == nil, loadGeneration == clipGeneration, manifest == nil {
-          startVideo(video, preservingQueue: false, identityRetry: true)
+          retryVideoForIdentity(video)
         }
       } catch {
         if (try? await checkCurrentLoad(loadGeneration, expected: expected)) != nil {
@@ -1349,6 +1466,7 @@ import WebKit
     cdn.detach()
     progressReporter.flush()
     cancelNextPlayback()
+    pausedBrowsing.invalidate()
     eofObservation = nil; clipGeneration = UUID(); player.resetPlaybackEnd()
     loadTask?.cancel()
     let source = details.video
@@ -1367,6 +1485,7 @@ import WebKit
     let expected = queueLoadIdentity
     loadTask = Task {
       do {
+        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
         let streams = try await service.playback(video, expectedIdentity: expected)
         #if DEBUG
@@ -1390,7 +1509,7 @@ import WebKit
           }
         }
         observePlaybackEnd()
-        playbackDidLoad()
+        playbackDidLoad(identity: reportIdentity)
         let lines = try await service.comments(cid: part.cid, expectedIdentity: expected)
         try await checkCurrentLoad(loadGeneration, expected: expected)
         player.timeline = DanmakuTimeline(comments: lines)
@@ -1403,6 +1522,8 @@ import WebKit
   func closePlayer() {
     // First, so closing the mini or standalone window below does not put the page back.
     browsingBesidePlayback = false
+    pausedBrowsing.reset()
+    deferredVideoRetry = nil
     clipPlayback.stop(.mediaChanged)
     noteNavigation()
     progressReporter.flush()
@@ -1424,9 +1545,8 @@ import WebKit
     manifest = nil
     selectedStream = nil
     videoDetails = nil
-    if case .video = overlays.last { overlays.removeLast() }
-    if case .pgc = overlays.last { overlays.removeLast() }
-    if case .live = overlays.last { overlays.removeLast() }
+    overlays.removeAll(where: Self.isPlayerRoute)
+    forwardRoutes.removeAll(where: Self.isPlayerRoute)
   }
   private func videoNavigation(previous: Bool = false) -> PlaybackNavigationAction {
     guard let details = videoDetails, let current = selected else { return .none }
@@ -1533,6 +1653,7 @@ import WebKit
     curatedLoading = false; curatedIdentity = nil
   }
   private func clearPlaybackQueue() {
+    pausedBrowsing.invalidate()
     queueLoadIdentity = nil; playbackNotice = nil
     playbackQueue.clear(); eofObservation = nil; clipGeneration = UUID()
   }
@@ -1541,6 +1662,12 @@ import WebKit
       for await event in await service.identityEvents() {
         guard let self, !Task.isCancelled else { return }
         let displaySnapshot = await service.authSnapshot()
+        progressReporter.identityChanged(to: displaySnapshot)
+        if let record = pausedBrowsing.suspension,
+          record.binding.epoch != displaySnapshot.epoch || record.binding.revision != displaySnapshot.identityRevision {
+          pausedBrowsing.invalidate()
+          player.suspendForBrowsing()
+        }
         for (id, binding) in downloadIdentities where binding.epoch != displaySnapshot.epoch || binding.identityRevision != displaySnapshot.identityRevision {
           downloadTasks[id]?.cancel()
         }
@@ -1557,8 +1684,10 @@ import WebKit
           refreshStreamsForIdentity()
         }
         accountDisplayIdentity = identity
+        reportIdentity = displaySnapshot
         configureNotifications()
         if playbackQueue.invalidate(epoch: event.epoch, revision: event.identityRevision) {
+          pausedBrowsing.invalidate()
           if queueLoadIdentity != nil {
             // Leave the page instead of a dead player that can no longer load anything.
             closePlayer()
@@ -1605,7 +1734,7 @@ import WebKit
   }
   private func requestNextPlayback() {
     // 依次播放 pauses at the end of its last clip instead of moving on.
-    guard canPlayNext, !clipPlayback.isActive else { return }
+    guard canPlayNext, !clipPlayback.isActive, pausedBrowsing.allowsAutomaticAdvance else { return }
     cancelNextPlayback()
     if appSettings.bool(.skipNextPrompt) { playNext(); return }
     nextPlaybackDeadline = Date().addingTimeInterval(8)
@@ -1619,13 +1748,14 @@ import WebKit
     nextPlaybackTask?.cancel(); nextPlaybackTask = nil
     if nextPlaybackDeadline != nil { nextPlaybackDeadline = nil }
   }
-  private func playbackDidLoad() {
+  private func playbackDidLoad(identity: AuthSnapshot? = nil) {
     if PerformanceOptions.anonymousRequested { return }
+    let identity = identity ?? reportIdentity
     let target = pgcPlayback?.player ?? player
     if let episode = pgcPlayback?.episode, let aid = episode.aid, let cid = episode.cid {
-      progressReporter.begin(.init(aid: aid, cid: cid, episode: episode.id, season: episode.seasonID), player: target)
+      progressReporter.begin(.init(aid: aid, cid: cid, episode: episode.id, season: episode.seasonID), player: target, identity: identity)
     } else if pgcPlayback == nil, let aid = selected?.aid, let cid = selected?.cid {
-      progressReporter.begin(.init(aid: aid, cid: cid), player: target)
+      progressReporter.begin(.init(aid: aid, cid: cid), player: target, identity: identity)
     }
     let title = pgcPlayback?.episode?.title ?? selected?.title ?? ""
     let author = pgcPlayback?.details?.season.title ?? selected?.author ?? ""
@@ -1703,24 +1833,40 @@ import WebKit
   func togglePlaybackWindow() {
     guard hasPlayback else { return }
     userPlacedPicture()
-    if playbackDetached { playbackWindow.close(showMain: true) }
-    else { presentPlaybackWindow() }
+    if playbackDetached {
+      #if DEBUG
+      if debugSuppressPlaybackWindows { returnFromPlaybackWindow(); return }
+      #endif
+      playbackWindow.close(showMain: true)
+    } else { presentPlaybackWindow() }
   }
   /// Moves the picture into the standalone window, shown as `displayMode` (a plain window
   /// unless 设置 › 打开视频时 asked for 全屏 / 小窗 there).
   private func presentPlaybackWindow(displayMode: String = "default") {
     guard hasPlayback else { return }
+    finishBrowsingForPlacement()
     closeMiniPlayer(activateMain: false)
     playbackDetached = true
     // Remove the primary SwiftUI surface before creating its single new owner.
     DispatchQueue.main.async { [weak self] in
       guard let self, self.playbackDetached, self.hasPlayback else { return }
+      #if DEBUG
+      if self.debugSuppressPlaybackWindows { return }
+      #endif
       self.refreshPlaybackWindowContent(displayMode: displayMode)
     }
+  }
+  private func returnFromPlaybackWindow() {
+    userPlacedPicture()
+    playbackDetached = false
+    restorePlaybackPage()
   }
   /// Puts the playing page into the standalone window. With `displayMode` (an open) the window
   /// takes that look; without it (next part, playlist, reload) it stays as it is.
   private func refreshPlaybackWindowContent(displayMode: String? = nil) {
+    #if DEBUG
+    if debugSuppressPlaybackWindows { return }
+    #endif
     let host = NSHostingView(rootView: DetachedPlaybackContent(model: self))
     playbackWindow.onUserPlaced = { [weak self] in self?.userPlacedPicture() }
     playbackWindow.onFullScreen = { [weak self] in self?.setWindowFullScreen($0, detached: true) }
@@ -1728,9 +1874,7 @@ import WebKit
       hideMain: appSettings.bool(.hideMainOnPlay), displayMode: displayMode) { [weak self] in
         // Closing the standalone window (its close button included) puts the picture back in
         // the main window; a load still pending must not move it again.
-        self?.userPlacedPicture()
-        self?.playbackDetached = false
-        self?.restorePlaybackPage()
+        self?.returnFromPlaybackWindow()
       }
   }
   /// 小窗 on or off (⇧⌘P). Opening it leaves full screen and the standalone window first; the
@@ -1744,6 +1888,7 @@ import WebKit
   private var mainWindow: NSWindow? { (NSApp.delegate as? AppDelegate)?.window }
   private func presentMiniPlayer() {
     guard hasPlayback, !compactPlayer else { return }
+    finishBrowsingForPlacement()
     if playbackDetached { playbackWindow.close(showMain: false) }
     if let window = mainWindow, window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
     compactPlayer = true
@@ -1751,6 +1896,9 @@ import WebKit
     // panel then becomes the one owner of the picture.
     DispatchQueue.main.async { [weak self] in
       guard let self, self.compactPlayer, self.hasPlayback else { return }
+      #if DEBUG
+      if self.debugSuppressPlaybackWindows { return }
+      #endif
       let host = NSHostingView(rootView: MiniPlayerContent(model: self))
       self.miniPlayer.present(content: host, aspect: self.playbackAspect) { [weak self] key in self?.miniPlayerKey(key) }
     }
@@ -1810,7 +1958,10 @@ import WebKit
     var transaction = Transaction()
     transaction.disablesAnimations = true
     withTransaction(transaction) {
-      if detached { playbackWindowFullScreen = value } else { mainWindowFullScreen = value }
+      if detached { playbackWindowFullScreen = value } else {
+        _ = pausedBrowsing.presentationChanged(.nativeFullScreen, binding: browsingBinding)
+        mainWindowFullScreen = value
+      }
     }
   }
   /// Full screen for the window showing the picture. From the mini window the picture first
@@ -1818,6 +1969,13 @@ import WebKit
   func togglePlayerFullScreen() {
     guard hasPlayback else { return }
     userPlacedPicture()
+    if pausedBrowsing.isBrowsing {
+      let resume = pausedBrowsing.presentationChanged(.playbackFullScreen, binding: browsingBinding) ?? false
+      browsingBesidePlayback = false
+      if let index = overlays.lastIndex(where: Self.isPlayerRoute) { overlays = Array(overlays.prefix(index + 1)) }
+      player.finishBrowsing(resume: resume)
+      retryDeferredVideo(resume: resume)
+    }
     if compactPlayer {
       closeMiniPlayer(activateMain: true)
       // Let SwiftUI put the page back before the native transition.
@@ -1844,18 +2002,30 @@ import WebKit
       // window, `appSettings` and the stored value agree (and a later edit cannot revert it).
       settingsModel.set(.codec, .text(codec.rawValue))
     }
-    if usesUIFixtures { return }
+    if usesUIFixtures {
+      #if DEBUG
+      guard debugAllowFixtureQualityChanges else { return }
+      #else
+      return
+      #endif
+    }
     let target = player
-    let time = target.time, paused = target.paused
     let generation = clipGeneration
-    Task { [weak self] in
+    let request = Task { [weak self] in
       guard let self else { return }
       guard let prepared = await self.cdn.prepare(video: stream, audio: audio,
         avoidP2P: self.playbackPreferences.avoidP2P, allowProbe: false, preserveRecovery: recovering),
         self.player === target, self.clipGeneration == generation, self.selectedStream?.id == stream.id else { return }
-      target.load(video: prepared.video, audio: prepared.audio, start: time, paused: paused)
+      #if DEBUG
+      if let debugAfterQualityPrepare { await debugAfterQualityPrepare() }
+      #endif
+      guard self.player === target, self.clipGeneration == generation, self.selectedStream?.id == stream.id else { return }
+      target.load(video: prepared.video, audio: prepared.audio, start: target.time, paused: target.paused)
       await self.attachCDN(to: target, ticket: prepared.ticket)
     }
+    #if DEBUG
+    debugQualityRequest = request
+    #endif
   }
   /// One step down, keeping the codec family when possible.
   private func downgradeQuality() -> Bool {

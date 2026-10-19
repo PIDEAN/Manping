@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from resource_bundles import copy_resource_bundles  # noqa: E402
+from debug_build_fingerprint import source_manifest, write_build_record  # noqa: E402
 
 
 
@@ -51,8 +52,11 @@ def main():
         raise RuntimeError("A bundled runtime template with libmpv.2.dylib is required")
     if template == app.resolve():
         raise RuntimeError("Template cannot be the Debug output")
+    manifest = source_manifest(ROOT)
     if not args.no_build:
         run("swift", "build")
+        if source_manifest(ROOT) != manifest:
+            raise RuntimeError("Build inputs changed during swift build; rebuild before capturing")
     binary_directory = pathlib.Path(run("swift", "build", "--show-bin-path", capture=True))
     if app.exists():
         shutil.rmtree(app)
@@ -75,8 +79,11 @@ def main():
         "CFBundleTypeRole": "Viewer"}]
     with (app / "Contents/Info.plist").open("wb") as handle:
         plistlib.dump(info, handle)
+    write_build_record(app, manifest, verified=not args.no_build)
     run("codesign", "--force", "--sign", signing_identity(), str(app))
     run("codesign", "--verify", "--deep", "--strict", str(app))
+    if args.no_build:
+        print("Source freshness unverified (--no-build); in-app capture requires a full build.")
     print(app)
     print("Launch: open -n " + str(app) + " --args --skip-auth --ui-page popular")
 

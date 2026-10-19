@@ -7,6 +7,7 @@ import SwiftProtobuf
 public enum M3Fixture {
   public static let owner: Int64 = 123
   public static func uiResponse(path: String, parameters: [String: String]) -> Data? {
+    if let space = spaceResponse(path: path, parameters: parameters, ui: true) { return space }
     let page = max(1, Int(parameters["page"] ?? parameters["pn"] ?? "1") ?? 1)
     let data: Any
     switch path {
@@ -17,7 +18,8 @@ public enum M3Fixture {
       }]
     case "/x/web-interface/card":
       let mid = Int64(parameters["mid"] ?? "123") ?? 123
-      data = ["card": uiUser(mid), "archive_count": 40, "fans": 12000, "follow": 40, "like_num": 234567]
+      var user = uiUser(mid); user["Official"] = ["role": 1, "title": "旅行 UP 主", "desc": "旅行领域优质 UP 主", "type": 0]
+      data = ["card": user, "space": ["l_img": "https://fixture.invalid/cover/3"], "archive_count": 40, "follower": 12000, "follow": 40, "like_num": 234567]
     case "/x/relation/tags":
       data = [["tagid": 0, "name": "默认分组", "count": 100], ["tagid": 1, "name": "音乐与生活", "count": 64]]
     case "/x/relation/tag":
@@ -32,11 +34,11 @@ public enum M3Fixture {
       let items: [[String: Any]] = (0..<12).map { index in
         let offset = (page - 1) * 12 + index
         switch kind {
-        case "bili_user": return uiUser(Int64(10001 + offset))
+        case "bili_user": return searchUser(Int64(10001 + offset), ui: true)
         case "media_bangumi", "media_ft": return ["season_id": 99 + offset, "title": "本地剧集 · \(offset + 1)", "cover": "https://fixture.invalid/cover/\(offset)"]
         case "live_room": return ["roomid": 88 + offset, "title": "本地直播 · \(offset + 1)", "uname": "本地主播", "cover": "https://fixture.invalid/cover/\(offset)"]
         case "article": return ["id": 77 + offset, "title": "本地专栏 · \(offset + 1)", "image_urls": ["https://fixture.invalid/cover/\(offset)"]]
-        default: return uiVideo(offset)
+        default: return searchVideo(uiVideo(offset), mid: 10001)
         }
       }
       data = ["result": page <= 2 ? items : [], "numPages": 2, "numResults": 24]
@@ -63,7 +65,53 @@ public enum M3Fixture {
     ["mid": mid, "uname": "本地 UP 主 \(mid)", "name": "本地 UP 主 \(mid)", "face": "https://fixture.invalid/avatar/\(mid % 8)",
       "sign": "记录日常与新发现，这是隔离的本地样本。", "fans": 12000, "attention": 40, "attribute": mid % 3 == 0 ? 0 : 2, "level_info": ["current_level": 6], "vip": ["status": 1, "sign": "年度大会员"]]
   }
+  private static func searchVideo(_ video: [String: Any], mid: Int64) -> [String: Any] {
+    var video = video; video["owner"] = nil; video["mid"] = mid
+    video["author"] = "本地 UP 主"; video["upic"] = "//fixture.invalid/avatar/1"
+    return video
+  }
+  private static func searchUser(_ mid: Int64, ui: Bool) -> [String: Any] {
+    ["mid": mid, "uname": ui ? "本地 UP 主 \(mid)" : "Fixture owner", "upic": "//fixture.invalid/avatar/\(mid % 8)",
+      "usign": "记录日常与新发现", "fans": 12000, "videos": 40, "level": 6,
+      "is_upuser": 1, "official_verify": ["type": mid % 2 == 0 ? 0 : -1, "desc": mid % 2 == 0 ? "旅行领域优质 UP 主" : ""],
+      "res": [uiVideo(0)], "is_live": mid % 3 == 0 ? 1 : 0, "room_id": 88]
+  }
+  private static func spaceResponse(path: String, parameters: [String: String], ui: Bool) -> Data? {
+    let page = Int(parameters["pn"] ?? parameters["page_num"] ?? "1") ?? 1
+    let total = ui ? 40 : 1
+    let start = (page - 1) * 30
+    let videos = start < total ? (start..<min(start + 30, total)).map(uiVideo) : []
+    let data: Any
+    switch path {
+    case "/x/space/wbi/arc/search":
+      data = ["list": ["vlist": videos, "tlist": ["160": ["tid": 160, "name": "生活", "count": total]]], "page": ["count": total]]
+    case "/x/v2/space/archive/cursor":
+      let aid = Int(parameters["aid"] ?? "0") ?? 0
+      let offset = aid == 0 ? 0 : aid - 789 + 1
+      let items: [[String: Any]] = offset < total ? (offset..<min(offset + 30, total)).map { index in
+        ["param": String(789 + index), "title": "本地投稿 · \(index + 1)", "cover": "https://fixture.invalid/cover/\(index)",
+          "author": "本地 UP 主", "goto": "av", "length": "03:20", "duration": 200, "play": 120000,
+          "first_cid": 456 + index, "ctime": 1_760_000_000 - index * 1000]
+      } : []
+      data = ["item": items, "count": total, "has_next": offset + 30 < total ? 1 : 0]
+    case "/x/space/navnum": data = ["video": total, "season_num": 2]
+    case "/x/space/upstat": data = [:] as [String: Any]
+    case "/x/space/top/arc": data = uiVideo(0)
+    case "/x/space/masterpiece": data = [uiVideo(1), uiVideo(2), uiVideo(3)]
+    case "/x/polymer/web-space/seasons_series_list":
+      data = ["items_lists": ["page": ["page_num": page, "page_size": 20, "total": 2],
+        "seasons_list": page == 1 ? [["meta": ["season_id": 22, "name": "川藏线慢旅行", "cover": "https://fixture.invalid/cover/0", "total": total], "archives": [uiVideo(0)]]] : [],
+        "series_list": page == 1 ? [["meta": ["series_id": 22, "name": "器材与装备", "total": total], "archives": [uiVideo(1)]]] : []]]
+    case "/x/polymer/web-space/seasons_archives_list", "/x/series/archives":
+      let descending = parameters["sort_reverse"] == "true" || parameters["sort"] == "desc"
+      let indices = descending ? Array((0..<total).reversed()) : Array(0..<total)
+      data = ["archives": Array(indices.dropFirst(start).prefix(30)).map(uiVideo), "page": ["total": total]]
+    default: return nil
+    }
+    return try? JSONSerialization.data(withJSONObject: ["code": 0, "data": data])
+  }
   public static func response(path: String, parameters: [String: String] = [:]) -> Data? {
+    if let space = spaceResponse(path: path, parameters: parameters, ui: false) { return space }
     let video: [String: Any] = ["aid": 789, "bvid": "BVfixture123", "title": "M3 fixture video",
       "pic": "https://fixture.invalid/cover/1", "cid": 456, "duration": 90,
       "owner": ["mid": 123, "name": "Fixture owner"], "stat": ["view": 900]]
@@ -80,14 +128,14 @@ public enum M3Fixture {
       let kind = parameters["search_type"] ?? "video"
       let item: [String: Any]
       switch kind {
-      case "bili_user": item = user
+      case "bili_user": item = searchUser(123, ui: false)
       case "media_bangumi", "media_ft": item = ["season_id": 99, "title": "Fixture series"]
       case "live_room": item = ["roomid": 88, "title": "Fixture room", "uname": "Fixture owner"]
       case "article": item = ["id": 77, "title": "Fixture article", "image_urls": ["https://fixture.invalid/cover/2"]]
-      default: item = video
+      default: item = searchVideo(video, mid: 123)
       }
       data = ["result": parameters["page"] == "2" ? [] : [item], "numPages": 2, "numResults": 1]
-    case "/x/web-interface/card": data = ["card": user, "archive_count": 8, "fans": 5, "follow": 2, "like_num": 321]
+    case "/x/web-interface/card": data = ["card": user, "space": ["l_img": "https://fixture.invalid/cover/3"], "archive_count": 8, "follower": 5, "follow": 2, "like_num": 321]
     case "/x/relation/tags": data = [["tagid": 0, "name": "默认分组", "count": 1]]
     case "/x/relation/tag": data = [user]
     case "/x/relation/followers": data = ["list": [user], "total": 1]

@@ -2,6 +2,12 @@ import ManpingCore
 import Foundation
 import SwiftUI
 
+enum MessageMarkReadState: Equatable {
+  case idle, running(completed: Int), completed, partialFailure(String)
+  var isRunning: Bool { if case .running = self { true } else { false } }
+  var needsRetry: Bool { if case .partialFailure = self { true } else { false } }
+}
+
 @MainActor final class MessagesModel: ObservableObject {
   @Published private(set) var section: MessageSection = .reply
   @Published private(set) var notifications: [NotifyMessage] = []
@@ -17,6 +23,10 @@ import SwiftUI
   @Published private(set) var conversationError: String?
   @Published private(set) var ownID: Int64?
   @Published var draft = ""
+  @Published private(set) var markReadState: MessageMarkReadState = .idle
+  private var markReadTask: Task<Void, Never>?
+  private var markReadGeneration = UUID()
+  private var markReadCompletion: (revision: UUID, finish: @MainActor (MarkAllMessagesReadResult?) -> Void)?
   private let service: BiliService
   private var offsetID: Int64 = 0
   private var offsetTime: Int64 = 0
@@ -48,20 +58,27 @@ import SwiftUI
       }
     }
   }
-  deinit { observer?.cancel(); listTask?.cancel(); conversationTask?.cancel(); sendTask?.cancel() }
+  deinit { observer?.cancel(); listTask?.cancel(); conversationTask?.cancel(); sendTask?.cancel(); markReadTask?.cancel() }
   func cancel() {
+    cancelLoading()
+    markReadGeneration = UUID(); markReadTask?.cancel(); markReadTask = nil; markReadState = .idle
+    let completion = markReadCompletion; markReadCompletion = nil
+    completion?.finish(nil)
+  }
+  private func cancelLoading() {
     active = false; generation = UUID(); conversationGeneration = UUID()
     listTask?.cancel(); conversationTask?.cancel(); sendTask?.cancel()
     listTask = nil; conversationTask = nil; sendTask = nil
     loading = false; conversationLoading = false; sending = false
   }
-  private func clear() {
-    cancel(); notifications = []; sessions = []; selected = nil; messages = []; draft = ""
+  private func clear(cancelMarkRead: Bool = true) {
+    if cancelMarkRead { cancel() } else { cancelLoading() }
+    notifications = []; sessions = []; selected = nil; messages = []; draft = ""
     offsetID = 0; offsetTime = 0; beforeSequence = nil; selectionIdentity = nil
     error = nil; conversationError = nil; hasMore = true; hasOlder = true
   }
   func start(_ section: MessageSection) async {
-    clear(); self.section = section; active = true
+    clear(cancelMarkRead: false); self.section = section; active = true
     await loadNext()
   }
   func loadNext() async {
@@ -162,6 +179,62 @@ import SwiftUI
     sendTask = task
     await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
   }
+  func markAllRead(onStart: @escaping @MainActor () -> UUID,
+    onProgress: @escaping @MainActor (UUID, MessageUnreadCounts) -> Void,
+    onFinish: @escaping @MainActor (UUID, MarkAllMessagesReadResult?) -> Void) {
+    guard active, !markReadState.isRunning else { return }
+    let revision = UUID(); markReadGeneration = revision
+    markReadState = .running(completed: 0)
+    let token = onStart()
+    markReadCompletion = (revision, { onFinish(token, $0) })
+    markReadTask = Task { @MainActor [weak self] in
+      guard let self else { onFinish(token, nil); return }
+      let snapshot = await service.authSnapshot()
+      let result = await service.markAllMessagesRead(expectedIdentity: snapshot) { [weak self] _, _, unread in
+        await self?.completedMarkCategory(revision, token: token, unread: unread, onProgress: onProgress)
+      }
+      let current = await service.authSnapshot()
+      let valid = !Task.isCancelled && sameIdentity(snapshot, current) && markReadGeneration == revision
+      finishMarkRead(revision, result: valid ? result : nil)
+      guard valid else { return }
+      let failures = MessageSection.allCases.compactMap { section -> String? in
+        switch result.outcomes[section] ?? .unknown {
+        case .success: return nil
+        case .partialFailure(let count):
+          return section == .chat ? "有 \(count) 个私信会话没能标为已读" : "\(section.title)仍有 \(count) 条未读"
+        case .unknown: return "\(section.title)未能确认清零"
+        case .cancelled: return "\(section.title)操作已取消"
+        }
+      }
+      markReadState = failures.isEmpty ? .completed : .partialFailure(failures.joined(separator: "；") + "。可以重试。")
+      markReadTask = nil
+      if active { await start(section) }
+    }
+  }
+  private func completedMarkCategory(_ revision: UUID, token: UUID, unread: MessageUnreadCounts,
+    onProgress: @MainActor (UUID, MessageUnreadCounts) -> Void) {
+    // No suspension between accepting this generation and publishing its counts.
+    guard !Task.isCancelled, markReadGeneration == revision, markReadCompletion?.revision == revision,
+      case .running(let completed) = markReadState else { return }
+    markReadState = .running(completed: min(4, completed + 1))
+    onProgress(token, unread)
+  }
+  private func finishMarkRead(_ revision: UUID, result: MarkAllMessagesReadResult?) {
+    guard let completion = markReadCompletion, completion.revision == revision else { return }
+    markReadCompletion = nil
+    completion.finish(result)
+  }
+  #if DEBUG
+  func applyMarkReadFixture(_ state: String) {
+    guard ProcessInfo.processInfo.arguments.contains("--ui-fixture") else { return }
+    M6MessageFixture.configurePresentation(state)
+    switch state {
+    case "running": markReadState = .running(completed: 3)
+    case "partial": markReadState = .partialFailure("有 2 个私信会话没能标为已读，角标如实保留。可以重试。")
+    default: break
+    }
+  }
+  #endif
   private func accept(_ snapshot: AuthSnapshot, revision: UUID) async throws {
     let current = await service.authSnapshot()
     try Task.checkCancellation()

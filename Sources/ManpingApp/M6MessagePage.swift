@@ -19,6 +19,10 @@ struct M6MessagePage: View {
       sidebar
       Hairline(axis: .vertical)
       VStack(spacing: 0) {
+        if case .partialFailure(let message) = messages.markReadState {
+          InlineErrorText(message: message).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Theme.gridPadding).padding(.vertical, 12)
+        }
         if let error = messages.error {
           HStack(spacing: 12) {
             InlineErrorText(message: error)
@@ -34,12 +38,31 @@ struct M6MessagePage: View {
     }.foregroundStyle(Theme.text(scheme))
       .pageToolbar(title: "消息", subtitle: section == .chat ? messages.selected?.user.name ?? "私信" : section.title,
         refreshing: messages.loading, refresh: { Task { await messages.start(section) } }) {
+        Button {
+          messages.markAllRead(onStart: { model.beginMessageReadOperation() },
+            onProgress: { model.updateMessageReadOperation($0, unread: $1) },
+            onFinish: { model.finishMessageReadOperation($0, result: $1) })
+        } label: {
+          if case .running(let completed) = messages.markReadState {
+            HStack(spacing: 8) { ProgressView().controlSize(.small); Text("正在标记 \(completed)/4") }
+          } else {
+            Label { Text("全部已读") } icon: {
+              ZStack {
+                Image(systemName: "checkmark").offset(x: -3)
+                Image(systemName: "checkmark").offset(x: 3)
+              }.frame(width: 24)
+            }
+          }
+        }.toolbarActionStyle()
+          .disabled(!model.messageUnreadCounts.canMarkAllRead(isRunning: messages.markReadState.isRunning,
+            needsRetry: messages.markReadState.needsRetry))
+          .help("标记回复、@、点赞与私信；执行期间新到的私信仍保留未读")
         if section == .chat, let selected = messages.selected {
           Button { onUser(selected.id) } label: { Label("进入 UP 主空间", systemImage: "person") }
             .toolbarActionStyle()
         }
       }
-      .onAppear { applyDiagnostic() }
+      .onAppear { applyDiagnostic(); model.refreshMessageUnreadCounts() }
       .task(id: "\(section.rawValue):\(model.refreshToken)") { await messages.start(section) }
       .onDisappear { messages.cancel() }
   }
@@ -54,6 +77,7 @@ struct M6MessagePage: View {
                 Image(systemName: symbol(item)).font(.system(size: 13)).frame(width: 18)
                 Text(item.title).font(Theme.Font.body)
                 Spacer()
+                if let count = model.messageUnreadCounts[item], count > 0 { UnreadBadge(count: Int(clamping: count)) }
               }.padding(.horizontal, 10).frame(height: Theme.rowHeight)
             }.buttonStyle(SidebarRowStyle(selected: section == item))
           }
@@ -115,6 +139,9 @@ struct M6MessagePage: View {
     guard !appliedDiagnostic else { return }; appliedDiagnostic = true
     #if DEBUG
     let args = ProcessInfo.processInfo.arguments
+    if args.contains("--ui-fixture"), let state = ProcessInfo.processInfo.environment["MANPING_UI_MESSAGE_STATE"] {
+      messages.applyMarkReadFixture(state)
+    }
     if let index = args.firstIndex(of: "--ui-page"), index + 1 < args.count,
       let value = args[index + 1].split(separator: ":").dropFirst().first,
       let item = MessageSection(rawValue: String(value)) { section = item }

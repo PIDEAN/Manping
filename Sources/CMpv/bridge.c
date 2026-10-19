@@ -26,6 +26,12 @@ struct bili_mpv {
     int (*command_node)(mpv_handle *, mpv_node *, mpv_node *);
     mpv_event *(*wait_event)(mpv_handle *, double);
     int (*request_log_messages)(mpv_handle *, const char *);
+    int (*hook_add)(mpv_handle *, uint64_t, const char *, int);
+    int (*hook_continue)(mpv_handle *, uint64_t);
+    atomic_bool pause_intent;
+    int hold_next_load, load_held, loaded_files, load_inflight;
+    uint64_t held_hook;
+    int64_t load_entry, event_entry;
     void (*terminate_destroy)(mpv_handle *);
     void (*free)(void *);
     void (*free_node_contents)(mpv_node *);
@@ -78,6 +84,7 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
     LOAD(get_property, "mpv_get_property"); LOAD(get_property_string, "mpv_get_property_string");
     LOAD(command_node, "mpv_command_node"); LOAD(command, "mpv_command"); LOAD(wait_event, "mpv_wait_event");
     LOAD(request_log_messages, "mpv_request_log_messages"); LOAD(terminate_destroy, "mpv_terminate_destroy");
+    LOAD(hook_add, "mpv_hook_add"); LOAD(hook_continue, "mpv_hook_continue");
     LOAD(free, "mpv_free"); LOAD(free_node_contents, "mpv_free_node_contents"); LOAD(render_update, "mpv_render_context_update"); LOAD(error_string, "mpv_error_string");
     LOAD(render_set_update, "mpv_render_context_set_update_callback");
     LOAD(render_create, "mpv_render_context_create"); LOAD(render_render, "mpv_render_context_render");
@@ -107,6 +114,13 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
     (void)e->set_option_string(e->handle,"clipboard-backends","");
     int status=e->initialize(e->handle);
     if(status<0) { snprintf(error,capacity,"%s",e->error_string(status));bili_mpv_destroy(e);return NULL; }
+    atomic_init(&e->pause_intent, 0);
+    e->load_entry=e->event_entry=-1;
+    // on_load runs after load_per_file_options, before demuxers/decoders start.
+    // An earlier loadfile's file-local pause must not replace newer playback intent.
+    status=e->hook_add(e->handle,1,"on_load",0);
+    if(status>=0 && isolated) status=e->hook_add(e->handle,2,"on_before_start_file",0);
+    if(status<0) { snprintf(error,capacity,"Playback intent hook: %s",e->error_string(status));bili_mpv_destroy(e);return NULL; }
     if (isolated) {
         const char *properties[] = {"options/ytdl", "options/load-scripts", "options/cookies"};
         for (size_t i = 0; i < 3; i++) {
@@ -124,6 +138,21 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
     return e;
 }
 int bili_mpv_isolation_mask(bili_mpv *e) { return e ? e->isolation_mask : 0; }
+void bili_mpv_pause_intent(bili_mpv *e,int paused) {
+    if(e) atomic_store(&e->pause_intent,paused!=0);
+}
+int bili_mpv_hold_next_load(bili_mpv *e) {
+    if(!e || e->isolation_mask!=7 || e->load_held) return MPV_ERROR_INVALID_PARAMETER;
+    e->hold_next_load=1; return 0;
+}
+int bili_mpv_load_held(bili_mpv *e) { return e && e->load_held; }
+int bili_mpv_loaded_files(bili_mpv *e) { return e ? e->loaded_files : 0; }
+int bili_mpv_load_inflight(bili_mpv *e) { return e && e->load_inflight; }
+void bili_mpv_release_load(bili_mpv *e) {
+    if(!e) return;
+    e->hold_next_load=0;
+    if(e->load_held) { e->hook_continue(e->handle,e->held_hook); e->load_held=0; }
+}
 int bili_mpv_render_create(bili_mpv *e) {
     if(!e) return MPV_ERROR_INVALID_PARAMETER;
     mpv_opengl_init_params gl = {gl_proc, e};
@@ -258,7 +287,14 @@ int bili_mpv_load(bili_mpv *e,const char *video,const char *audio,double start,i
       {.u.list=&options,.format=MPV_FORMAT_NODE_MAP}};
     mpv_node_list list={5,args,NULL}; mpv_node command={.u.list=&list,.format=MPV_FORMAT_NODE_ARRAY};
     mpv_node result={0}; int status=e->command_node(e->handle,&command,&result);
-    e->free_node_contents(&result); return status;
+    e->free_node_contents(&result);
+    if(status>=0) {
+        e->load_inflight=1; e->load_entry=-1;
+        // replace clears the playlist. Match start-file's ID so a delayed
+        // file-loaded from the old stream cannot make the new load poolable.
+        (void)e->get_property(e->handle,"playlist/0/id",MPV_FORMAT_INT64,&e->load_entry);
+    }
+    return status;
 }
 int bili_mpv_command(bili_mpv *e,const char *const *args) { return e ?e->command(e->handle,args):MPV_ERROR_INVALID_PARAMETER; }
 int bili_mpv_set(bili_mpv *e,const char *name,const char *value) {
@@ -283,9 +319,32 @@ int bili_mpv_event(bili_mpv *e,char *buffer,size_t capacity) {
     if(!e) return 0;
     mpv_event *event=e->wait_event(e->handle,0);
     if(event->event_id==MPV_EVENT_NONE) return 0;
-    if(event->event_id==MPV_EVENT_END_FILE) { mpv_event_end_file *end=event->data;snprintf(buffer,capacity,"end-file: %s",e->error_string(end->error)); }
+    if(event->event_id==MPV_EVENT_HOOK) {
+        mpv_event_hook *hook=event->data;
+        int status=0;
+        if(event->reply_userdata==2 && e->hold_next_load) {
+            e->hold_next_load=0; e->held_hook=hook->id; e->load_held=1;
+        } else {
+            if(event->reply_userdata==1)
+                status=e->set_property_string(e->handle,"pause",atomic_load(&e->pause_intent)?"yes":"no");
+            // Fail closed instead of starting audio with an unconfirmed pause intent.
+            if(status<0) e->command(e->handle,(const char *const[]){"stop",NULL});
+            e->hook_continue(e->handle,hook->id);
+        }
+        if(status<0) snprintf(buffer,capacity,"end-file: Playback intent hook failed: %s",e->error_string(status));
+        else snprintf(buffer,capacity,"event:%d",event->event_id);
+    }
+    else if(event->event_id==MPV_EVENT_END_FILE) { mpv_event_end_file *end=event->data;snprintf(buffer,capacity,"end-file: %s",e->error_string(end->error)); }
     else if(event->event_id==MPV_EVENT_LOG_MESSAGE) { mpv_event_log_message *log=event->data;snprintf(buffer,capacity,"%s: %s",log->prefix,log->text); }
-    else snprintf(buffer,capacity,"event:%d",event->event_id);
+    else {
+        if(event->event_id==MPV_EVENT_START_FILE && event->data)
+            e->event_entry=((mpv_event_start_file *)event->data)->playlist_entry_id;
+        if(event->event_id==MPV_EVENT_FILE_LOADED) {
+            e->loaded_files++;
+            if(e->load_entry>=0 && e->event_entry==e->load_entry) e->load_inflight=0;
+        }
+        snprintf(buffer,capacity,"event:%d",event->event_id);
+    }
     return (int)event->event_id;
 }
 void bili_md5(const void *bytes,unsigned long length,unsigned char output[16]) { CC_MD5(bytes,(CC_LONG)length,output); }

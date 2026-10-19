@@ -186,3 +186,59 @@
 - 评论：头像 32，名字 12 半粗，正文 13；置顶与 UP 主用 accent 胶囊；楼中楼原地展开。
 - 每个功能至少一个可见入口；播放功能同时在控制条或「更多」菜单，以及菜单栏「播放」中。
 - 链接入口：⌘L、拖入链接、`manping://`（video / episode / season / live / article / space）。
+
+### 主窗口 UGC 暂停浏览
+
+普通视频进入空间、搜索或其他叠加页时，保留同一个 mpv engine 和观看进度 reporter，只移除 `VideoDetailPage` 及其 surface。页面的 `onDisappear` 仅取消评论、互动与临时倍速；不 shutdown engine，不 flush reporter。返回时重新挂接已有 render layer，不重新加载视频。头像和名字组成一个按钮，hover 使用 `Theme.selectedFill`，提示「进入 UP 主空间」；直播主播头像提供相同入口。
+
+暂停浏览独立于小窗/独立窗口旁边浏览。暂停记录绑定 player UUID、稳定的媒体会话标识、`clipGeneration`、页面深度和身份 epoch/revision，并保存加载期间的逻辑播放意图。只有最后一层返回才按原意图恢复；原本暂停则继续暂停。前进再次暂停，刷新仅作用于当前可见页。侧栏结束主窗口播放会话；叠加页换片删除全部旧播放路由。账号变化和队列失效撤销自动恢复；进度任务使用媒体加载开始时捕获的身份，不能转报到新账号。暂停浏览时取消下一集倒计时，并禁止迟到的自动下一集请求。 加载期间身份切换导致请求取消时，保持叠加页并延迟重试；返回或移动画面时重新加载但仍暂停，只有显式媒体键「播放」恢复播放。进入叠加页同时撤销尚未执行的默认小窗/独立窗口 placement。
+
+| 转换 | 页面与播放状态 | surface 所有权 |
+| --- | --- | --- |
+| 主窗口播放 → 叠加浏览 | 视频路线保留在栈下，`pause=yes`，保留 reporter | 移除主窗口 surface，零画面拥有者 |
+| 暂停浏览 → 小窗 / 独立窗口 | 结束暂停浏览，按最初播放意图恢复；主窗口留在浏览页 | 主窗口先卸载，下一轮主线程才创建外窗 surface |
+| 小窗返回 / 关闭独立窗口 | 回到主窗口视频页，保持当前播放或暂停状态 | 先关闭外窗 surface，再创建主窗口 surface |
+| macOS 原生进入 / 退出全屏 | 保持当前叠加页和暂停状态 | 暂停浏览期间仍为零拥有者 |
+| 播放器「全屏」动作 | 先返回视频页，再按原意图恢复并全屏 | 主窗口创建唯一 surface |
+| 暂停浏览期间系统媒体键「播放」 | 先移除视频之上的页面，再播放 | 主窗口创建唯一 surface |
+
+本期暂停恢复只适用于 UGC；番剧和直播在主窗口离开播放页时仍结束播放，在外窗播放时仍允许主窗口旁边浏览。直播不承诺从暂停位置继续。
+
+调试验证（匿名 fixture、本地 mpv，不激活或移动用户窗口，不操作鼠标）：
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MANPING_SIGN_IDENTITY=- python3 scripts/build_debug_app.py
+'.build/ui/满屏 Debug.app/Contents/MacOS/Manping' --ui-fixture --ui-model-checks
+MANPING_NAVIGATION_CHECK=1 MANPING_UPLOADER_HOVER=1 '.build/ui/满屏 Debug.app/Contents/MacOS/Manping' --ui-quiet --perf-fixture --perf-play-local "$PWD/.build/perf-media/testsrc2-h264-1080p30-stereo.mp4" --perf-source-fps 30 --perf-danmaku bursty --ui-page video:av100 --ui-snapshot "$PWD/.build/live-private/space-navigation/uploader-hover.png" 4
+```
+
+`MANPING_UPLOADER_HOVER=1` 仅在 DEBUG fixture 中合成 UP 主行 hover，用原生 `--ui-snapshot` 抓图；不移动鼠标。`MANPING_NAVIGATION_CHECK=1` 在本地播放 5 秒后真实导航到空间，再返回，输出原始 mpv pause、power assertion、surface 数量、画面/弹幕提交增量与位置误差。 随后验证普通暂停触发 LiveText OCR、播放后清除分析；OCR 使用独立的 engine pause 边沿，避免同步 UI 状态掩盖确认事件。窗口迁移的 AppModel 检查执行共享转换逻辑，并抑制 native window presentation；真实外窗视觉迁移仍需手工验收。
+
+该检查还在首次加载和换流时，用隔离引擎的 `on_before_start_file` barrier 扣住已提交的 `pause=no` loadfile，再进入暂停浏览并释放 barrier；另测一次无叠加页的用户暂停。生产 `on_load` hook 在文件级选项应用后、demuxer/decoder 启动前读取最新 atomic pause intent，重新设置引擎 `pause` 后才继续。mpv 0.41.0 的顺序见 `player/loadfile.c`：`load_per_file_options`（1707–1708）先于 `process_hooks(..., "on_load")`（1725）。未完成加载的引擎销毁而不进入 pool，以免停车后遗留无人处理的 hook；已完成加载通过 playlist entry ID 匹配后正常复用。
+
+`DELAYED_LOAD` 输出真实 `pause`、`time-pos`、`audio-pts`、选中音轨、AO、1.5 秒时钟增量、渲染/弹幕增量和 power assertion。使用带音轨的 stereo 样本，fixture 静音仅设置 `volume=0`，不以静音作为音频停止的证据。初始暂停可能报告 `audio-pts=unavailable`，表示音频尚未进入播放（`player/command.c:850–858`），不会冒充零；此时必须有选中音轨及真实 AO，且恢复后必须观察到 `audio-pts` 可用并实际推进。换流时可用的音频时钟必须保持不变。
+
+### UP 主空间与搜索用户行
+
+空间页自动截图应使用最新 Debug bundle 和安静的原生截图模式：
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer MANPING_SIGN_IDENTITY=- python3 scripts/build_debug_app.py
+python3 scripts/live_check.py --fixture --in-app-snapshot --theme dark --wait 6 --pages space:10001 --app-args '--ui-space-tab 主页' --output .build/live-private/v012-fix/space-home
+```
+
+`--in-app-snapshot` 仅调用应用自身的 `--ui-quiet --ui-snapshot`，不激活窗口、不调用 `osascript` 或 `screencapture`；原有屏幕截图模式仍保留。输出限定在 `.build/live-private/`，每图保留启动日志；提前退出（即使 exit=0）、超时、认证面板和不完整 PNG 都会失败，失败时移除旧目标图。应用原子发布 PNG，驱动校验所有 chunk CRC、IEND 和尺寸后才交付。
+
+builder 默认只读使用 `dist/release/满屏.app` 作为 runtime 模板。该路径不存在时才传 `--template '/Applications/满屏.app'`，也仅复制模板，不覆盖或重签正式 App。
+
+Debug builder 在真正执行 `swift build` 前后核对 `Sources/`、`Resources/`、Package 与打包脚本的内容指纹，并把记录写入签名覆盖的 `Contents/Resources/DebugBuild.json`。原生截图前检查当前输入指纹及 bundle 签名；旧包、源码变化或 `--no-build` 生成的未认证包必须重建。指纹不依赖 commit SHA、文档或日志，提交本身不导致误报；`--no-build` 无法证明现有 SwiftPM binary 来自当前源码，因此不会认证。
+
+2026-10-19 的 `--ui-space-tab 主页` 不出图根因是旧 Debug bundle：其 executable 构建于 21:27:50，而参数白名单直到 21:34:06 的 `09bdd44` 才加入。旧 parser 将参数交给通用诊断解析，随后在创建窗口和安排截图前退出，原脚本又丢弃了启动输出。同一旧 binary 放回带完整资源的私有 probe bundle 后，基准命令能生成 2560×1700 原生 PNG；仅加入 `--ui-space-tab 主页` 就在 0.212 秒内 exit=0、无窗口编号、无 PNG。新 Debug bundle 运行原空间命令可正常截图。此问题无需修改空间页的 SwiftUI 加载逻辑。
+
+原生离屏截图另发现一个合成缺口：空间「投稿」、降级投稿和合集详情中的有色 interactive glass primary「全部播放」令页头等区域在 `cacheDisplay` 输出中变成透明（RGBA alpha=0）。该按钮位于滚动内容，现按本文规范使用私有实色 primary 胶囊，保留尺寸、Theme 色、动作和 enabled 状态；全局按钮样式不变。同状态、同等待时间、同原生捕获路径复测恢复完整内容（页头 alpha=1）。这项证据描述离屏截图的透明缺失，不代表已观察到真实窗口黑屏。
+
+空间页在内容区展示渐隐头图、84pt 头像与 highlight 认证角标；姓名、等级、大会员、认证说明、签名和可用的关注/粉丝/获赞/播放统计组成页头。关注使用主色胶囊，固定与本人关注/粉丝入口沿用已有行为。SegmentedTabs 包含主页、投稿、合集和系列、动态，计数缺失时省略。
+
+主页宽窗把置顶与代表作并排，窄窗堆叠，最新投稿一行在下方。投稿显示服务端排序能力；备用列表采用 highlight 提示，并禁用不支持的最多收藏与分区筛选。合集使用叠层封面，系列显示标签；详情在同窗口内返回，正倒序请求服务端，当前播放项以 accent 高亮。资料由空间页统一加载，动态仅负责动态内容。
+
+搜索视频结果顶部显示最多 8 张相关用户卡，236×60、Radius.md（14）、36pt 头像；认证说明为 highlight，无认证则显示 UP 主/用户与粉丝数；直播中使用 live 标识。卡片共用关系模型与紧凑关注按钮。用户行失败时隐藏，视频请求独立，翻页保留用户行；切换关键词、范围或身份时取消并清空。分隔线后连接视频网格，cardGridContent 放在外层 stack。

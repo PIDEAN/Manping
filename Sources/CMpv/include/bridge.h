@@ -8,6 +8,15 @@ bili_mpv *bili_mpv_create(const char *library_path, int isolated, char *error, s
 // Read-back proof captured at initialization: bit 0 ytdl=no, bit 1 load-scripts=no,
 // bit 2 cookies=no. Zero for ordinary engines; isolated creation fails unless all are set.
 int bili_mpv_isolation_mask(bili_mpv *engine);
+// Atomic intent publication may run on the main actor; it makes no mpv calls.
+void bili_mpv_pause_intent(bili_mpv *engine, int paused);
+// Serial-worker diagnostics: only isolated engines can hold a load before file options.
+int bili_mpv_hold_next_load(bili_mpv *engine);
+int bili_mpv_load_held(bili_mpv *engine);
+int bili_mpv_loaded_files(bili_mpv *engine);
+// An uncompleted load may own a pending hook: destroy it instead of parking it.
+int bili_mpv_load_inflight(bili_mpv *engine);
+void bili_mpv_release_load(bili_mpv *engine);
 int bili_mpv_render_create(bili_mpv *engine);
 int bili_mpv_render_pending(bili_mpv *engine);
 int bili_mpv_render(bili_mpv *engine, int floating);

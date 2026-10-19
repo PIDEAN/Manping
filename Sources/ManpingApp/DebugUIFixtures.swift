@@ -2,6 +2,11 @@ import AppKit
 import ManpingCore
 import Foundation
 import SwiftUI
+#if DEBUG
+import BiliProtocol
+import GRPCCore
+import SwiftProtobuf
+#endif
 
 /// Explicit local samples for layout inspection, never a fallback for live requests.
 enum DebugUIFixtures {
@@ -148,6 +153,9 @@ actor DebugUITransport: AuthTransport {
       data = ["rule": [["id": 1, "type": 0, "filter": "剧透"], ["id": 2, "type": 0, "filter": "前方高能"],
         ["id": 3, "type": 1, "filter": "^哈{3,}$"], ["id": 4, "type": 2, "filter": "abcdef12"]], "limit": 5000]
     default:
+      if url.path == "/x/space/wbi/arc/search", ProcessInfo.processInfo.arguments.contains("--ui-space-fallback") {
+        return response(url, body: Data(#"{"code":-352,"data":{}}"#.utf8))
+      }
       if let body = M3Fixture.uiResponse(path: url.path, parameters: fields) {
         return response(url, body: body)
       }
@@ -217,3 +225,277 @@ struct DebugFixtureImage: View {
     }.clipped()
   }
 }
+
+#if DEBUG
+private actor SpaceLibraryCheckGate {
+  private var entered = false
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var observers: [CheckedContinuation<Void, Never>] = []
+  func pause() async {
+    entered = true
+    observers.forEach { $0.resume() }; observers = []
+    // Finish late even if the caller was cancelled, like an uncancellable response.
+    await withCheckedContinuation { continuation = $0 }
+  }
+  func waitUntilEntered() async {
+    if entered { return }
+    await withCheckedContinuation { observers.append($0) }
+  }
+  func release() { continuation?.resume(); continuation = nil }
+}
+
+private actor SpaceLibraryIdentityReader {
+  let gate = SpaceLibraryCheckGate()
+  private var armed = false
+  func arm() { armed = true }
+  func read(_ service: BiliService) async -> AuthSnapshot {
+    if armed { armed = false; await gate.pause() }
+    return await service.authSnapshot()
+  }
+}
+
+private actor SpaceLibraryCheckTransport: AuthTransport {
+  enum Hold { case secondWBI, collectWBI }
+  let gate = SpaceLibraryCheckGate()
+  private let fixture = DebugUITransport()
+  private var hold: Hold?
+  private var failCollectionTail = false
+  private(set) var wbiSecondRequests = 0
+  private(set) var appRequests = 0
+  private(set) var collectionRequests = 0
+  func arm(_ hold: Hold) { self.hold = hold }
+  func failTail() { failCollectionTail = true }
+  func send(_ request: URLRequest) async throws -> AuthHTTPResponse {
+    let url = request.url!
+    let fields = Dictionary((URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
+      .map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
+    if url.path == "/x/space/wbi/arc/search" {
+      if fields["pn"] == "2" { wbiSecondRequests += 1 }
+      if let hold, hold == .collectWBI || fields["pn"] == "2" {
+        self.hold = nil
+        await gate.pause()
+        if hold == .collectWBI {
+          return AuthHTTPResponse(body: Data(#"{"code":-352,"data":{}}"#.utf8),
+            response: HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+      }
+    }
+    if url.path == "/x/v2/space/archive/cursor" { appRequests += 1 }
+    if ["/x/polymer/web-space/seasons_archives_list", "/x/series/archives"].contains(url.path) {
+      collectionRequests += 1
+      if failCollectionTail, fields["page_num"] == "2" || fields["pn"] == "2" {
+        throw URLError(.networkConnectionLost)
+      }
+    }
+    return try await fixture.send(request)
+  }
+}
+
+private actor SpaceSearchCheckRPCTransport: BiliRPCTransport {
+  struct RequestRecord: Sendable { let mid: Int64; let keyword: String; let page: Int }
+  private let fixture = M3FixtureRPCTransport(richUI: true)
+  private(set) var requests: [RequestRecord] = []
+  func unary<Request: SwiftProtobuf.Message, Response: SwiftProtobuf.Message>(
+    _ request: Request, response: Response.Type, descriptor: MethodDescriptor, metadata: Metadata
+  ) async throws -> Response {
+    let result = try await fixture.unary(request, response: response, descriptor: descriptor, metadata: metadata)
+    guard let query = request as? Bilibili_App_Interfaces_V1_SearchArchiveReq,
+      var reply = result as? Bilibili_App_Interfaces_V1_SearchArchiveReply else { return result }
+    requests.append(RequestRecord(mid: query.mid, keyword: query.keyword, page: Int(query.pn)))
+    // Distinct IDs make accidental collection/search mixing observable.
+    reply.archives = reply.archives.map { original in
+      var item = original
+      item.archive.aid += 10_000; item.archive.title = "关键词搜索 · \(item.archive.aid)"
+      return item
+    }
+    guard let typed = reply as? Response else { throw BiliRPCError.invalidArgument }
+    return typed
+  }
+  func shutdown(grace: Duration) async { await fixture.shutdown(grace: grace) }
+}
+
+/// Runs actual LibraryModel entry points against delayed synthetic responses, without
+/// windows or playback. Invoked only by the explicit DEBUG diagnostic launch parameter.
+@MainActor enum SpaceLibraryModelChecks {
+  private enum Failure: Error { case assertion(String) }
+  private static func require(_ value: Bool, _ message: String) throws {
+    guard value else { throw Failure.assertion(message) }
+  }
+  static func run() async -> Bool {
+    do {
+      try await pagingOwnsList()
+      print("PASS space model paging blocks playAll")
+      try await collectingOwnsList()
+      print("PASS space model playAll blocks paging across provider switch")
+      try await staleTailCannotPublish()
+      print("PASS space model query change during final identity await drops partial results")
+      try await partialPlaybackHasOneOwner()
+      print("PASS space model partial playback has one owned task and original context")
+      try await collectionSearchResetsContext()
+      return true
+    } catch { print("FAIL space model check: \(error)"); return false }
+  }
+  private static func makeService(_ transport: SpaceLibraryCheckTransport) -> BiliService {
+    BiliService(transport: transport, credentials: DebugUICredentialStore())
+  }
+  private static func pagingOwnsList() async throws {
+    let transport = SpaceLibraryCheckTransport(), service: BiliService
+    service = makeService(transport)
+    let library = LibraryModel(service: service, observeIdentity: false)
+    await library.load(.space(SpaceArchiveQuery(mid: 10001)))
+    await transport.arm(.secondWBI)
+    let paging = Task { await library.loadNext() }
+    await transport.gate.waitUntilEntered()
+    try require(library.isLoading, "delayed WBI page must own the list")
+    var handoffs = 0
+    library.playAll { _ in handoffs += 1 }
+    try require(!library.playAllProgress && library.playbackTaskForChecks == nil,
+      "playAll must not start beside an in-flight page")
+    await transport.gate.release(); await paging.value
+    let appRequests = await transport.appRequests
+    try require(handoffs == 0 && appRequests == 0 && library.entries.count == 40,
+      "rejected playAll cannot switch provider before delayed paging completes")
+    library.cancel()
+  }
+  private static func collectingOwnsList() async throws {
+    let transport = SpaceLibraryCheckTransport(), service: BiliService
+    service = makeService(transport)
+    let library = LibraryModel(service: service, observeIdentity: false)
+    await library.load(.space(SpaceArchiveQuery(mid: 10001)))
+    await transport.arm(.collectWBI)
+    var handedOff: [Video] = []
+    library.playAll { handedOff = $0.videos }
+    let task = library.playbackTaskForChecks
+    await transport.gate.waitUntilEntered()
+    await library.loadNext()
+    let wbiPages = await transport.wbiSecondRequests
+    try require(library.playAllProgress && !library.isLoading && wbiPages == 0,
+      "loadNext must not enqueue WBI paging while playAll owns the list")
+    await transport.gate.release(); await task?.value
+    try require(library.spacePage?.provider == .appCursor && handedOff.count == 40,
+      "collection must hand off the restarted app list")
+    try require(library.entries.allSatisfy { $0.title.hasPrefix("本地投稿") },
+      "no WBI entries may mix back into the app list")
+    await library.loadNext()
+    try require(library.entries.count == 40 && !library.playAllProgress,
+      "paging resumes using the app cursor after collection releases ownership")
+    library.cancel()
+  }
+  private static func staleTailCannotPublish() async throws {
+    let transport = SpaceLibraryCheckTransport(), reader = SpaceLibraryIdentityReader()
+    let service = makeService(transport)
+    let library = LibraryModel(service: service, observeIdentity: false, readIdentity: { await reader.read(service) })
+    let collection = try await service.spaceCollections(mid: 10001).items[0]
+    await library.load(.collection(collection, false))
+    await transport.failTail(); await reader.arm()
+    var handoffs = 0
+    library.playAll { _ in handoffs += 1 }
+    let oldTask = library.playbackTaskForChecks
+    await reader.gate.waitUntilEntered()
+    await library.load(.space(SpaceArchiveQuery(mid: 10002, order: .click)))
+    await reader.gate.release(); await oldTask?.value
+    library.playLoaded { _ in handoffs += 1 }
+    try require(library.partialVideos.isEmpty && library.playAllNotice == nil && handoffs == 0,
+      "old partial results must not publish after the final identity await")
+    try require(library.spacePage?.order == .click && library.playbackTaskForChecks == nil,
+      "playLoaded cannot rebind an old result to the new query generation")
+    library.cancel()
+  }
+  private static func partialPlaybackHasOneOwner() async throws {
+    let transport = SpaceLibraryCheckTransport(), service: BiliService
+    service = makeService(transport)
+    let library = LibraryModel(service: service, observeIdentity: false)
+    let collection = try await service.spaceCollections(mid: 10001).items[0]
+    await library.load(.collection(collection, false)); await transport.failTail()
+    library.playAll { _ in }
+    await library.playbackTaskForChecks?.value
+    try require(library.partialVideos.count == 30, "second-page failure keeps the original partial list")
+    let gate = SpaceLibraryCheckGate()
+    var calls = 0, confirmed = false
+    library.playLoaded { handoff in
+      calls += 1
+      await gate.pause()
+      let identity = await service.authSnapshot()
+      confirmed = (try? handoff.confirm(current: identity)) != nil
+    }
+    let originalTask = library.playbackTaskForChecks
+    await gate.waitUntilEntered()
+    library.playLoaded { _ in calls += 1 }
+    await library.loadNext()
+    try require(calls == 1 && library.playAllProgress && !library.isLoading,
+      "a second playLoaded and paging cannot replace the owned handoff task")
+    await library.load(.space(SpaceArchiveQuery(mid: 10002, order: .click)))
+    await gate.release(); await originalTask?.value
+    try require(calls == 1 && !confirmed && library.partialVideos.isEmpty,
+      "original partial handoff must reject a changed query after its last await")
+    library.cancel()
+  }
+  private static func collectionSearchResetsContext() async throws {
+    for kind in [SpaceCollectionKind.season, .series] {
+      let transport = SpaceLibraryCheckTransport(), rpcTransport = SpaceSearchCheckRPCTransport()
+      let service = makeService(transport)
+      let rpc = LibraryRPCService(auth: service, transport: rpcTransport, installationID: "space-search-check")
+      let library = LibraryModel(service: service, libraryRPC: rpc, observeIdentity: false)
+      guard let collection = try await service.spaceCollections(mid: 10001).items.first(where: { $0.kind == kind }) else {
+        throw Failure.assertion("missing collection fixture")
+      }
+      var selection = SpacePageSelection(tab: "合集和系列", selectedCollection: collection)
+      func currentMode() -> LibraryModel.Mode {
+        selection.contentMode(mid: 10001, order: .click, tid: 0, descending: true)
+      }
+      await library.load(currentMode()); await library.loadNext()
+      let oldIDs = Set(library.entries.map(\.id))
+      try require(oldIDs.count == 40 && !library.hasMore, "collection must start beyond its first page")
+      await transport.failTail()
+      library.playAll { _ in }
+      await library.playbackTaskForChecks?.value
+      try require(library.partialVideos.count == 40, "failed collection tail must leave partial playback to invalidate")
+      var oldHandoff: PlaylistHandoff?
+      library.playLoaded { oldHandoff = $0 }
+      await library.playbackTaskForChecks?.value
+      try require(oldHandoff != nil, "partial handoff must exist before changing query")
+      let collectionRequests = await transport.collectionRequests
+      let oldRevision = selection.searchRevision
+      selection.submit("  动画 \n", library: library)
+      try require(selection.tab == "投稿" && selection.selectedCollection == nil && selection.submitted == "动画" &&
+        selection.searchRevision != oldRevision, "search submission exits collection and trims the keyword")
+      try require(library.partialVideos.isEmpty && library.playAllNotice == nil && library.playbackTaskForChecks == nil,
+        "submission synchronously invalidates partial playback and its owned task")
+      var stalePlays = 0
+      library.playAll { _ in stalePlays += 1 }; library.playLoaded { _ in stalePlays += 1 }
+      await library.loadNext()
+      try require(stalePlays == 0 && library.playbackTaskForChecks == nil,
+        "cancelled old mode cannot play or page before the replacement task starts")
+      let identity = await service.authSnapshot()
+      var rejectedOldHandoff = false
+      do { _ = try oldHandoff?.confirm(current: identity) } catch is CancellationError { rejectedOldHandoff = true }
+      try require(rejectedOldHandoff, "old partial handoff must reject the new search generation")
+      await library.load(currentMode())
+      let firstRequests = await rpcTransport.requests
+      try require(firstRequests.count == 1 && firstRequests[0].page == 1 && firstRequests[0].mid == 10001 &&
+        firstRequests[0].keyword == "动画" && library.spacePage?.provider == .grpc && library.entries.count == 20,
+        "production content mode must restart keyword gRPC at page one")
+      try require(oldIDs.isDisjoint(with: library.entries.map(\.id)), "old collection entries must be replaced")
+      await library.loadNext()
+      try require(library.entries.count == 40 && !library.hasMore, "search pagination must advance its own cursor")
+      var videos: [Video] = []
+      library.playAll { videos = $0.videos }
+      await library.playbackTaskForChecks?.value
+      let requests = await rpcTransport.requests
+      let afterCollectionRequests = await transport.collectionRequests
+      try require(requests.map(\.page) == [1, 2, 1, 2] && videos.count == 40 &&
+        videos.allSatisfy { $0.title.hasPrefix("关键词搜索") && ($0.aid ?? 0) >= 10_000 } &&
+        afterCollectionRequests == collectionRequests, "paging and playAll must use only the new keyword gRPC source")
+      let repeatedRevision = selection.searchRevision
+      selection.submit("动画", library: library)
+      try require(selection.searchRevision != repeatedRevision, "same-keyword submission must change the task ID")
+      await library.load(currentMode())
+      let repeatedRequests = await rpcTransport.requests
+      try require(repeatedRequests.map(\.page) == [1, 2, 1, 2, 1] && library.entries.count == 20 && library.hasMore,
+        "repeating a search must restart instead of leaving the cancelled mode empty")
+      library.cancel()
+      print("PASS space model collection search kind=\(kind.rawValue) exited_detail=yes keyword=动画 provider=grpc pages=1,2 playAll=40 search_only=yes stale_handoff=rejected repeated_page=1")
+    }
+  }
+}
+#endif

@@ -24,7 +24,7 @@ final class FinalInlineSpaceTests: XCTestCase {
     XCTAssertEqual(user.likes, 45678); XCTAssertEqual(user.videos, 8)
     XCTAssertEqual(user.level, 6); XCTAssertTrue(user.isVIP)
     let sparse = try BiliService.libraryUser(["mid": 123, "name": "Sparse"])
-    XCTAssertEqual(sparse.likes, 0); XCTAssertEqual(sparse.level, 0); XCTAssertFalse(sparse.isVIP)
+    XCTAssertNil(sparse.likes); XCTAssertEqual(sparse.level, 0); XCTAssertFalse(sparse.isVIP)
   }
   func testDynamicEmoteMapAndSegmentFallbackText() throws {
     var item = Bilibili_App_Dynamic_V2_DynamicItem()

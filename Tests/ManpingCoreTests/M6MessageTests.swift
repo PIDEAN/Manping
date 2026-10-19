@@ -206,3 +206,358 @@ final class M6MessageTests: XCTestCase, @unchecked Sendable {
     XCTAssertTrue(requests.isEmpty)
   }
 }
+
+private actor MarkReadTransport: AuthTransport {
+  enum Scenario {
+    case normal, partialACK, stalled, exhausted, newMessages, chatFailure, malformedCounts, stickyFeed, feedFailure, blocked
+    case singleMalformedCount, blockedFeed, blockedChat, blockedFeedFailure, blockedChatFailure
+  }
+  private let scenario: Scenario
+  private(set) var requests: [URLRequest] = []
+  private var acknowledged = Set<Int64>()
+  private var feed = ["reply": 3, "at": 1, "like": 12]
+  private var pause: CheckedContinuation<Void, Never>?
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+  private var didPause = false
+  init(_ scenario: Scenario = .normal) { self.scenario = scenario }
+  func waitUntilBlocked() async {
+    if didPause { return }
+    await withCheckedContinuation { waiters.append($0) }
+  }
+  func release() { pause?.resume(); pause = nil }
+  private func row(_ id: Int64, _ sequence: Int64, _ timestamp: Int64) -> [String: Any] {
+    // Deliberately no last_msg or user-card data: ACK must not depend on presentation parsing.
+    ["talker_id": id, "session_type": 1, "max_seqno": sequence, "ack_seqno": 0,
+      "unread_count": 1, "session_ts": timestamp]
+  }
+  func send(_ request: URLRequest) async throws -> AuthHTTPResponse {
+    requests.append(request)
+    let path = request.url!.path, fields = messageFields(request)
+    let blockFeed = [.blockedFeed, .blockedFeedFailure].contains(scenario) && path == "/x/msgfeed/unread"
+    let blockChat = [.blockedChat, .blockedChatFailure].contains(scenario) && path.hasSuffix("/single_unread")
+    if !didPause && (blockFeed || blockChat) {
+      didPause = true
+      await withCheckedContinuation { continuation in
+        pause = continuation; for waiter in waiters { waiter.resume() }; waiters = []
+      }
+    }
+    let payload: Any
+    var code = 0
+    switch path {
+    case "/x/web-interface/nav":
+      payload = ["wbi_img": ["img_url": "https://fixture.invalid/7cd084941338484aae1ad9425b84077c.png",
+        "sub_url": "https://fixture.invalid/4932caff0ff746eab6f01bf08b70ac45.png"]]
+    case "/session_svr/v1/session_svr/get_sessions":
+      if scenario == .blocked, !didPause {
+        didPause = true
+        await withCheckedContinuation { continuation in
+          pause = continuation; for waiter in waiters { waiter.resume() }; waiters = []
+        }
+      }
+      let cursor = Int64(fields["end_ts"] ?? "0") ?? 0
+      if scenario == .exhausted {
+        payload = ["session_list": [row(1, 10, cursor == 0 ? 10_000 : cursor - 1)], "has_more": 1]
+      } else if fields["session_type"] == "2" {
+        payload = ["session_list": [row(1, 100, 300), row(3, 30, 100)], "has_more": 0]
+      } else if cursor == 0 {
+        payload = ["session_list": [row(1, 10, 300)], "has_more": 1]
+      } else {
+        payload = ["session_list": [row(1, 99, 300), row(2, 20, 200)], "has_more": scenario == .stalled ? 1 : 0]
+      }
+    case "/session_svr/v1/session_svr/update_ack":
+      let id = Int64(fields["talker_id"] ?? "0") ?? 0
+      if scenario == .partialACK, id == 2 { code = -500 }
+      else { acknowledged.insert(id) }
+      payload = [:] as [String: Int]
+    case "/session_svr/v1/session_svr/batch_update_dustbin_ack":
+      payload = [:] as [String: Int]
+    case "/x/msgfeed/reply", "/x/msgfeed/at", "/x/msgfeed/like":
+      let category = path.components(separatedBy: "/").last!
+      if scenario != .stickyFeed { feed[category] = 0 }
+      let page: [String: Any] = ["items": [], "cursor": ["id": 0, "time": 0, "is_end": true]]
+      if category == "like" { payload = ["total": page] as [String: Any] }
+      else { payload = page }
+    case "/x/msgfeed/unread":
+      if scenario == .feedFailure || scenario == .blockedFeedFailure { code = -500 }
+      if scenario == .malformedCounts { payload = ["reply": false, "at": 0] as [String: Any] }
+      else if scenario == .singleMalformedCount { payload = ["reply": false, "at": 1, "like": 12] as [String: Any] }
+      else { payload = feed }
+    case "/session_svr/v1/session_svr/single_unread":
+      if scenario == .chatFailure || scenario == .blockedChatFailure { code = -500 }
+      payload = ["follow_unread": scenario == .newMessages && !acknowledged.isEmpty ? 2 : 3 - acknowledged.count,
+        "unfollow_unread": 0, "dustbin_unread": 9]
+    default: code = -404; payload = [:] as [String: Int]
+    }
+    let body = try JSONSerialization.data(withJSONObject: ["code": code, "data": payload])
+    return AuthHTTPResponse(body: body, response: HTTPURLResponse(url: request.url!, statusCode: 200,
+      httpVersion: nil, headerFields: nil)!)
+  }
+}
+
+extension M6MessageTests {
+  func testPartialUnreadCountsKeepFeedWhenChatFails() async throws {
+    XCTAssertTrue(MessageUnreadCounts().canMarkAllRead(isRunning: false, needsRetry: false))
+    let transport = MarkReadTransport(.chatFailure)
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let unread = try await service.unreadMessageCounts(expectedIdentity: await service.authSnapshot())
+    XCTAssertEqual(unread[.reply], 3); XCTAssertEqual(unread[.at], 1); XCTAssertEqual(unread[.like], 12)
+    XCTAssertNil(unread[.chat]); XCTAssertNil(unread.total)
+    XCTAssertEqual(unread.knownTotal, 16)
+    XCTAssertTrue(unread.canMarkAllRead(isRunning: false, needsRetry: false))
+    let requests = await transport.requests
+    XCTAssertTrue(requests.allSatisfy { $0.httpMethod == "GET" })
+  }
+  func testPartialUnreadCountsKeepChatWhenFeedFails() async throws {
+    let service = BiliService(transport: MarkReadTransport(.feedFailure), credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let unread = try await service.unreadMessageCounts(expectedIdentity: await service.authSnapshot())
+    XCTAssertNil(unread[.reply]); XCTAssertNil(unread[.at]); XCTAssertNil(unread[.like])
+    XCTAssertEqual(unread[.chat], 3); XCTAssertNil(unread.total); XCTAssertEqual(unread.knownTotal, 3)
+    XCTAssertTrue(unread.canMarkAllRead(isRunning: false, needsRetry: false))
+  }
+  func testPartialUnreadCountsKeepValidFeedFields() async throws {
+    let service = BiliService(transport: MarkReadTransport(.singleMalformedCount), credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let unread = try await service.unreadMessageCounts(expectedIdentity: await service.authSnapshot())
+    XCTAssertNil(unread[.reply]); XCTAssertEqual(unread[.at], 1); XCTAssertEqual(unread[.like], 12)
+    XCTAssertEqual(unread[.chat], 3); XCTAssertNil(unread.total); XCTAssertEqual(unread.knownTotal, 16)
+  }
+  func testUnreadActionAvailabilityDistinguishesUnknownZeroRetryAndRunning() {
+    let zero = MessageUnreadCounts(UnreadMessages(reply: 0, at: 0, like: 0, chat: 0))
+    let incompleteZero = MessageUnreadCounts(values: [.reply: 0, .at: 0, .like: 0])
+    let positive = MessageUnreadCounts(UnreadMessages(reply: 3, at: 1, like: 12, chat: 0))
+    XCTAssertFalse(zero.canMarkAllRead(isRunning: false, needsRetry: false))
+    XCTAssertTrue(zero.canMarkAllRead(isRunning: false, needsRetry: true))
+    XCTAssertTrue(incompleteZero.canMarkAllRead(isRunning: false, needsRetry: false))
+    XCTAssertTrue(positive.canMarkAllRead(isRunning: false, needsRetry: false))
+    for unread in [MessageUnreadCounts(), zero, incompleteZero, positive] {
+      for retry in [false, true] { XCTAssertFalse(unread.canMarkAllRead(isRunning: true, needsRetry: retry)) }
+    }
+    XCTAssertEqual(MessageUnreadCounts(values: [.reply: Int64.max, .chat: 3]).knownTotal, Int64.max)
+  }
+  func testUnreadPollTaskCancellationDoesNotPublishPartialCounts() async throws {
+    for scenario in [MarkReadTransport.Scenario.blockedFeed, .blockedChat] {
+      let transport = MarkReadTransport(scenario)
+      let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+      try await service.restoreCookies()
+      let identity = await service.authSnapshot()
+      let task = Task { try await service.unreadMessageCounts(expectedIdentity: identity) }
+      await transport.waitUntilBlocked(); task.cancel(); await transport.release()
+      do { _ = try await task.value; XCTFail("Cancelled poll must not publish a partial snapshot") }
+      catch is CancellationError {}
+      let requests = await transport.requests
+      if scenario == .blockedFeed { XCTAssertFalse(requests.contains { $0.url!.path.hasSuffix("/single_unread") }) }
+    }
+  }
+  func testUnreadPollIdentityChangeDoesNotPublishPartialCounts() async throws {
+    for scenario in [MarkReadTransport.Scenario.blockedFeed, .blockedChat, .blockedFeedFailure, .blockedChatFailure] {
+      let transport = MarkReadTransport(scenario), credentials = M6MessageCredentials()
+      let service = BiliService(transport: transport, credentials: credentials)
+      try await service.restoreCookies()
+      let identity = await service.authSnapshot()
+      let task = Task { try await service.unreadMessageCounts(expectedIdentity: identity) }
+      await transport.waitUntilBlocked()
+      try await service.logout()
+      credentials.saveToken(identity.token)
+      try await service.restoreCookies()
+      await transport.release()
+      do { _ = try await task.value; XCTFail("Stale poll must not publish a partial snapshot") }
+      catch is CancellationError {}
+      let current = await service.authSnapshot()
+      XCTAssertEqual(current.token?.mid, identity.token?.mid)
+      XCTAssertNotEqual(current.epoch, identity.epoch)
+    }
+  }
+  func testMarkAllUsesFirstSnapshotSequenceAcrossPagesDeduplicatesAndPOSTsCSRF() async throws {
+    let transport = MarkReadTransport()
+    let bound = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await bound.restoreCookies()
+    let result = await bound.markAllMessagesRead(expectedIdentity: await bound.authSnapshot())
+    XCTAssertTrue(MessageSection.allCases.allSatisfy { result.outcomes[$0] == .success })
+    XCTAssertEqual(result.unread.total, 0)
+    let requests = await transport.requests
+    let acknowledgements = requests.filter { $0.url!.path.hasSuffix("/update_ack") }
+    XCTAssertEqual(acknowledgements.count, 3)
+    XCTAssertEqual(acknowledgements.map { messageFields($0)["ack_seqno"] }, ["10", "20", "30"])
+    for request in acknowledgements {
+      XCTAssertEqual(request.httpMethod, "POST")
+      let fields = messageFields(request)
+      XCTAssertEqual(fields["csrf"], "fixture-message-csrf")
+      XCTAssertEqual(fields["csrf_token"], "fixture-message-csrf")
+      XCTAssertEqual(fields["mobi_app"], "web")
+      XCTAssertEqual(fields["session_type"], "1")
+      XCTAssertNil(fields["access_key"])
+    }
+    let sessions = requests.filter { $0.url!.path.hasSuffix("/get_sessions") }
+    XCTAssertEqual(Set(sessions.map { messageFields($0)["session_type"] }), ["9", "2"])
+    XCTAssertTrue(sessions.allSatisfy { messageFields($0)["group_fold"] == "0" && messageFields($0)["unfollow_fold"] == "0" })
+    XCTAssertLessThan(try XCTUnwrap(requests.lastIndex { $0.url!.path.hasSuffix("/get_sessions") }),
+      try XCTUnwrap(requests.firstIndex { $0.url!.path.hasSuffix("/update_ack") }))
+    XCTAssertFalse(requests.contains { $0.url!.path.contains("dustbin_ack") || $0.url!.path.contains("/cards") })
+    XCTAssertTrue(requests.filter { $0.url!.path.hasSuffix("/single_unread") }.allSatisfy { messageFields($0)["show_dustbin"] == "0" })
+  }
+  func testIncompleteOrNonAdvancingEnumerationNeverAcknowledgesOrReportsChatSuccess() async throws {
+    for scenario in [MarkReadTransport.Scenario.stalled, .exhausted] {
+      let transport = MarkReadTransport(scenario)
+      let bound = BiliService(transport: transport, credentials: M6MessageCredentials())
+      try await bound.restoreCookies()
+      let result = await bound.markAllMessagesRead(expectedIdentity: await bound.authSnapshot())
+      XCTAssertEqual(result.outcomes[.chat], .unknown)
+      XCTAssertEqual(result.outcomes[.reply], .success)
+      let requests = await transport.requests
+      XCTAssertFalse(requests.contains { $0.httpMethod == "POST" })
+      XCTAssertLessThanOrEqual(requests.filter { $0.url!.path.hasSuffix("/get_sessions") }.count, 100)
+    }
+  }
+  func testMarkAllReportsACKFailureWithoutDiscardingOtherCategories() async throws {
+    let transport = MarkReadTransport(.partialACK)
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let result = await service.markAllMessagesRead(expectedIdentity: await service.authSnapshot())
+    XCTAssertEqual(result.outcomes[.chat], .partialFailure(count: 1))
+    XCTAssertEqual(result.unread[.chat], 1)
+    XCTAssertEqual(result.outcomes[.reply], .success)
+    XCTAssertEqual(result.outcomes[.at], .success)
+    XCTAssertEqual(result.outcomes[.like], .success)
+  }
+  func testNewMessagesKeepUnreadCountAndNeverAdvanceSnapshotBoundary() async throws {
+    let transport = MarkReadTransport(.newMessages)
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let result = await service.markAllMessagesRead(expectedIdentity: await service.authSnapshot())
+    XCTAssertEqual(result.outcomes[.chat], .success)
+    XCTAssertEqual(result.unread[.chat], 2)
+    let requests = await transport.requests
+    XCTAssertEqual(requests.filter { $0.httpMethod == "POST" }.map { messageFields($0)["ack_seqno"] }, ["10", "20", "30"])
+  }
+  func testDuplicateOperationDoesNotPOSTOrCancelOriginal() async throws {
+    let transport = MarkReadTransport(.blocked)
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let identity = await service.authSnapshot()
+    let first = Task { await service.markAllMessagesRead(expectedIdentity: identity) }
+    await transport.waitUntilBlocked()
+    let second = await service.markAllMessagesRead(expectedIdentity: identity)
+    XCTAssertTrue(second.outcomes.values.allSatisfy { $0 == .unknown })
+    await transport.release()
+    let result = await first.value
+    XCTAssertTrue(result.outcomes.values.allSatisfy { $0 == .success })
+    let requests = await transport.requests
+    XCTAssertEqual(requests.filter { $0.httpMethod == "POST" }.count, 3)
+  }
+  func testAccountALogoutAccountACancelsOldOperationBeforePOST() async throws {
+    let transport = MarkReadTransport(.blocked), credentials = M6MessageCredentials()
+    let service = BiliService(transport: transport, credentials: credentials)
+    try await service.restoreCookies()
+    let identity = await service.authSnapshot()
+    let task = Task { await service.markAllMessagesRead(expectedIdentity: identity) }
+    await transport.waitUntilBlocked()
+    try await service.logout()
+    credentials.saveToken(identity.token)
+    try await service.restoreCookies()
+    await transport.release()
+    let result = await task.value
+    XCTAssertTrue(result.outcomes.values.allSatisfy { $0 == .cancelled })
+    let current = await service.authSnapshot()
+    XCTAssertEqual(current.token?.mid, identity.token?.mid)
+    XCTAssertNotEqual(current.epoch, identity.epoch)
+    let requests = await transport.requests
+    XCTAssertFalse(requests.contains { $0.httpMethod == "POST" })
+    XCTAssertNil(result.unread.total)
+  }
+  func testTaskCancellationStopsBeforeAnyPOST() async throws {
+    let transport = MarkReadTransport(.blocked)
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let identity = await service.authSnapshot()
+    let task = Task { await service.markAllMessagesRead(expectedIdentity: identity) }
+    await transport.waitUntilBlocked(); task.cancel(); await transport.release()
+    let result = await task.value
+    XCTAssertTrue(result.outcomes.values.allSatisfy { $0 == .cancelled })
+    let requests = await transport.requests
+    XCTAssertFalse(requests.contains { $0.httpMethod == "POST" })
+  }
+  func testFeedCategoriesUseServerCountsAndMalformedCountsAreUnknown() async throws {
+    for scenario in [MarkReadTransport.Scenario.stickyFeed, .malformedCounts] {
+      let service = BiliService(transport: MarkReadTransport(scenario), credentials: M6MessageCredentials())
+      try await service.restoreCookies()
+      let result = await service.markAllMessagesRead(expectedIdentity: await service.authSnapshot())
+      if scenario == .stickyFeed {
+        XCTAssertEqual(result.outcomes[.reply], .partialFailure(count: 3))
+        XCTAssertEqual(result.outcomes[.at], .partialFailure(count: 1))
+        XCTAssertEqual(result.outcomes[.like], .partialFailure(count: 12))
+      } else {
+        XCTAssertEqual(result.outcomes[.reply], .unknown)
+        XCTAssertNil(result.unread[.reply])
+      }
+      XCTAssertEqual(result.outcomes[.chat], .success)
+    }
+  }
+  func testUnreadFailuresAreNotZeroAndCategoriesRefreshIndependently() async throws {
+    for scenario in [MarkReadTransport.Scenario.chatFailure, .feedFailure] {
+      let service = BiliService(transport: MarkReadTransport(scenario), credentials: M6MessageCredentials())
+      try await service.restoreCookies()
+      let identity = await service.authSnapshot()
+      do { _ = try await service.unreadMessages(expectedIdentity: identity); XCTFail("Unread failure must throw") } catch {}
+      let result = await service.markAllMessagesRead(expectedIdentity: identity)
+      if scenario == .chatFailure {
+        XCTAssertNil(result.unread[.chat]); XCTAssertEqual(result.outcomes[.chat], .unknown)
+        XCTAssertEqual(result.outcomes[.reply], .success)
+      } else {
+        XCTAssertNil(result.unread[.reply]); XCTAssertEqual(result.outcomes[.reply], .unknown)
+        XCTAssertEqual(result.outcomes[.chat], .success)
+      }
+    }
+  }
+  func testCancellationAtProgressHandoffPreventsAllAcknowledgements() async throws {
+    let transport = MarkReadTransport()
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    let identity = await service.authSnapshot()
+    let operation = Task {
+      await service.markAllMessagesRead(expectedIdentity: identity) { _, _, _ in
+        // Cancel while returning progress across the actor boundary, before any ACK begins.
+        withUnsafeCurrentTask { $0?.cancel() }
+      }
+    }
+    let result = await operation.value
+    XCTAssertTrue(result.outcomes.values.allSatisfy { $0 == .cancelled })
+    XCTAssertNil(result.unread.total)
+    let requests = await transport.requests
+    XCTAssertTrue(requests.contains { $0.url!.path == "/x/msgfeed/reply" })
+    XCTAssertFalse(requests.contains { $0.httpMethod == "POST" })
+  }
+  func testUnreadGenerationRejectsPollFromBeforeOperationAndAcceptsFreshRead() {
+    var gate = MessageUnreadGeneration()
+    let oldPoll = gate.current
+    gate.invalidate() // operation starts
+    XCTAssertFalse(gate.accepts(oldPoll))
+    let freshPoll = gate.invalidate() // operation finishes and immediately starts a new read
+    XCTAssertTrue(gate.accepts(freshPoll))
+    gate.invalidate() // account changes
+    XCTAssertFalse(gate.accepts(freshPoll))
+  }
+  func testMessageCountParserRejectsMissingBooleanNegativeAndFractionalValues() {
+    for value: Any? in [nil, true, false, -1, 1.5, "bad"] { XCTAssertThrowsError(try messageRequiredCount(value)) }
+    XCTAssertEqual(try messageRequiredCount("12"), 12)
+    XCTAssertEqual(try messageRequiredCount(0), 0)
+  }
+  func testDustbinRouteUsesPOSTAndBothCSRFFieldsWithoutJoiningMarkAll() async throws {
+    let transport = MarkReadTransport()
+    let service = BiliService(transport: transport, credentials: M6MessageCredentials())
+    try await service.restoreCookies()
+    try await service.testDustbinAcknowledgement()
+    let requests = await transport.requests
+    let post = try XCTUnwrap(requests.first { $0.httpMethod == "POST" })
+    XCTAssertTrue(post.url!.path.hasSuffix("/batch_update_dustbin_ack"))
+    XCTAssertEqual(messageFields(post)["csrf"], "fixture-message-csrf")
+    XCTAssertEqual(messageFields(post)["csrf_token"], "fixture-message-csrf")
+  }
+}
+
+private extension BiliService {
+  func testDustbinAcknowledgement() async throws {
+    _ = try await messageWebREST(.batchDustbinAcknowledgement, expectedIdentity: authSnapshot())
+  }
+}

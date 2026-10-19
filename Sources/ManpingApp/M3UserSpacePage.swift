@@ -9,11 +9,12 @@ struct M3UserSpacePage: View {
   @StateObject private var dynamics: M3UserDynamicsModel
   @StateObject private var relations: UserRelationsModel
   @ObservedObject private var pins = PinnedUserStore.shared
-  @State private var tab = "投稿"
+  @State private var selection = SpacePageSelection()
   @State private var keyword = ""
-  @State private var submitted = ""
-  @State private var showingProfile = false
-  @State private var showingSearch = false
+  @State private var order: SpaceArchiveOrder = .pubdate
+  @State private var tid = 0
+  @State private var descending = false
+  @State private var debugDetailOpened = false
   @State private var regionalSearchRevision: UUID?
   @Environment(\.colorScheme) private var scheme
 
@@ -22,162 +23,322 @@ struct M3UserSpacePage: View {
     _library = StateObject(wrappedValue: LibraryModel(model: model))
     _dynamics = StateObject(wrappedValue: M3UserDynamicsModel(model: model))
     _relations = StateObject(wrappedValue: UserRelationsModel(service: model.service))
+    #if DEBUG
+    let args = ProcessInfo.processInfo.arguments
+    if let index = args.firstIndex(of: "--ui-space-tab"), args.indices.contains(index + 1) {
+      _selection = State(initialValue: SpacePageSelection(tab: args[index + 1]))
+    }
+    #endif
   }
-  private var profile: LibraryUser? {
-    if let user = library.profile, user.id == mid { return user }
-    if let user = dynamics.profile, user.id == mid { return user }
-    return nil
-  }
+  private var profile: LibraryUser? { library.profile?.id == mid ? library.profile : nil }
+  private var query: SpaceArchiveQuery { SpaceArchiveQuery(mid: mid, order: order, tid: tid, keyword: selection.submitted) }
+  private var loadID: String { "\(mid):\(selection.tab):\(query.contextKey):\(selection.selectedCollection?.id ?? ""):\(descending):\(selection.searchRevision):\(model.refreshToken)" }
   var body: some View {
     VStack(spacing: 0) {
-      if showingSearch && submitted.isEmpty {
-        HStack(spacing: 8) {
-          TextField("搜索这位 UP 主的投稿", text: $keyword, prompt: Text("搜索这位 UP 主的投稿")).labelsHidden().textFieldStyle(AppTextFieldStyle()).onSubmit(submit)
-          Button("搜索", action: submit).buttonStyle(AppButtonStyle(role: .primary))
-        }.frame(maxWidth: 560).padding(.horizontal, Theme.gridPadding).padding(.top, 16)
-      }
-      if tab == "动态" && submitted.isEmpty {
-        M3DynamicsResults(dynamics: dynamics, model: model)
-      } else { LibraryResults(library: library, model: model) }
-      if let error = relations.errors[mid], mid != relations.selfID {
-        HStack(spacing: 8) {
-          InlineErrorText(message: error)
-          Spacer()
-          Button("重试") { relations.refresh(mid: mid) }.buttonStyle(AppButtonStyle(size: .small))
-        }.padding(.horizontal, Theme.gridPadding).padding(.vertical, 8).overlay(alignment: .top) { Hairline() }
+      if selection.tab == "动态" { header; tabs; M3DynamicsResults(dynamics: dynamics, model: model) }
+      else {
+        ScrollView {
+          VStack(alignment: .leading, spacing: 20) {
+            header
+            tabs
+            if let collection = selection.selectedCollection { collectionDetail(collection) }
+            else if selection.tab == "主页" { home }
+            else if selection.tab == "合集和系列" { collectionGrid }
+            else { archives }
+          }.cardGridContent().padding(Theme.gridPadding).frame(maxWidth: .infinity, alignment: .leading)
+        }.cardGrid()
       }
     }.foregroundStyle(Theme.text(scheme))
-      .pageToolbar(title: profile?.name ?? "UID \(mid)", subtitle: submitted.isEmpty ? nil : "搜索「\(submitted)」",
-        segments: submitted.isEmpty ? AnyView(tabs) : nil, refresh: refresh) { headerControls }
-      .task(id: "\(mid):\(tab):\(submitted):\(model.refreshToken)") {
-        if tab == "动态" && submitted.isEmpty {
-          library.cancel(); await dynamics.load(mid: mid)
-        } else {
-          dynamics.cancel(); await library.load(.space(mid, submitted))
-        }
+      .pageToolbar(title: profile?.name ?? "UID \(mid)", refresh: refresh) {
+        Button { if let profile { pins.toggle(profile) } } label: {
+          ToolbarIcon(pins.contains(mid) ? "pin.fill" : "pin")
+        }.toolbarIconStyle().disabled(profile == nil).help(pins.contains(mid) ? "取消固定" : "固定")
       }
+      .task(id: loadID) { await loadCurrent() }
+      .task(id: "\(mid):\(library.identityVersion)") { await library.loadSpaceProfile(mid: mid) }
       .task(id: "\(mid):\(relations.identityVersion)") { await relations.load(mid: mid) }
       .task(id: mid) { applyRegionalSearch() }
+      .onChange(of: library.collections) { _, items in
+        #if DEBUG
+        if DebugUIFixtures.enabled, ProcessInfo.processInfo.arguments.contains("--ui-space-detail"),
+          !debugDetailOpened, let first = items.first {
+          debugDetailOpened = true; selection.selectedCollection = first
+        }
+        #endif
+      }
       .onChange(of: model.regionalSearchRequest?.revision) { _, _ in applyRegionalSearch() }
-      .onDisappear { library.cancel(); dynamics.cancel(); relations.cancel() }
+      .onDisappear { library.cancel(); library.stopSpaceProfile(); dynamics.cancel(); relations.cancel() }
+  }
+  private var header: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(alignment: .bottom, spacing: 18) {
+        CachedImage(url: profile?.avatar).frame(width: 84, height: 84).clipShape(Circle())
+          // A ring in the page colour separates the avatar from the banner behind it.
+          .overlay(Circle().strokeBorder(Theme.panel(scheme), lineWidth: 3))
+          .overlay(alignment: .bottomTrailing) {
+            if let type = profile?.officialType, type >= 0 {
+              Image(systemName: "checkmark.seal.fill").font(.system(size: 22)).foregroundStyle(Theme.highlight)
+            }
+          }
+        VStack(alignment: .leading, spacing: 7) {
+          HStack(spacing: 8) {
+            Text(profile?.name ?? "UID \(mid)").font(Theme.Font.title)
+            if let profile {
+              Text("Lv\(profile.level)").font(Theme.Font.caption2.weight(.bold)).foregroundStyle(Theme.highlight)
+              if profile.isVIP { Text("大会员").font(Theme.Font.caption2).foregroundStyle(Theme.live) }
+            }
+          }
+          if let official = profile?.officialDescription, !official.isEmpty {
+            Text(official).font(Theme.Font.caption).foregroundStyle(Theme.highlight)
+          }
+          Text(profile?.signature ?? "正在加载资料…").font(Theme.Font.body).foregroundStyle(Theme.secondaryText(scheme)).lineLimit(2)
+        }
+        Spacer()
+        M3UserFollowButton(mid: mid, relations: relations, model: model, prominent: true)
+        Button { if let profile { pins.toggle(profile) } } label: {
+          Label(pins.contains(mid) ? "已固定" : "固定", systemImage: pins.contains(mid) ? "pin.fill" : "pin")
+        }.buttonStyle(AppButtonStyle())
+      }
+      HStack(spacing: 26) {
+        stat(profile?.following, "关注", route: model.accountMID == mid ? .following(mid) : nil)
+        stat(profile?.followers, "粉丝", route: model.accountMID == mid ? .followers(mid) : nil)
+        stat(library.overview?.likes ?? profile?.likes, "获赞")
+        stat(library.overview?.plays ?? profile?.plays, "播放")
+      }.padding(.leading, 102)
+      if let error = library.profileError { InlineErrorText(message: error) }
+      if let error = relations.errors[mid] { InlineErrorText(message: error) }
+    }.padding(.top, 50).padding(.horizontal, 16).padding(.bottom, 18)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(alignment: .top) {
+        ZStack {
+          Theme.panel(scheme)
+          if let banner = profile?.banner {
+            CachedImage(url: banner).frame(height: 210).clipped()
+            LinearGradient(colors: [Theme.panel(scheme).opacity(0.2), Theme.panel(scheme)], startPoint: .top, endPoint: .bottom)
+          }
+        }.clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+      }
+  }
+  @ViewBuilder private func stat(_ value: Int?, _ label: String, route: AppModel.OverlayRoute? = nil) -> some View {
+    if let value {
+      if let route {
+        Button { model.openOverlay(route) } label: { statLabel(value, label) }.buttonStyle(.plain)
+      } else { statLabel(value, label) }
+    }
+  }
+  private func statLabel(_ value: Int, _ label: String) -> some View {
+    HStack(spacing: 5) { Text(spaceCount(value)).font(Theme.Font.headline); Text(label).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme)) }
   }
   private var tabs: some View {
-    SegmentedTabs(options: [("投稿", "投稿"), ("动态", "动态")], selection: Binding(
-      get: { tab }, set: { tab = $0; showingSearch = false }))
+    SegmentedTabs(options: [("主页", "主页"), ("投稿", countTitle("投稿", library.overview?.archiveCount ?? profile?.videos)),
+      ("合集和系列", countTitle("合集和系列", library.overview?.collectionCount)), ("动态", "动态")], selection: Binding(
+        get: { selection.tab }, set: { selection.tab = $0; selection.selectedCollection = nil }))
+  }
+  private func countTitle(_ text: String, _ count: Int?) -> String { count.map { "\(text) \($0)" } ?? text }
+  private var home: some View {
+    VStack(alignment: .leading, spacing: 22) {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: 20) {
+          pinnedSection.frame(minWidth: 260, maxWidth: 340)
+          masterpieceSection.frame(minWidth: 500, maxWidth: .infinity)
+        }
+        VStack(alignment: .leading, spacing: 20) { pinnedSection; masterpieceSection }
+      }
+      HStack {
+        Text("最新投稿").font(Theme.Font.section)
+        Spacer()
+        Button("查看全部 \(library.overview?.archiveCount ?? library.total) 个投稿 ›") { selection.tab = "投稿" }.buttonStyle(.plain).foregroundStyle(Theme.accentText(scheme))
+      }
+      videoGrid(Array(library.entries.prefix(4)))
+      readState
+    }
+  }
+  @ViewBuilder private var pinnedSection: some View {
+    if let pinned = library.overview?.pinned, !pinned.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("置顶视频").font(Theme.Font.section)
+        videoGrid(pinned).overlay(alignment: .topLeading) {
+          Text("置顶").font(Theme.Font.caption2.bold()).padding(6).background(Theme.highlight, in: Capsule()).padding(8)
+        }
+      }
+    }
+  }
+  @ViewBuilder private var masterpieceSection: some View {
+    if let works = library.overview?.masterpieces, !works.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        Text("代表作").font(Theme.Font.section)
+        videoGrid(Array(works.prefix(3)))
+      }
+    }
+  }
+  private var archives: some View {
+    VStack(alignment: .leading, spacing: 16) {
+      if library.spacePage?.provider == .appCursor {
+        HStack(spacing: 12) {
+          Text("已切换到备用列表：仅支持「最新发布」和「最多播放」，分区筛选和「最多收藏」暂不可用。登录后通常可以恢复。")
+            .font(Theme.Font.caption)
+          Spacer()
+          Button("重试完整列表") { Task { await library.retryFullSpace() } }.buttonStyle(AppButtonStyle(size: .small))
+        }.foregroundStyle(Theme.highlight).padding(12).background(Theme.highlight.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
+      }
+      HStack(spacing: 8) {
+        HStack(spacing: 2) {
+          ForEach(SpaceArchiveOrder.allCases, id: \.self) { item in
+            let supported = (library.spacePage?.availableOrders ?? SpaceArchiveOrder.allCases).contains(item)
+            Button(item.title) { order = item }
+              .font(Theme.Font.caption.weight(actualOrder == item ? .semibold : .regular))
+              .padding(.horizontal, 12).frame(height: 26)
+              .background(actualOrder == item ? Theme.fillHover(scheme) : .clear, in: Capsule())
+              .foregroundStyle(supported ? Theme.text(scheme) : Theme.tertiaryText(scheme))
+              .buttonStyle(.plain).disabled(!supported)
+          }
+        }.padding(3).background(Theme.fill(scheme), in: Capsule())
+        Spacer()
+        TextField("在 TA 的投稿中搜索", text: $keyword).textFieldStyle(AppTextFieldStyle()).frame(maxWidth: 240).onSubmit(submit)
+        if !selection.submitted.isEmpty { Button("清除") { keyword = ""; selection.submitted = "" } }
+        playButton
+      }
+      HStack(spacing: 8) {
+        Button("全部") { tid = 0 }.buttonStyle(ChipStyle(selected: (library.spacePage?.tid ?? tid) == 0))
+        ForEach(library.spacePage?.partitions ?? []) { part in
+          Button("\(part.name) \(part.count)") { tid = part.id }.buttonStyle(ChipStyle(selected: tid == part.id))
+        }
+        if library.spacePage?.supportsPartitions == false { Text("分区筛选不可用").font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)) }
+      }.disabled(library.spacePage?.supportsPartitions == false)
+      playNotice
+      videoGrid(library.entries)
+      readState
+    }
+  }
+  private var actualOrder: SpaceArchiveOrder { library.spacePage?.order ?? order }
+  private var playButton: some View {
+    Button(library.playAllProgress ? "正在收集…" : "全部播放") { library.playAll(play) }
+      .buttonStyle(SpacePlayButtonStyle()).disabled(library.playAllProgress || library.isLoading)
+  }
+  @ViewBuilder private var playNotice: some View {
+    if let notice = library.playAllNotice {
+      HStack {
+        InlineErrorText(message: notice)
+        if !library.partialVideos.isEmpty {
+          Button("播放已加载的 \(library.partialVideos.count) 个") { library.playLoaded(play) }.buttonStyle(AppButtonStyle(size: .small))
+        }
+      }
+    }
+  }
+  private var collectionGrid: some View {
+    VStack(alignment: .leading, spacing: 20) {
+      ForEach([SpaceCollectionKind.season, .series], id: \.self) { kind in
+        let items = library.collections.filter { $0.kind == kind }
+        if !items.isEmpty {
+          Text(kind == .season ? "合集" : "系列").font(Theme.Font.section)
+          LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.gridMinimum), spacing: Theme.gridSpacing)], spacing: Theme.gridSpacing) {
+            ForEach(items) { collection in
+              Button { selection.selectedCollection = collection; descending = false } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                  ZStack {
+                    if kind == .season {
+                      RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.fill(scheme)).padding(.horizontal, 10).offset(y: -8)
+                      RoundedRectangle(cornerRadius: Theme.Radius.md).fill(Theme.card(scheme)).padding(.horizontal, 5).offset(y: -4)
+                    }
+                    CachedImage(url: collection.cover).aspectRatio(16 / 9, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md))
+                  }.overlay(alignment: .bottomTrailing) { Text("\(collection.count) \(kind == .season ? "集" : "个视频")").font(Theme.Font.caption2).padding(6).background(Theme.panel(scheme), in: Capsule()).padding(6) }
+                    .overlay(alignment: .topLeading) { if kind == .series { Text("系列").font(Theme.Font.caption2).padding(6).background(Theme.panel(scheme), in: Capsule()).padding(6) } }
+                  Text(collection.title).font(Theme.Font.headline).lineLimit(2)
+                }.foregroundStyle(Theme.text(scheme)).cardHover()
+              }.buttonStyle(.plain)
+            }
+          }
+        }
+      }
+      readState
+    }
+  }
+  private func collectionDetail(_ collection: SpaceCollection) -> some View {
+    VStack(alignment: .leading, spacing: 16) {
+      Button("‹ 返回合集和系列") { selection.selectedCollection = nil }.buttonStyle(.plain).foregroundStyle(Theme.accentText(scheme))
+      HStack(spacing: 16) {
+        CachedImage(url: collection.cover).frame(width: 160, height: 90).clipped().clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm))
+        VStack(alignment: .leading, spacing: 8) {
+          Text(collection.title).font(Theme.Font.title)
+          Text("\(collection.kind == .season ? "合集" : "系列") · \(collection.count) 个视频").font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
+          HStack { playButton; SegmentedTabs(options: [(false, "正序"), (true, "倒序")], selection: $descending) }
+        }
+      }
+      playNotice
+      LazyVStack(spacing: 6) {
+        ForEach(Array(library.entries.enumerated()), id: \.element.id) { index, entry in
+          Button { model.open(entry) } label: {
+            HStack(spacing: 12) {
+              Text("\(index + 1)").font(Theme.Font.caption.monospacedDigit()).frame(width: 24)
+              CachedImage(url: entry.cover).frame(width: 96, height: 54).clipped().clipShape(RoundedRectangle(cornerRadius: Theme.Radius.xs))
+              VStack(alignment: .leading, spacing: 5) { Text(entry.title).font(Theme.Font.headline); Text(entry.subtitle).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme)) }
+              Spacer()
+              if isPlaying(entry) { Image(systemName: "speaker.wave.2.fill").foregroundStyle(Theme.accentText(scheme)) }
+            }.padding(8).background(isPlaying(entry) ? Theme.accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: Theme.Radius.sm))
+          }.buttonStyle(.plain)
+        }
+      }
+      readState
+    }
+  }
+  private func isPlaying(_ entry: LibraryEntry) -> Bool {
+    guard case .video(let video) = entry.destination else { return false }
+    return model.selected?.id == video.id
+  }
+  private func videoGrid(_ entries: [LibraryEntry]) -> some View {
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.gridMinimum), spacing: Theme.gridSpacing)], spacing: Theme.gridSpacing) {
+      ForEach(entries) { entry in
+        if case .video(let video) = entry.destination { VideoCard(video: video) { model.open(video) } }
+      }
+    }
+  }
+  @ViewBuilder private var readState: some View {
+    if let error = library.error {
+      PageStateView(.error, title: "没能加载内容", message: error, actionTitle: "重试") { Task { await library.loadNext() } }
+    } else if library.isLoading { ProgressView().frame(maxWidth: .infinity).padding() }
+    else if library.hasMore && selection.tab != "主页" { LoadMoreFooter(isLoading: library.isLoading || library.playAllProgress) { Task { await library.loadNext() } } }
+    else if library.entries.isEmpty && library.collections.isEmpty { Text("还没有可显示的内容").font(Theme.Font.body).foregroundStyle(Theme.secondaryText(scheme)).padding() }
+  }
+  private func loadCurrent() async {
+    if selection.tab == "动态" { library.cancel(); await dynamics.load(mid: mid); return }
+    dynamics.cancel()
+    await library.load(selection.contentMode(mid: mid, order: order, tid: tid, descending: descending))
+  }
+  private func play(_ handoff: PlaylistHandoff) async {
+    do { try await model.openPlaylist(handoff) } catch is CancellationError {} catch { model.error = error.localizedDescription }
   }
   private func refresh() {
     relations.refresh(mid: mid)
-    Task {
-      if tab == "动态" && submitted.isEmpty { await dynamics.load(mid: mid) }
-      else { await library.refresh() }
-    }
+    Task { await library.loadSpaceProfile(mid: mid, force: true) }
+    Task { await loadCurrent() }
   }
-  @ViewBuilder private var headerControls: some View {
-    if !submitted.isEmpty {
-      Button(action: exitSearch) { Label("退出搜索", systemImage: "xmark") }.toolbarActionStyle()
-    }
-    ToolbarIconGroup {
-      Button { showingProfile.toggle() } label: { ToolbarGroupIcon("person.text.rectangle") }
-        .help("UP 主资料").accessibilityLabel("UP 主资料")
-        .popover(isPresented: $showingProfile, arrowEdge: .bottom) {
-          M3UserProfileFlyout(user: profile, mid: mid, isSignedInAccount: model.accountMID == mid) { route in
-            showingProfile = false
-            model.openOverlay(route)
-          }.padding(16).frame(width: 352)
-        }
-      if submitted.isEmpty {
-        Button { showingSearch.toggle(); tab = "投稿" } label: { ToolbarGroupIcon("magnifyingglass") }
-          .help("搜索投稿").accessibilityLabel("搜索投稿")
-      }
-      Button { if let profile { pins.toggle(profile) } } label: {
-        ToolbarGroupIcon(pins.contains(mid) ? "pin.fill" : "pin")
-          .foregroundStyle(pins.contains(mid) ? Theme.accentText(scheme) : Theme.text(scheme))
-      }.disabled(profile == nil).help(pins.contains(mid) ? "从账号菜单取消固定" : "固定到账号菜单")
-        .accessibilityLabel(pins.contains(mid) ? "取消固定" : "固定")
-    }
-    M3UserFollowButton(mid: mid, relations: relations, model: model)
-  }
-  private func submit() {
-    let query = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !query.isEmpty else { return }
-    submitted = query; tab = "投稿"; showingSearch = false
-  }
-  private func exitSearch() { keyword = ""; submitted = ""; showingSearch = false }
+  private func submit() { selection.submit(keyword, library: library) }
   private func applyRegionalSearch() {
-    guard let request = model.regionalSearchRequest, request.route == .userSpace(mid),
-      regionalSearchRevision != request.revision else { return }
-    regionalSearchRevision = request.revision
-    keyword = request.keyword
-    if keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { exitSearch() }
-    else { submit() }
+    guard let request = model.regionalSearchRequest, request.route == .userSpace(mid), regionalSearchRevision != request.revision else { return }
+    regionalSearchRevision = request.revision; keyword = request.keyword; submit()
   }
 }
 
-private struct M3UserProfileFlyout: View {
-  let user: LibraryUser?
-  let mid: Int64
-  /// This is the signed-in account's own space. Only then are 粉丝 and 关注 links: the lists of
-  /// other users are not read (they are often private and only their first pages are public),
-  /// so their figures are plain numbers.
-  var isSignedInAccount = false
-  /// Opens the signed-in account's follower or following list.
-  var open: (AppModel.OverlayRoute) -> Void = { _ in }
+/// Primary actions inside scrolling content use a solid fill, not a floating glass surface.
+private struct SpacePlayButtonStyle: ButtonStyle {
   @Environment(\.colorScheme) private var scheme
-  var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      if let user {
-        HStack(spacing: 12) {
-          CachedImage(url: user.avatar).frame(width: 48, height: 48).clipShape(Circle())
-            .overlay(alignment: .bottomTrailing) {
-              if user.isVIP, let badge = profileAsset("vip") {
-                Image(nsImage: badge).resizable().scaledToFit().frame(width: 16, height: 16)
-              }
-            }
-          ForEach([(user.followers, "粉丝"), (user.following, "关注"), (user.likes, "获赞")], id: \.1) { value in
-            let route: AppModel.OverlayRoute? = !isSignedInAccount ? nil
-              : value.1 == "粉丝" ? .followers(mid) : value.1 == "关注" ? .following(mid) : nil
-            let figure = VStack(spacing: 4) {
-              Text(profileCount(value.0)).font(Theme.Font.headline).foregroundStyle(Theme.text(scheme))
-              Text(value.1).font(Theme.Font.caption).foregroundStyle(route == nil ? Theme.secondaryText(scheme) : Theme.accentText(scheme))
-            }.frame(maxWidth: .infinity).padding(.vertical, 4)
-            if let route {
-              Button { open(route) } label: { figure }.buttonStyle(ChromeButtonStyle()).help("查看\(value.1)列表")
-            } else {
-              figure.accessibilityElement(children: .combine)
-            }
-          }
-        }
-        HStack(spacing: 8) {
-          Text(user.name).font(Theme.Font.body.weight(.semibold))
-          if let level = profileAsset("level_\(min(6, max(0, user.level)))", directory: "Level") {
-            Image(nsImage: level).resizable().scaledToFit().frame(width: 24, height: 12)
-              .accessibilityLabel("等级 \(user.level)")
-          }
-          Text("\(mid)").font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-            .textSelection(.enabled).padding(.horizontal, 4).padding(.vertical, 2)
-            .background(Theme.fill(scheme), in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
-        }
-        Text(user.signature.isEmpty ? "还没有个人简介" : user.signature).font(Theme.Font.caption)
-          .foregroundStyle(Theme.secondaryText(scheme)).lineLimit(2)
-      } else { ProgressView("正在加载用户资料…") }
-    }.foregroundStyle(Theme.text(scheme))
+  @Environment(\.isEnabled) private var isEnabled
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label.font(Theme.Font.body.weight(.semibold)).lineLimit(1)
+      .padding(.horizontal, 14).frame(height: Theme.controlHeight)
+      .foregroundStyle(isEnabled ? Theme.onAccent : Theme.disabledText(scheme))
+      .background(isEnabled ? Theme.accent : Theme.fill(scheme), in: Capsule())
+      .opacity(configuration.isPressed ? 0.82 : 1)
+      .animation(Theme.hoverAnimation, value: configuration.isPressed)
   }
 }
 
-private func profileCount(_ value: Int) -> String {
-  if value >= 100_000_000 { return String(format: "%.1f 亿", Double(value) / 100_000_000) }
-  if value >= 10_000 { return String(format: "%.1f 万", Double(value) / 10_000) }
-  return String(value)
-}
-
-private func profileAsset(_ name: String, directory: String? = nil) -> NSImage? {
-  guard let path = Bundle.module.path(forResource: name, ofType: "png", inDirectory: directory) else { return nil }
-  return NSImage(contentsOfFile: path)
+private func spaceCount(_ value: Int) -> String {
+  value >= 10_000 ? String(format: "%.1f 万", Double(value) / 10_000) : String(value)
 }
 
 @MainActor private final class M3UserDynamicsModel: ObservableObject {
   @Published private(set) var items: [RPCDynamic] = []
-  @Published private(set) var profile: LibraryUser?
   @Published private(set) var loading = false
   @Published private(set) var hasMore = true
   @Published private(set) var error: String?
@@ -205,7 +366,7 @@ private func profileAsset(_ name: String, directory: String? = nil) -> NSImage? 
   deinit { observer?.cancel(); flight?.cancel() }
   func cancel() { generation = UUID(); flight?.cancel(); flight = nil; loading = false; mid = nil }
   func load(mid: Int64) async {
-    cancel(); self.mid = mid; offset = ""; items = []; profile = nil; error = nil; hasMore = true
+    cancel(); self.mid = mid; offset = ""; items = []; error = nil; hasMore = true
     await loadNext()
   }
   func loadNext() async {
@@ -216,10 +377,6 @@ private func profileAsset(_ name: String, directory: String? = nil) -> NSImage? 
       guard let self else { return }
       do {
         let snapshot = await service.authSnapshot()
-        if profile == nil {
-          let user = try await service.libraryProfile(mid: mid)
-          try check(revision); profile = user
-        }
         guard let rpc else { throw BiliError.dependency("无法初始化用户动态服务") }
         let page = try await rpc.dynamics(.userAll(mid: mid, offset: offset))
         let current = await service.authSnapshot()

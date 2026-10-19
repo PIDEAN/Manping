@@ -4,10 +4,14 @@ import argparse
 import os
 from pathlib import Path
 import re
+import shlex
 import struct
 import subprocess
 import tempfile
 import time
+import zlib
+
+from debug_build_fingerprint import require_fresh_debug_app
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOW_PROBE = r'''
@@ -20,6 +24,68 @@ guard list.contains(where: { ($0[kCGWindowOwnerPID as String] as? Int) == pid })
 print("owned")
 '''
 
+
+def png_dimensions(path):
+    data = path.read_bytes()
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise RuntimeError("invalid in-app PNG")
+    offset, ended, has_pixels = 8, False, False
+    while offset + 12 <= len(data):
+        length = struct.unpack(">I", data[offset:offset + 4])[0]
+        end = offset + length + 12
+        if end > len(data):
+            raise RuntimeError("truncated in-app PNG")
+        kind = data[offset + 4:offset + 8]
+        expected_crc = struct.unpack(">I", data[end - 4:end])[0]
+        if zlib.crc32(data[offset + 4:end - 4]) != expected_crc:
+            raise RuntimeError("in-app PNG checksum mismatch")
+        has_pixels |= kind == b"IDAT"
+        offset = end
+        if kind == b"IEND":
+            ended = length == 0 and offset == len(data)
+            break
+    if not ended or not has_pixels:
+        raise RuntimeError("truncated in-app PNG")
+    width, height = struct.unpack(">II", data[16:24])
+    if width < 700 or height < 500:
+        raise RuntimeError(f"in-app snapshot is too small: {width}x{height}")
+    return width, height
+
+
+def capture_in_app(argv, app, snapshot, destination, wait, env=None, timeout=None):
+    """Capture only this child process; never activate it or invoke screen recording."""
+    destination.unlink(missing_ok=True)
+    snapshot.unlink(missing_ok=True)
+    log_path = destination.with_suffix(".log")
+    argv = [*argv, "--ui-quiet", "--ui-snapshot", str(snapshot), str(wait)]
+    with log_path.open("w") as log:
+        process = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT, env=env)
+        state = app.parent / f"capture-{process.pid}.state"
+        try:
+            deadline = time.monotonic() + (timeout if timeout is not None else wait + 15)
+            while True:
+                state_value = state.read_text().strip() if state.exists() else "missing"
+                if state_value == "blocked":
+                    raise RuntimeError(f"authentication panel active; snapshot skipped (log: {log_path})")
+                if snapshot.exists() and state_value == "ready":
+                    dimensions = png_dimensions(snapshot)
+                    destination.write_bytes(snapshot.read_bytes())
+                    return dimensions
+                code = process.poll()
+                if code is not None:
+                    raise RuntimeError(f"app exited before snapshot (exit={code}; log: {log_path}); check build freshness and launch arguments")
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"in-app snapshot timed out (state={'ready' if state.exists() else 'missing'}; log: {log_path})")
+                time.sleep(.05)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait()
+            state.unlink(missing_ok=True)
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, default=ROOT / ".build/ui/满屏 Debug.app")
@@ -29,6 +95,8 @@ def main():
     parser.add_argument("--video", help="Optional public AV/BV identifier for the playback page")
     parser.add_argument("--wait", type=float, default=30, help="Seconds per page; allow the build in a firewall on first launch")
     parser.add_argument("--fixture", action="store_true", help="Offline check using isolated synthetic samples")
+    parser.add_argument("--in-app-snapshot", action="store_true",
+        help="Use a fresh verified Debug build, --ui-quiet and native snapshots; never activate or screen-capture")
     parser.add_argument("--theme", choices=["dark", "light"], default="dark")
     parser.add_argument("--video-tab", choices=["info", "parts", "episodes", "seasons", "collections", "related", "comments", "ai"])
     parser.add_argument("--ai-preview", action="store_true", help="Synthetic AI answer preview; fixture only")
@@ -46,6 +114,8 @@ def main():
         parser.error("--ai-preview requires --fixture; live checks never generate paid AI responses")
     if args.mini and not args.fixture:
         parser.error("--mini requires --fixture")
+    if args.in_app_snapshot and args.mini:
+        parser.error("--in-app-snapshot captures the main window; --mini is not supported")
     if not (720 <= args.window_size[0] <= 3840 and 600 <= args.window_size[1] <= 2160):
         parser.error("--window-size must be within 720–3840 × 600–2160")
     if not 1 <= args.wait <= 120:
@@ -58,8 +128,14 @@ def main():
     binary = app / "Contents/MacOS/Manping"
     if not binary.is_file():
         parser.error("Build the Debug app once before running this script")
-    output = (args.output or (ROOT / "docs/screenshots/fixture" if args.fixture else ROOT / ".build/live-private")).resolve()
-    if not args.fixture and not output.is_relative_to((ROOT / ".build/live-private").resolve()):
+    if args.in_app_snapshot:
+        try:
+            fingerprint = require_fresh_debug_app(ROOT, app)
+        except (OSError, RuntimeError) as error:
+            parser.error(str(error))
+        print(f"Verified Debug source fingerprint: {fingerprint}", flush=True)
+    output = (args.output or (ROOT / "docs/screenshots/fixture" if args.fixture and not args.in_app_snapshot else ROOT / ".build/live-private")).resolve()
+    if (not args.fixture or args.in_app_snapshot) and not output.is_relative_to((ROOT / ".build/live-private").resolve()):
         parser.error("Live screenshots contain account information; save only under .build/live-private")
     output.mkdir(parents=True, exist_ok=True)
     pages = [page for page in args.pages.split(",") if page]
@@ -78,10 +154,6 @@ def main():
         for index, page in enumerate(pages, 1):
             label = page.replace(":", "-") if page.startswith(("anime:", "cinema:", "moment:", "article:", "messages:", "settings:", "downloads:")) else page.split(":", 1)[0]
             destination = output / (re.sub(r"[^a-zA-Z0-9_-]", "-", label) + ".png")
-            window_file = app.parent / "window-id"
-            window_file.unlink(missing_ok=True)
-            mini_file = app.parent / "mini-window-id"
-            mini_file.unlink(missing_ok=True)
             mini = args.mini and page.startswith("video:")
             argv = [str(binary), "--ui-page", page, "--ui-theme", args.theme,
                 "--ui-window-size", str(args.window_size[0]), str(args.window_size[1])]
@@ -91,7 +163,7 @@ def main():
                 argv += ["--ui-video-tab", args.video_tab]
             if args.ai_preview:
                 argv += ["--ui-ai-preview"]
-            argv += args.app_args.split()
+            argv += shlex.split(args.app_args)
             if args.ai_provider:
                 argv += ["--ui-ai-provider", args.ai_provider]
             if args.ai_scene:
@@ -100,6 +172,18 @@ def main():
             # Fallback when screen recording is unavailable: the app renders its own window
             # (no window shadow, and Liquid Glass may render flatter than on screen).
             snapshot = Path(temporary) / f"snapshot-{index}.png"
+            if args.in_app_snapshot:
+                try:
+                    width, height = capture_in_app(argv, app, snapshot, destination, args.wait, env=app_env)
+                    print(f"[{index}/{len(pages)}] {label}: {destination} (native {width}x{height}, quiet)", flush=True)
+                except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                    failures.append(label)
+                    print(f"[{index}/{len(pages)}] {label}: FAIL ({error})", flush=True)
+                continue
+            window_file = app.parent / "window-id"
+            window_file.unlink(missing_ok=True)
+            mini_file = app.parent / "mini-window-id"
+            mini_file.unlink(missing_ok=True)
             argv += ["--ui-snapshot", str(snapshot), str(max(1, args.wait - 1))]
             process = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=app_env)
             state_file = app.parent / f"capture-{process.pid}.state"
@@ -160,7 +244,10 @@ def main():
                     except subprocess.TimeoutExpired:
                         process.kill(); process.wait()
                 state_file.unlink(missing_ok=True)
-    print("截图已生成；请逐页确认实网内容、空状态与错误状态。", flush=True)
+    if failures:
+        print(f"截图失败：{len(failures)} 页；请检查对应日志与构建状态。", flush=True)
+    else:
+        print("截图已生成；请逐页确认实网内容、空状态与错误状态。", flush=True)
     return 1 if failures else 0
 
 if __name__ == "__main__":

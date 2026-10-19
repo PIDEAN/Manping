@@ -195,11 +195,16 @@ struct LivePlayerPage: View {
     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 
+  @State private var anchorHovered = false
   private var information: some View {
     VStack(alignment: .leading, spacing: 18) {
       if let room = live.room {
         HStack(spacing: 10) {
-          CachedImage(url: room.anchorAvatar).frame(width: 40, height: 40).clipShape(Circle())
+          Button { model.openOverlay(.userSpace(room.anchorID)) } label: {
+            CachedImage(url: room.anchorAvatar).frame(width: 40, height: 40).clipShape(Circle())
+              .overlay(Circle().strokeBorder(anchorHovered ? Theme.accentText(scheme) : Color.clear, lineWidth: 2))
+          }.buttonStyle(.plain).disabled(room.anchorID <= 0).help("进入 UP 主空间")
+            .onHover { anchorHovered = $0 }
           VStack(alignment: .leading, spacing: 2) {
             Text(room.anchorName.isEmpty ? "主播" : room.anchorName).font(Theme.Font.headline)
             if !room.area.isEmpty { Text(room.area).font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)) }
