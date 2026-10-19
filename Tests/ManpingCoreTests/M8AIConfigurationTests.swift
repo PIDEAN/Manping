@@ -195,7 +195,7 @@ private final class FailingBindingSecretStore: AISecretStore, @unchecked Sendabl
   func save(_ secrets: AIProviderSecrets, for provider: AIProvider) throws {
     try lock.withLock {
       saves += 1
-      if saves == failure { throw AIConfigurationError.keychain(-50) }
+      if saves == failure { throw LocalSecretVault.Failure.unwritable }
       values[provider] = secrets
     }
   }

@@ -349,7 +349,7 @@ public struct AIProviderConfiguration: Codable, Sendable, Equatable {
   public var apiVersion: String?
   /// Non-secret transaction nonce, persisted with the public configuration.
   public var credentialVersion: String?
-  /// Public presence flags avoid reading Keychain just to render the settings page.
+  /// Public presence flags avoid reading secrets just to render the settings page.
   public var keyConfigured: Bool = false
   public var secretConfigured: Bool = false
   public var codestralKeyConfigured: Bool = false
@@ -394,7 +394,7 @@ public struct AIProviderSecrets: Sendable, Equatable, CustomStringConvertible, C
   public var key: String
   public var secret: String?
   public var codestralKey: String?
-  /// Stored only in Keychain; binds this record to the committed nonce and destination.
+  /// Stored only with the secret; binds this record to the committed nonce and destination.
   public var configurationBinding: String?
   public init(key: String, secret: String? = nil, codestralKey: String? = nil) {
     self.key = key; self.secret = secret; self.codestralKey = codestralKey
@@ -413,15 +413,14 @@ public struct AIConfigurationSnapshot: Sendable {
 
 public enum AIConfigurationError: Error, LocalizedError, Sendable {
   case invalidConfiguration, missingCredentials, unconfigured, plaintextSecretsForbidden, corruptConfiguration
-  case keychain(OSStatus), persistence, rollback, credentialsChanged
+  case persistence, rollback, credentialsChanged
   public var errorDescription: String? {
     switch self {
     case .invalidConfiguration: "AI 服务配置无效，请检查终结点和模型标识。"
     case .missingCredentials: "AI 服务密钥未配置。"
     case .unconfigured: "请先保存 AI 服务配置。"
-    case .plaintextSecretsForbidden: "检测到旧格式明文密钥，请移除明文字段后通过设置保存到钥匙串。"
+    case .plaintextSecretsForbidden: "检测到旧格式明文密钥，请移除明文字段后通过设置重新保存（密钥会加密保存在本机）。"
     case .corruptConfiguration: "AI 配置文件无法读取。"
-    case .keychain(let status): "钥匙串操作失败（\(status)）。"
     case .persistence: "AI 配置无法保存，请检查磁盘与目录权限。"
     case .rollback: "AI 配置保存失败，密钥恢复也失败。请重新保存此服务。"
     case .credentialsChanged: "AI 密钥与配置版本不一致，请重新保存此服务。"
@@ -439,13 +438,15 @@ public actor AIConfigurationStore {
   private var observers: [UUID: AsyncStream<UInt64>.Continuation] = [:]
   /// Token source for the ChatGPT plan provider; nil in fixtures and tests that do not exercise it.
   public nonisolated let chatGPT: ChatGPTPlanAuth?
-  public init(fileURL: URL? = AIConfigurationStore.defaultFileURL, credentials: any AISecretStore = AIKeychainSecretStore(),
+  public init(fileURL: URL? = AIConfigurationStore.defaultFileURL, credentials: any AISecretStore = AILocalSecretStore(),
     chatGPT: ChatGPTPlanAuth? = nil) {
     self.fileURL = fileURL; self.credentials = credentials; self.chatGPT = chatGPT
   }
+  /// Debug builds keep their own file: its credential binding must match their own secrets folder.
   public static var defaultFileURL: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-      .appendingPathComponent("Manping", isDirectory: true).appendingPathComponent("ChatClientConfiguration.json")
+      .appendingPathComponent("Manping", isDirectory: true)
+      .appendingPathComponent("ChatClientConfiguration\(LocalSecretVault.appVariant ?? "").json")
   }
   public static func fixture(configurations: [AIProvider: AIProviderConfiguration] = [:],
     secrets: [AIProvider: AIProviderSecrets] = [:]) -> AIConfigurationStore {
@@ -467,7 +468,7 @@ public actor AIConfigurationStore {
     configuration.keyConfigured = true; configuration.credentialVersion = UUID().uuidString
     var secrets = AIProviderSecrets(key: "fixture-ai-key")
     secrets.configurationBinding = binding(configuration, provider: .openAI)
-    // The ChatGPT card is shown signed out from memory-only storage; no network or Keychain.
+    // The ChatGPT card is shown signed out from memory-only storage; no network or saved secrets.
     return AIConfigurationStore(configurations: [.openAI: configuration],
       credentials: AIMemorySecretStore(values: [.openAI: secrets]), chatGPT: ChatGPTPlanAuth(store: ChatGPTPlanMemoryStore()))
   }
@@ -547,7 +548,7 @@ public actor AIConfigurationStore {
     let previous = configurations[provider]
     let preservesCredential = previous?.keyConfigured == true || previous?.secretConfigured == true
       || previous?.codestralKeyConfigured == true || quarantined.contains(provider)
-    // Creating a public configuration without a key needs no Keychain access.
+    // Creating a public configuration without a key reads no secret.
     let oldSecret = secrets != nil || preservesCredential ? try credentials.load(provider) : nil
     var replacement = secrets ?? oldSecret
     configuration.credentialVersion = UUID().uuidString

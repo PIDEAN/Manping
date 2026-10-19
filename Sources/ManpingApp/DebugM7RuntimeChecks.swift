@@ -11,7 +11,7 @@ private final class M7RuntimeStateBox: @unchecked Sendable {
 }
 
 /// Exercises the production IPC driver against a local Unix socket executable.
-/// The fixture cannot load media, access Keychain, or make network requests.
+/// The fixture cannot load media, read saved credentials, or make network requests.
 @MainActor enum DebugM7RuntimeChecks {
   private enum Failure: Error { case assertion(String) }
   static func run(mockExecutable: String) async -> Bool {

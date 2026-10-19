@@ -55,32 +55,23 @@ public protocol ChatGPTPlanStore: Sendable {
   func savePendingClientID(_ value: String?) throws
 }
 
-/// Keychain-only storage, separate from the API-key provider records and the Bilibili session.
-public final class ChatGPTPlanKeychainStore: ChatGPTPlanStore, Sendable {
-  private let service: String
-  public init(service: String = "io.github.pidean.manping.ai.chatgpt.v1") { self.service = service }
-  private func query(_ account: String) -> [String: Any] {
-    [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
+/// `LocalSecretVault` entries, separate from the API-key provider entries and the Bilibili session.
+/// Before 0.1.3 these were Keychain items; each moves over on its first read.
+public final class ChatGPTPlanLocalStore: ChatGPTPlanStore, Sendable {
+  private let vault: LocalSecretVault
+  public init(vault: LocalSecretVault = .shared) { self.vault = vault }
+  private func entry(_ account: String) -> (name: String, legacy: LocalSecretVault.LegacyItem) {
+    ("ai.chatgpt." + account, .init(service: "io.github.pidean.manping.ai.chatgpt.v1", account: account))
   }
   private func read(_ account: String) throws -> Data? {
-    var query = query(account)
-    query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-    if status == errSecItemNotFound { return nil }
-    guard status == errSecSuccess else { throw AIConfigurationError.keychain(status) }
-    guard let data = result as? Data, data.count <= 256 * 1024 else { throw AIConfigurationError.corruptConfiguration }
+    let entry = entry(account)
+    guard let data = try vault.read(entry.name, legacy: entry.legacy) else { return nil }
+    guard data.count <= 256 * 1024 else { throw AIConfigurationError.corruptConfiguration }
     return data
   }
   private func write(_ data: Data, account: String) throws {
-    let query = query(account)
-    let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-    if status == errSecItemNotFound {
-      var item = query; item[kSecValueData as String] = data
-      item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-      let added = SecItemAdd(item as CFDictionary, nil)
-      guard added == errSecSuccess else { throw AIConfigurationError.keychain(added) }
-    } else if status != errSecSuccess { throw AIConfigurationError.keychain(status) }
+    let entry = entry(account)
+    try vault.write(entry.name, data, legacy: entry.legacy)
   }
   public func loadHostID() throws -> String? { try read("host").flatMap { String(data: $0, encoding: .utf8) } }
   public func saveHostID(_ value: String) throws { try write(Data(value.utf8), account: "host") }
@@ -95,8 +86,8 @@ public final class ChatGPTPlanKeychainStore: ChatGPTPlanStore, Sendable {
   public func loadPendingClientID() throws -> String? { try read("pending_client").flatMap { String(data: $0, encoding: .utf8) } }
   public func savePendingClientID(_ value: String?) throws {
     guard let value else {
-      let status = SecItemDelete(query("pending_client") as CFDictionary)
-      guard status == errSecSuccess || status == errSecItemNotFound else { throw AIConfigurationError.keychain(status) }
+      let entry = entry("pending_client")
+      try vault.delete(entry.name, legacy: entry.legacy)
       return
     }
     try write(Data(value.utf8), account: "pending_client")
@@ -254,7 +245,7 @@ public actor ChatGPTPlanAuth {
   /// refuse to commit afterwards if it changed, so a late response cannot revive a session.
   private var session: UInt64 = 0
 
-  public init(store: any ChatGPTPlanStore = ChatGPTPlanKeychainStore(), transport: any AIHTTPTransport = AIURLSessionTransport(),
+  public init(store: any ChatGPTPlanStore = ChatGPTPlanLocalStore(), transport: any AIHTTPTransport = AIURLSessionTransport(),
     endpoints: ChatGPTPlanEndpoints = .production,
     receiverFactory: @escaping @Sendable () -> any ChatGPTCallbackReceiving = { ChatGPTLoopbackReceiver() },
     now: @escaping @Sendable () -> Date = Date.init, callbackTimeout: Duration = .seconds(300)) {
@@ -438,7 +429,7 @@ public actor ChatGPTPlanAuth {
 
   /// Clears local tokens (including the ID token) first, then revokes the refresh token.
   /// Returns whether remote revocation was confirmed; the client mapping and host ID are kept.
-  /// Throws only when the local Keychain record could not be cleared.
+  /// Throws only when the local record could not be cleared.
   @discardableResult public func signOut() async throws -> Bool {
     session &+= 1
     refreshFlight?.cancel(); refreshFlight = nil

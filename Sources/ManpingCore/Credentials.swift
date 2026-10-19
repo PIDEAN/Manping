@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 public protocol AuthCredentialStore: Sendable {
   func save(_ cookies: [HTTPCookie]) throws
@@ -7,8 +6,7 @@ public protocol AuthCredentialStore: Sendable {
   func saveToken(_ token: AppToken?) throws
   func loadToken() throws -> AppToken?
   func clear() throws
-  /// Cookies and token in one read. Stores that keep both in one Keychain item override this,
-  /// so a new app signature triggers a single authorization prompt instead of one per item.
+  /// Cookies and token in one read. Stores that keep both in one entry override this.
   func loadAll() throws -> (cookies: [HTTPCookie], token: AppToken?)
 }
 
@@ -17,30 +15,25 @@ extension AuthCredentialStore {
 }
 
 public final class CredentialStore: AuthCredentialStore, Sendable {
-  /// The Keychain items this store uses.
+  /// The entries this store uses.
   enum Item: Sendable { case session, legacyCookies, legacyToken }
-  /// One item holds cookies and token. macOS authorizes Keychain access per item and per app
-  /// signature, so the earlier two-item layout asked for the password twice after every update.
-  private static var session: [String: Any] { [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: "io.github.pidean.manping.session.v2", kSecAttrAccount as String: "bilibili",
-  ] }
-  /// Pre-2026-10-18 layout: read once to migrate, removed on logout.
-  private static var legacyCookies: [String: Any] { [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: "io.github.pidean.manping.cookies", kSecAttrAccount as String: "bilibili",
-  ] }
-  private static var legacyToken: [String: Any] { [
-    kSecClass as String: kSecClassGenericPassword,
-    kSecAttrService as String: "io.github.pidean.manping.token.v1", kSecAttrAccount as String: "bilibili",
-  ] }
+  /// One entry holds cookies, token and the proxy password. Before 0.1.3 these were Keychain items
+  /// (one prompt per item after every update); `LocalSecretVault` moves each one over on first read.
+  private static func entry(_ item: Item) -> (name: String, legacy: LocalSecretVault.LegacyItem) {
+    switch item {
+    case .session: ("bilibili.session", .init(service: "io.github.pidean.manping.session.v2", account: "bilibili"))
+    // Pre-2026-10-18 layout: read once to migrate, removed on logout.
+    case .legacyCookies: ("bilibili.cookies.v1", .init(service: "io.github.pidean.manping.cookies", account: "bilibili"))
+    case .legacyToken: ("bilibili.token.v1", .init(service: "io.github.pidean.manping.token.v1", account: "bilibili"))
+    }
+  }
   fileprivate struct Session: Codable {
     var cookies: Data
     var token: AppToken?
-    /// The proxy password shares this item, so adding a proxy costs no extra Keychain prompt.
+    /// The proxy password shares this entry.
     var proxySecret: String?
   }
-  /// Raw item access; the Keychain in the app, memory in tests.
+  /// Raw item access; the local vault in the app, memory in tests.
   struct Storage: Sendable {
     let read: @Sendable (Item) throws -> Data?
     let write: @Sendable (Item, Data) throws -> Void
@@ -57,13 +50,13 @@ public final class CredentialStore: AuthCredentialStore, Sendable {
     fileprivate var session: Session?
     init(storage: Storage) { self.storage = storage }
   }
-  private static let keychain = Shared(storage: Storage(
-    read: { try CredentialStore.read(CredentialStore.query($0)) },
-    write: { try CredentialStore.write(CredentialStore.query($0), data: $1) },
-    delete: { try CredentialStore.delete(CredentialStore.query($0)) }))
+  private static let vault = Shared(storage: Storage(
+    read: { let entry = CredentialStore.entry($0); return try LocalSecretVault.shared.read(entry.name, legacy: entry.legacy) },
+    write: { let entry = CredentialStore.entry($0); try LocalSecretVault.shared.write(entry.name, $1, legacy: entry.legacy) },
+    delete: { let entry = CredentialStore.entry($0); try LocalSecretVault.shared.delete(entry.name, legacy: entry.legacy) }))
   private let shared: Shared
 
-  public init() { shared = Self.keychain }
+  public init() { shared = Self.vault }
   init(shared: Shared) { self.shared = shared }
 
   public func loadAll() throws -> (cookies: [HTTPCookie], token: AppToken?) {
@@ -95,7 +88,7 @@ public final class CredentialStore: AuthCredentialStore, Sendable {
 
   public func clear() throws {
     try shared.lock.withLock {
-      // Attempt every removal even if one item requires OS authorization.
+      // Attempt every removal even if one fails.
       var failure: Error?
       // An empty session item stops a later launch from migrating old items that could not be
       // deleted, which would bring back the account the user just signed out of. Signing out of
@@ -139,44 +132,6 @@ public final class CredentialStore: AuthCredentialStore, Sendable {
   private func write(_ session: Session) throws {
     try shared.storage.write(.session, try JSONEncoder().encode(session))
     shared.session = session
-  }
-
-  private static func query(_ item: Item) -> [String: Any] {
-    switch item {
-    case .session: session
-    case .legacyCookies: legacyCookies
-    case .legacyToken: legacyToken
-    }
-  }
-  private static func write(_ base: [String: Any], data: Data) throws {
-    let result = SecItemUpdate(base as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-    if result == errSecItemNotFound {
-      var item = base
-      item[kSecValueData as String] = data
-      item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-      let added = SecItemAdd(item as CFDictionary, nil)
-      guard added == errSecSuccess else { throw BiliError.dependency("无法保存到钥匙串（\(added)）") }
-    } else if result != errSecSuccess {
-      throw BiliError.dependency("无法更新钥匙串（\(result)）")
-    }
-  }
-  private static func read(_ base: [String: Any]) throws -> Data? {
-    var query = base
-    query[kSecReturnData as String] = true
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var value: CFTypeRef?
-    let result = SecItemCopyMatching(query as CFDictionary, &value)
-    if result == errSecItemNotFound { return nil }
-    guard result == errSecSuccess, let data = value as? Data else {
-      throw BiliError.dependency("无法读取钥匙串（\(result)）")
-    }
-    return data
-  }
-  private static func delete(_ query: [String: Any]) throws {
-    let result = SecItemDelete(query as CFDictionary)
-    guard result == errSecSuccess || result == errSecItemNotFound else {
-      throw BiliError.dependency("无法删除钥匙串中的项目（\(result)）")
-    }
   }
 
   public static func encodeCookies(_ cookies: [HTTPCookie]) throws -> Data {

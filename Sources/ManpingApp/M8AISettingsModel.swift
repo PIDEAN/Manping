@@ -104,7 +104,7 @@ struct M8AIProviderDraft {
     do { confirmed = try await auth.signOut() }
     catch {
       // Keep the account (and the sign-out button) visible so the user can retry.
-      chatGPTStatus = "未能清除本地 ChatGPT 凭据（钥匙串操作失败），请重试退出登录。"
+      chatGPTStatus = "未能清除本机保存的 ChatGPT 凭据，请重试退出登录。"
       return
     }
     chatGPTAccount = nil
@@ -118,7 +118,7 @@ struct M8AIProviderDraft {
     loadingTask = Task { [weak self] in
       guard let self else { return }
       do {
-        // Rendering configuration must not read Keychain or request its authorization.
+        // Rendering configuration must not read saved secrets.
         let values = try await store.allConfigurations()
         try Task.checkCancellation()
         configurations = values
@@ -178,7 +178,7 @@ struct M8AIProviderDraft {
     do {
       try await store.delete(provider: provider)
       configurations.removeValue(forKey: provider); drafts[provider] = M8AIProviderDraft()
-      statuses[provider] = "配置与钥匙串中的密钥已删除。"
+      statuses[provider] = "配置与本机保存的密钥已删除。"
     } catch { statuses[provider] = Self.safeError(error) }
   }
   func clearSensitiveDrafts() {

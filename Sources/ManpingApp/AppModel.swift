@@ -768,7 +768,7 @@ import WebKit
       return
     }
     // A proxy without a password applies before the first request; one with a password after the
-    // Keychain read below (the same item as the account, so no extra prompt).
+    // credential read below (the same entry as the account).
     let proxySettings = ProxySettings.load(from: PerformanceEnvironment.defaults)
     if proxySettings.kind != .none, !Self.proxyNeedsSecret(proxySettings) || Self.debugProxySecret != nil {
       _ = await applyProxy(proxySettings, secret: nil, saveSecret: false)
@@ -778,15 +778,16 @@ import WebKit
       return
     }
     let generation = authCallbacks.generation
-    // Lists start loading anonymously right away; the Keychain read (which may wait on the
-    // system authorization prompt) happens off the service actor, then the account is applied.
+    // Lists start loading anonymously right away; the credential read (which, on the first launch
+    // after 0.1.2, moves the Keychain item over and may wait on its prompt) happens off the
+    // service actor, then the account is applied.
     refreshToken &+= 1
     // A video requested at launch starts now (anonymously if needed) instead of waiting for
-    // the Keychain; if the identity changes underneath, startVideo reloads it once.
+    // the stored credentials; if the identity changes underneath, startVideo reloads it once.
     if let launch = selected, loadTask == nil, !usesUIFixtures { startVideo(launch, preservingQueue: false) }
     do {
       let service = self.service
-      // A logout or new login during the (possibly prompting) Keychain read makes this stale.
+      // A logout or new login during the (possibly prompting) credential read makes this stale.
       let before = await service.authSnapshot()
       let stored = try await Task.detached(priority: .userInitiated) { try service.loadStoredCredentials() }.value
       if Self.proxyNeedsSecret(proxySettings), Self.debugProxySecret == nil {
@@ -804,7 +805,7 @@ import WebKit
         }
       }
     } catch {
-      if authCallbacks.accepts(generation) { self.error = "无法恢复登录，请检查系统钥匙串授权" }
+      if authCallbacks.accepts(generation) { self.error = "无法读取本机保存的登录信息，请重新扫码登录" }
     }
     // A video the user opened while credentials were restoring is already loading: refresh the
     // lists only instead of restarting it from the beginning.
@@ -1128,7 +1129,7 @@ import WebKit
     var resolved = secret
     if saveSecret, let secret {
       do { try await Task.detached(priority: .userInitiated) { try CredentialStore().saveProxySecret(secret) }.value }
-      catch { return "无法把密码保存到系统钥匙串：\(error.localizedDescription)" }
+      catch { return "无法保存密码：\(error.localizedDescription)" }
     }
     if resolved == nil, let debug = Self.debugProxySecret { resolved = debug }
     if resolved == nil, Self.proxyNeedsSecret(settings) {
@@ -1407,7 +1408,7 @@ import WebKit
     }
   }
   /// A video that finished loading under the previous identity (for example anonymously, while
-  /// the Keychain was still being read) re-reads its streams; when the new identity unlocks a
+  /// credentials were still being read) re-reads its streams; when the new identity unlocks a
   /// better preferred quality, playback switches to it at the current position.
   private func refreshStreamsForIdentity() {
     guard !usesUIFixtures, queueLoadIdentity == nil, manifest != nil, let video = selected,
@@ -2313,7 +2314,7 @@ import WebKit
     watchActivity.clearSpotlight()
     unreadMessageCount = 0
     accountTask = Task {
-      do { try await service.logout() } catch { self.error = "登录已在内存中清除；钥匙串清除失败，请检查系统授权" }
+      do { try await service.logout() } catch { self.error = "登录已在内存中清除；本机保存的登录信息未能删除，请检查「应用程序支持」目录权限" }
     }
   }
   func shutdown() {

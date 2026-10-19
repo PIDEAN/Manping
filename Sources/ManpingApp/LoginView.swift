@@ -129,7 +129,7 @@ struct CookieWebLogin: NSViewRepresentable {
             }
           } catch is CancellationError {} catch {
             if self.active, self.callbacks.accepts(generation) {
-              self.owner.onError("无法保存登录凭据，请检查钥匙串授权")
+              self.owner.onError("无法保存登录凭据，请检查磁盘空间与「应用程序支持」目录权限")
             }
           }
         }

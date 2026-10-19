@@ -157,7 +157,7 @@ struct ProxySettingsCard: View {
           SegmentedTabs(options: MediaRoute.allCases.map { ($0, $0.shortTitle) }, selection: $model.media)
           Spacer(minLength: 0)
         }
-        Text("视频加速把经代理的节点加入多节点同时缓冲（需开启 网络 › 缓冲 ›「多节点同时缓冲」），按实测速度与直连节点分担；播放器的节点面板里也能切换。密码只保存在钥匙串中。")
+        Text("视频加速把经代理的节点加入多节点同时缓冲（需开启 网络 › 缓冲 ›「多节点同时缓冲」），按实测速度与直连节点分担；播放器的节点面板里也能切换。密码只加密保存在本机。")
           .font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)).fixedSize(horizontal: false, vertical: true)
       }
       HStack(spacing: 10) {

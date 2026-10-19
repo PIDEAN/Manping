@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 public protocol AISecretStore: Sendable {
   func load(_ provider: AIProvider) throws -> AIProviderSecrets?
@@ -7,22 +6,18 @@ public protocol AISecretStore: Sendable {
   func delete(_ provider: AIProvider) throws
 }
 
-/// AI credentials use separate per-provider Keychain records, never the Bilibili account cookie store.
-public final class AIKeychainSecretStore: AISecretStore, Sendable {
-  private let service: String
-  public init(service: String = "io.github.pidean.manping.ai.provider.v1") { self.service = service }
-  private func query(_ provider: AIProvider) -> [String: Any] {
-    [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-      kSecAttrAccount as String: provider.rawValue]
+/// AI credentials use separate per-provider entries in `LocalSecretVault`, never the Bilibili
+/// account entry. Before 0.1.3 they were Keychain items; each moves over on its first read.
+public final class AILocalSecretStore: AISecretStore, Sendable {
+  private let vault: LocalSecretVault
+  public init(vault: LocalSecretVault = .shared) { self.vault = vault }
+  private func entry(_ provider: AIProvider) -> (name: String, legacy: LocalSecretVault.LegacyItem) {
+    ("ai.provider." + provider.rawValue, .init(service: "io.github.pidean.manping.ai.provider.v1", account: provider.rawValue))
   }
   public func load(_ provider: AIProvider) throws -> AIProviderSecrets? {
-    var query = query(provider)
-    query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-    if status == errSecItemNotFound { return nil }
-    guard status == errSecSuccess else { throw AIConfigurationError.keychain(status) }
-    guard let data = result as? Data, data.count <= 256 * 1024,
+    let entry = entry(provider)
+    guard let data = try vault.read(entry.name, legacy: entry.legacy) else { return nil }
+    guard data.count <= 256 * 1024,
       let object = try? JSONSerialization.jsonObject(with: data) as? [String: String], let key = object["key"] else {
       throw AIConfigurationError.corruptConfiguration
     }
@@ -34,23 +29,16 @@ public final class AIKeychainSecretStore: AISecretStore, Sendable {
     var object = ["key": secrets.key]
     object["secret"] = secrets.secret; object["codestral_key"] = secrets.codestralKey
     object["configuration_binding"] = secrets.configurationBinding
-    let data = try JSONSerialization.data(withJSONObject: object)
-    let query = query(provider)
-    let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-    if status == errSecItemNotFound {
-      var item = query; item[kSecValueData as String] = data
-      item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-      let added = SecItemAdd(item as CFDictionary, nil)
-      guard added == errSecSuccess else { throw AIConfigurationError.keychain(added) }
-    } else if status != errSecSuccess { throw AIConfigurationError.keychain(status) }
+    let entry = entry(provider)
+    try vault.write(entry.name, try JSONSerialization.data(withJSONObject: object), legacy: entry.legacy)
   }
   public func delete(_ provider: AIProvider) throws {
-    let status = SecItemDelete(query(provider) as CFDictionary)
-    guard status == errSecSuccess || status == errSecItemNotFound else { throw AIConfigurationError.keychain(status) }
+    let entry = entry(provider)
+    try vault.delete(entry.name, legacy: entry.legacy)
   }
 }
 
-/// In-memory fixture storage is intentionally independent of UserDefaults, Keychain and real configuration files.
+/// In-memory fixture storage is intentionally independent of UserDefaults, the local vault and real configuration files.
 public final class AIMemorySecretStore: AISecretStore, @unchecked Sendable {
   private let lock = NSLock()
   private var values: [AIProvider: AIProviderSecrets]

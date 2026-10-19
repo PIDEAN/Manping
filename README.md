@@ -5,7 +5,7 @@
 <p align="center">为 Mac 重新打造的第三方哔哩哔哩客户端。<br>
 原生 SwiftUI / AppKit 界面、液态玻璃控件、mpv 播放，Metal 弹幕跟随屏幕刷新率匀速滚动。<br>
 <sub>A native, unofficial Bilibili client for macOS — SwiftUI/AppKit, Liquid Glass, mpv playback and Metal danmaku.</sub><br>
-<sub>当前版本 0.1.2 · 需要 macOS 27 · Apple 芯片</sub></p>
+<sub>当前版本 0.1.3 · 需要 macOS 27 · Apple 芯片</sub></p>
 
 <p align="center">
   <img src="docs/images/hero.gif" width="880" alt="首页悬停一张视频卡片后点开，视频页开始播放，弹幕从右向左匀速流过；玻璃控制面板浮在画面底部，指针悬停进度条时显示预览画面和章节名，指针移开后控件淡出">
@@ -131,7 +131,7 @@
 
 1. 从 [Releases](https://github.com/PIDEAN/Manping/releases) 下载 `满屏.app` 的压缩包并解压，拖到「应用程序」文件夹；或者按下文从源码构建。
 2. 发布包用项目自己的固定证书签名，没有经过 Apple 公证。第一次打开时 macOS 会提示无法验证开发者，请在 系统设置 › 隐私与安全性 中点「仍要打开」。
-3. 用哔哩哔哩手机 App 扫码登录。登录凭据加密保存在你的钥匙串里，只有满屏能读取。正式版每次更新都使用同一张证书签名，所以登录和升级时都不会弹出钥匙串授权窗口。
+3. 用哔哩哔哩手机 App 扫码登录。从 0.1.3 起，登录凭据、代理密码和 AI 密钥都加密保存在本机，不再放进钥匙串，升级后不会再弹出钥匙串密码框。从 0.1.2 或更早的版本升级时，第一次启动和第一次使用 AI 会各请求一次钥匙串密码，用来把旧数据搬过来；搬完后不再询问。
 
 ## 隐私
 
@@ -139,12 +139,22 @@
 
 | 数据 | 位置 |
 |---|---|
-| 登录凭据、代理密码、AI 服务密钥、ChatGPT 套餐令牌 | 钥匙串（服务名以 `io.github.pidean.manping` 开头） |
+| 登录凭据、代理密码、AI 服务密钥、ChatGPT 套餐令牌 | `~/Library/Application Support/Manping/Secrets/`（见下文「凭据怎么保存」） |
 | 设置、固定的直播间与 UP 主、弹幕屏蔽规则、账号屏蔽词缓存 | `~/Library/Preferences/io.github.pidean.manping.plist` |
 | AI 服务配置（不含密钥）、下载记录 | `~/Library/Application Support/Manping/` |
 | AI 回答与对话 | `~/Library/Application Support/Manping/ai.sqlite`（期限可设，可清除：设置 › AI › 对话与保存） |
 | 图片缓存 | `~/Library/Caches/` 下的应用缓存 |
 | 聚焦索引（看过的内容，90 天过期） | 系统聚焦；可在 设置 › 隐私 › 聚焦搜索与接力 中关闭并清除 |
+
+### 凭据怎么保存
+
+- 登录凭据、代理密码和 AI 密钥用 AES-GCM 加密后保存在 `~/Library/Application Support/Manping/Secrets/`。这个目录只有你的账户能读写，也不会进入 Time Machine 备份。
+- 解密密钥和这台 Mac 绑定，目录被复制到别的电脑上无法解开。
+- 它防不住已经以你的身份在这台 Mac 上运行的恶意软件；在这一点上，它和不弹窗的钥匙串条目一样。
+- 退出登录会清除账号凭据。想清除全部凭据，请按顺序操作：
+  1. 退出满屏。
+  2. 在「钥匙串访问」中搜索 `io.github.pidean.manping`，删除找到的全部条目。这些是 0.1.2 及更早版本留下的，满屏只在第一次用到时才搬走，不删的话以后还会被导入。
+  3. 删除 `Secrets` 目录（保留它旁边的 `Secrets-retired-keychain-items.json`）。
 
 ### 会发送到外部的数据
 
@@ -174,7 +184,7 @@ open "dist/release/满屏.app"
 开发常用命令：
 
 ```sh
-python3 scripts/build_debug_app.py               # 调试版 .build/ui/满屏 Debug.app（独立的设置与钥匙串域）
+python3 scripts/build_debug_app.py               # 调试版 .build/ui/满屏 Debug.app（独立的设置与凭据目录）
 python3 scripts/live_check.py --fixture          # 用离线样本逐页截图，检查界面
 python3 scripts/privacy_check.py --app "dist/release/满屏.app"   # 发布前检查个人数据与凭据
 python3 scripts/collect_licenses.py              # 依赖变化后重新收集随附库的许可全文
@@ -193,7 +203,7 @@ ThirdPartyNotices/      全部第三方许可全文
 docs/                   设计系统、开发、网络、代理、性能等说明；README 截图与动图制作（media）
 ```
 
-打包、签名、调试版与诊断工具的完整说明见 [docs/Development.md](docs/Development.md) 和 [docs/Signing.md](docs/Signing.md)；界面规范见 [docs/DesignSystem.md](docs/DesignSystem.md)。默认使用 ad-hoc 签名，想避免每次重新构建都要授权钥匙串，可以按 Signing.md 创建一个本机签名证书。
+打包、签名、调试版与诊断工具的完整说明见 [docs/Development.md](docs/Development.md) 和 [docs/Signing.md](docs/Signing.md)；界面规范见 [docs/DesignSystem.md](docs/DesignSystem.md)。默认使用 ad-hoc 签名；防火墙等按签名放行的软件会把每次构建当成新 App，想避免反复放行，可以按 Signing.md 创建一个本机签名证书。
 
 README 中的截图和动图都用内置的离线样本录制，封面、标题、弹幕和评论都是合成内容，不含任何真实账号或真实视频；制作方法见 [docs/media](docs/media)。欢迎提交 issue 和 PR。
 

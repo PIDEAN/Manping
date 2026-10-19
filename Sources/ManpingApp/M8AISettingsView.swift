@@ -151,12 +151,12 @@ private struct M8AIProviderCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           if provider != .ollama {
-            AIServiceSettingsRow("访问密钥", detail: configuration?.keyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
+            AIServiceSettingsRow("访问密钥", detail: configuration?.keyConfigured == true ? "已加密保存在本机，留空保留。" : "仅加密保存在本机。") {
               secureField("API key", text: binding(\.key))
             }
           }
           if provider == .ernie {
-            AIServiceSettingsRow("Secret 密钥", detail: configuration?.secretConfigured == true ? "已保存在钥匙串，留空保留。" : "文心千帆配置中的 Secret。") {
+            AIServiceSettingsRow("Secret 密钥", detail: configuration?.secretConfigured == true ? "已加密保存在本机，留空保留。" : "文心千帆配置中的 Secret。") {
               secureField("Secret key", text: binding(\.secret))
             }
           }
@@ -164,7 +164,7 @@ private struct M8AIProviderCard: View {
             AIServiceSettingsRow("使用 Codestral", detail: "使用独立的 Codestral API 和密钥。") {
               switchButton(binding(\.useCodestral))
             }
-            AIServiceSettingsRow("Codestral 密钥", detail: configuration?.codestralKeyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
+            AIServiceSettingsRow("Codestral 密钥", detail: configuration?.codestralKeyConfigured == true ? "已加密保存在本机，留空保留。" : "仅加密保存在本机。") {
               secureField("Codestral key", text: binding(\.codestralKey))
             }
           }

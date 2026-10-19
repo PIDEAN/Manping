@@ -322,6 +322,8 @@ public struct AIChatClient: Sendable {
             // Token refresh failures keep their meaning (sign in again vs. network) for the UI.
             continuation.finish(throwing: plan == .signInRequired ? AIChatFailure.planSignInRequired : plan)
           }
+          // A local storage failure while saving a refreshed token is not a network failure.
+          else if error is AIConfigurationError || error is LocalSecretVault.Failure { continuation.finish(throwing: error) }
           else { continuation.finish(throwing: AIChatFailure.transport((error as NSError).code)) }
         }
       }

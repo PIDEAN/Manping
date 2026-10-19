@@ -37,7 +37,7 @@ scripts/live_check.sh --fixture --theme dark --wait 4 \
   --output docs/screenshots/local-fixture
 ```
 
-fixture 使用隔离身份、合成封面与业务响应，不读取 Keychain、不加载在线媒体、不发送真实账号写操作。Debug 支持 `--ui-page`、`--ui-theme`、`--ui-window-size`、`--ui-video-tab`；截图通过窗口 PID/尺寸和登录面板状态校验。生产外部 mpv IPC 的本地检查命令：
+fixture 使用隔离身份、合成封面与业务响应，不读取保存的凭据、不加载在线媒体、不发送真实账号写操作。Debug 支持 `--ui-page`、`--ui-theme`、`--ui-window-size`、`--ui-video-tab`；截图通过窗口 PID/尺寸和登录面板状态校验。生产外部 mpv IPC 的本地检查命令：
 
 ```sh
 .build/out/Products/Debug/Manping --ui-fixture \
@@ -72,9 +72,9 @@ python3 scripts/verify_bundle.py --static-only
 
 ## 登录与同一构建的实网验收
 
-登录支持扫码与网页 Cookie，账号凭据存于 Keychain。退出/换号会清理该账号状态并取消在途请求；生成的下载命令不含凭据。账号写操作只在用户主动操作时发送，开发验收仅测试 fixture。
+登录支持扫码与网页 Cookie，账号凭据加密保存在 `Application Support/Manping/Secrets/`（`LocalSecretVault`，0.1.3 起取代 Keychain，见 [Signing.md](Signing.md)）。调试版使用独立的 `Secrets-debug` 与 `ChatClientConfiguration-debug.json`，不读取正式版凭据，也不迁移钥匙串；`swift test` 等非 App 进程只用内存存储。退出/换号会清理该账号状态并取消在途请求；生成的下载命令不含凭据。账号写操作只在用户主动操作时发送，开发验收仅测试 fixture。
 
-每次 ad-hoc 构建签名变化，防火墙软件和钥匙串可能需要重新授权。不要绕过系统弹窗；等使用者在场时只构建、签名一次，再集中运行只读验收：
+每次 ad-hoc 构建签名变化，防火墙软件可能需要重新放行。不要绕过系统弹窗；等使用者在场时只构建、签名一次，再集中运行只读验收：
 
 ```sh
 python3 scripts/build_debug_app.py
@@ -85,7 +85,7 @@ scripts/live_check.sh --wait 60 --video BV1xx411c7mD --pgc ep837204
 
 ## AI 与最终验收边界
 
-AI 配置按原版注册的 22 个 provider 和各协议族实现，API key、附加 secret 只存于 Keychain，非秘密配置保存为 `ChatClientConfiguration.json`。设置页和播放/阅读页入口以 Parity 实际状态为准。协议验证只允许 fixture 或本地 mock server，不在开发过程中发起付费调用。
+AI 配置按原版注册的 22 个 provider 和各协议族实现，API key、附加 secret 只加密保存在本地凭据目录，非秘密配置保存为 `ChatClientConfiguration.json`。设置页和播放/阅读页入口以 Parity 实际状态为准。协议验证只允许 fixture 或本地 mock server，不在开发过程中发起付费调用。
 
 ### 用 ChatGPT 套餐（Sign in with ChatGPT）
 
@@ -132,7 +132,7 @@ dist/release/满屏.app/Contents/MacOS/Manping --perf-fixture --perf-play-local 
 dist/release/满屏.app/Contents/MacOS/Manping --perf-fixture --perf-stability --perf-media .build/perf-media/testsrc2-h264-4k60.mp4
 ```
 
-诊断使用独立设置、模拟身份和传输，不访问真实 Keychain 或在线媒体；本地播放仍走实际内嵌播放器和 Surface。滚动统计 NSView displayLink 的实际到达间隔；播放掉帧只计算5秒预热后的计数差，阈值保持 `<0.1%`。最终数值和测量限制以 Performance 文档为准。
+诊断使用独立设置、模拟身份和传输，不访问真实凭据或在线媒体；本地播放仍走实际内嵌播放器和 Surface。滚动统计 NSView displayLink 的实际到达间隔；播放掉帧只计算5秒预热后的计数差，阈值保持 `<0.1%`。最终数值和测量限制以 Performance 文档为准。
 
 ## 来源与许可
 

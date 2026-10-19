@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public enum AIConversationStatus: Sendable, Equatable {
   case loadingMaterials
@@ -243,6 +244,9 @@ public actor AIConversationService {
       } catch let failure as AIConversationFailure where failure == .identityChanged {
         continuation.yield(.failed(failure.localizedDescription))
       } catch {
+        // Sanitized text and the error type only: enough to tell storage, sign-in and network
+        // failures apart in Console without logging content or credentials.
+        Self.log.error("AI run failed: \(Self.message(error), privacy: .public) [\(String(reflecting: type(of: error)), privacy: .public)]")
         continuation.yield(.failed(Self.message(error)))
       }
       continuation.finish()
@@ -255,6 +259,7 @@ public actor AIConversationService {
   private func finished(threadID: String, runID: UUID) {
     if runs[threadID]?.id == runID { runs.removeValue(forKey: threadID) }
   }
+  private static let log = Logger(subsystem: "io.github.pidean.manping", category: "ai")
   nonisolated static func message(_ error: Error) -> String {
     if let error = error as? LocalizedError, let text = error.errorDescription { return text }
     return "AI 请求失败，请稍后重试。"
