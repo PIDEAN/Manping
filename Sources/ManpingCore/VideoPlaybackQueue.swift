@@ -8,11 +8,10 @@ public struct PlaybackQueueIdentity: Sendable, Equatable {
   }
 }
 
-/// One bounded playlist. Replacing it is atomic; stale EOF callbacks cannot advance it.
+/// One bounded playlist. Replacement validates every entry before changing the current queue.
 public struct VideoPlaybackQueue: Sendable, Equatable {
   public private(set) var items: [Video] = []
   public private(set) var index = 0
-  public private(set) var generation = UUID()
   public private(set) var identity: PlaybackQueueIdentity?
   public init() {}
   public var current: Video? { items.indices.contains(index) ? items[index] : nil }
@@ -32,25 +31,25 @@ public struct VideoPlaybackQueue: Sendable, Equatable {
       }
     }
     items = videos.filter { known.insert($0.id).inserted }
-    index = 0; self.identity = identity; generation = UUID()
+    index = 0; self.identity = identity
   }
-  @discardableResult public mutating func next(afterEOF expected: UUID? = nil) -> Video? {
-    guard expected == nil || expected == generation, canGoNext else { return nil }
-    index += 1; generation = UUID(); return current
+  @discardableResult public mutating func next() -> Video? {
+    guard canGoNext else { return nil }
+    index += 1; return current
   }
   @discardableResult public mutating func previous() -> Video? {
     guard canGoPrevious else { return nil }
-    index -= 1; generation = UUID(); return current
+    index -= 1; return current
   }
   @discardableResult public mutating func select(id: String) -> Video? {
     guard let next = items.firstIndex(where: { $0.id == id }) else { return nil }
-    index = next; generation = UUID(); return current
+    index = next; return current
   }
   @discardableResult public mutating func invalidate(epoch: UInt64, revision: UInt64) -> Bool {
     guard let identity, identity.epoch != epoch || identity.revision != revision else { return false }
     clear(); return true
   }
   public mutating func clear() {
-    items = []; index = 0; identity = nil; generation = UUID()
+    items = []; index = 0; identity = nil
   }
 }

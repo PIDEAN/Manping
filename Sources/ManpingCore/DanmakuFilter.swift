@@ -27,8 +27,6 @@ public struct DanmakuFilter: Equatable, Sendable, Codable {
     self.hideBottom = hideBottom; self.hideColored = hideColored; self.level = level
   }
 
-  public var isEmpty: Bool { self == DanmakuFilter() }
-
   /// Normalises a typed rule: trimmed, bounded, and for `/…/` a pattern that compiles.
   /// Returns nil with a reason for rules that would never match or could not be evaluated.
   public static func validate(_ raw: String) -> Result<String, RuleError> {

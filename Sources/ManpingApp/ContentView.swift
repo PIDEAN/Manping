@@ -16,6 +16,10 @@ struct ContentView: View {
       guard let url = urls.first else { return false }
       return model.openLink(url.absoluteString)
     }
+    #if DEBUG
+    // README animations: `MANPING_DEMO_SCENE` with `--ui-fixture` (docs/media/README.md).
+    .task { DemoDirector.startIfRequested(model: model) }
+    #endif
   }
 }
 
@@ -47,13 +51,17 @@ private struct AppDialogs: ViewModifier {
   }
 }
 /// The main window: a floating glass sidebar (发现 / 我的 / account) and the content column with
-/// one toolbar on top. The sidebar becomes an icon rail below 1000 pt and hides with ⌃⌘S.
+/// one toolbar on top. The sidebar becomes an icon rail below 1000 pt and hides with ⌃⌘S. The
+/// playback page (video, episode, live room) slides it away, since 返回 leads back; there ⌃⌘S
+/// floats it over the page until a click elsewhere or leaving the page.
 private struct ShellContent: View {
   @ObservedObject var model: AppModel
   @Environment(\.colorScheme) private var scheme
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @StateObject private var suggestions: SearchSuggestionModel
   @ObservedObject private var pins = PinnedUserStore.shared
   @ObservedObject private var livePins = PinnedLiveStore.shared
+  @ObservedObject private var shell = ShellSidebarState.shared
   @AppStorage(ShellPreferences.sidebarHiddenKey) private var sidebarHidden = false
   @State private var showingAccount = false
   init(model: AppModel) {
@@ -63,22 +71,50 @@ private struct ShellContent: View {
   private enum SidebarMode: Equatable { case full, rail, hidden }
   var body: some View {
     GeometryReader { geometry in
-      let mode: SidebarMode = sidebarHidden ? .hidden
+      let playbackPage = model.showsPlaybackPage
+      let mode: SidebarMode = sidebarHidden || playbackPage ? .hidden
         : geometry.size.width < Theme.sidebarCollapseWidth ? .rail : .full
+      // Full screen on the playback page: only the picture, the danmaku and the controls. The
+      // views keep their places in the hierarchy, so the player and its surface stay the same.
+      let immersive = model.immersiveMainPlayback
       HStack(spacing: 0) {
-        if mode != .hidden {
+        if mode != .hidden && !immersive {
           sidebar(rail: mode == .rail)
             .frame(width: (mode == .rail ? Theme.sidebarRailWidth : Theme.sidebarWidth) - Theme.panelInset)
             .padding([.leading, .top, .bottom], Theme.panelInset)
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            .transition(sidebarTransition)
         }
         // Without the sidebar the window buttons sit over the toolbar's leading edge.
-        contentColumn(leadingInset: mode == .hidden ? 72 : 0)
+        contentColumn(leadingInset: mode == .hidden ? 72 : 0, immersive: immersive, playbackPage: playbackPage)
       }
-      .background(Theme.panel(scheme))
-      .animation(.snappy(duration: 0.25), value: mode)
+      // ⌃⌘S on the playback page: the sidebar over the page; a click anywhere else puts it away.
+      .overlay(alignment: .leading) {
+        if playbackPage && shell.peeking && !immersive {
+          ZStack(alignment: .leading) {
+            Color.clear.contentShape(Rectangle()).onTapGesture { shell.peeking = false }
+            sidebar(rail: false)
+              .frame(width: Theme.sidebarWidth - Theme.panelInset)
+              .padding([.leading, .top, .bottom], Theme.panelInset)
+              .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.16), radius: 18, x: 4)
+              .transition(sidebarTransition)
+          }
+        }
+      }
+      // Outside the stage the playback page shows the window's backdrop, as the stage's frame.
+      .background(immersive ? Theme.stage : playbackPage ? Theme.backdrop(scheme) : Theme.panel(scheme))
+      .animation(reduceMotion ? .easeOut(duration: 0.25) : .snappy(duration: 0.25), value: mode)
+      .animation(reduceMotion ? .easeOut(duration: 0.2) : .snappy(duration: 0.25), value: shell.peeking)
+      .onChange(of: playbackPage, initial: true) { _, value in
+        if shell.suppressed != value { shell.suppressed = value }
+        if !value && shell.peeking { shell.peeking = false }
+      }
+      .onChange(of: immersive) { _, value in if value && shell.peeking { shell.peeking = false } }
     }.ignoresSafeArea(.container, edges: .top)
     .environment(\.cardActions, CardActions(model: model))
+  }
+  /// Slides in from the leading edge; 减弱动态效果 only fades.
+  private var sidebarTransition: AnyTransition {
+    reduceMotion ? .opacity : .move(edge: .leading).combined(with: .opacity)
   }
 
   // MARK: Sidebar
@@ -121,7 +157,7 @@ private struct ShellContent: View {
   private func item(for destination: AppModel.Destination, rail: Bool) -> some View {
     let selected = model.currentDestination == destination && (model.selected == nil || model.browsingBesidePlayback)
     let unread = destination == .page(.message) ? model.unreadMessageCount : 0
-    return Button { model.go(to: destination) } label: {
+    return Button { shell.peeking = false; model.go(to: destination) } label: {
       HStack(spacing: 10) {
         Image(systemName: destination.symbol).font(.system(size: 14)).frame(width: 20)
         if !rail {
@@ -214,20 +250,23 @@ private struct ShellContent: View {
 
   // MARK: Content and toolbar
 
-  private func contentColumn(leadingInset: CGFloat) -> some View {
+  private func contentColumn(leadingInset: CGFloat, immersive: Bool, playbackPage: Bool) -> some View {
     VStack(spacing: 0) {
-      Color.clear.frame(height: Theme.toolbarHeight)
+      Color.clear.frame(height: immersive ? 0 : Theme.toolbarHeight)
       pageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.immersivePlayback, immersive)
     }
     // Pages describe their toolbar with `.pageToolbar(…)`; it is drawn once, here.
     .overlayPreferenceValue(PageToolbarKey.self, alignment: .top) { item in
-      toolbar(item, leadingInset: leadingInset)
+      if !immersive { toolbar(item, leadingInset: leadingInset, divided: !playbackPage) }
     }
   }
   private var showsHomeTabs: Bool {
     model.page == .popular && model.currentOverlay == nil && !model.mainShowsPlayer
   }
-  private func toolbar(_ item: PageToolbarItem?, leadingInset: CGFloat) -> some View {
+  /// `divided`: a hairline under the toolbar; the playback page's stage and panel keep their own
+  /// 12 pt gap below it instead.
+  private func toolbar(_ item: PageToolbarItem?, leadingInset: CGFloat, divided: Bool) -> some View {
     HStack(spacing: 12) {
       navigationButtons
       PageToolbarTitle(item: item, fallback: model.toolbarTitle).layoutPriority(-1)
@@ -247,7 +286,7 @@ private struct ShellContent: View {
     .foregroundStyle(Theme.text(scheme))
     .padding(.leading, 16 + leadingInset).padding(.trailing, 16)
     .frame(height: Theme.toolbarHeight)
-    .overlay(alignment: .bottom) { Hairline() }
+    .overlay(alignment: .bottom) { Hairline().opacity(divided ? 1 : 0) }
   }
   private var navigationButtons: some View {
     HStack(spacing: 0) {
@@ -322,9 +361,7 @@ private struct ShellContent: View {
         }
       case .article(let id):
         ArticleReaderPage(service: model.service, id: id, rpc: try? model.standardRPCService(), onUser: { model.openOverlay(.userSpace($0)) }, onVideo: model.open, onArticle: { model.openOverlay(.article($0)) }, onLogin: { model.showingLogin = true },
-          aiContent: { detail in AnyView(M8AIResponseView(source: .article(detail), service: model.service,
-            rpc: try? model.standardRPCService(), configuration: model.aiConfiguration, prompts: model.aiPrompts,
-            fixtures: model.usesUIFixtures, openSettings: model.openAISettings)) }).id(id)
+          aiContent: { detail in AnyView(AIPanelStack(runtime: model.ai, source: .article(AIArticleInfo(detail: detail)))) }).id(id)
       case .video: PageStateView(.loading, title: "正在打开视频", message: "正在获取视频详情与播放地址。")
       case .live:
         if let live = model.livePlayback {
@@ -353,6 +390,30 @@ private struct ShellContent: View {
   }
 }
 
+extension AppModel {
+  /// The main window's content is a playback page: the video page, an episode or a live room
+  /// (including the moment it opens), not the placeholder shown while the picture plays in the
+  /// mini window or the standalone window. Mirrors `ShellContent.pageContent`.
+  var showsPlaybackPage: Bool {
+    if usesUIFixtures && !fixtureReady { return false }
+    if mainShowsPlayer && playbackElsewhere { return false }
+    if mainShowsPlayer && selected != nil { return true }
+    switch currentOverlay {
+    case .pgc, .live, .video: return true
+    default: return false
+    }
+  }
+}
+
+/// The main window's sidebar as the shell lays it out, shared with the window buttons and ⌃⌘S.
+@MainActor final class ShellSidebarState: ObservableObject {
+  static let shared = ShellSidebarState()
+  /// The playback page keeps the sidebar out of the layout (the 隐藏侧边栏 preference is untouched).
+  @Published var suppressed = false
+  /// ⌃⌘S on the playback page: the sidebar floats over the page for now.
+  @Published var peeking = false
+}
+
 /// Shell preferences kept outside the settings catalog.
 enum ShellPreferences {
   /// ⌃⌘S 显示 / 隐藏侧边栏.
@@ -376,23 +437,28 @@ private struct DetachedPlaybackLayout: View {
   @ObservedObject var model: AppModel
   @Environment(\.colorScheme) private var scheme
   var body: some View {
+    // In full screen only the picture, the danmaku and the controls remain.
+    let immersive = model.playbackWindowFullScreen
     VStack(spacing: 0) {
-      Color.clear.frame(height: Theme.toolbarHeight)
+      Color.clear.frame(height: immersive ? 0 : Theme.toolbarHeight)
       page.frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environment(\.immersivePlayback, immersive)
     }
     .overlayPreferenceValue(PageToolbarKey.self, alignment: .top) { item in
-      HStack(spacing: 12) {
-        PageToolbarTitle(item: item, fallback: "").layoutPriority(-1)
-        Spacer(minLength: 8)
-        if let accessory = item?.accessory { HStack(spacing: 8) { accessory }.fixedSize() }
+      if !immersive {
+        HStack(spacing: 12) {
+          PageToolbarTitle(item: item, fallback: "").layoutPriority(-1)
+          Spacer(minLength: 8)
+          if let accessory = item?.accessory { HStack(spacing: 8) { accessory }.fixedSize() }
+        }
+        .foregroundStyle(Theme.text(scheme))
+        // The window's buttons sit at the leading edge of this band.
+        .padding(.leading, 16 + 72).padding(.trailing, 16)
+        .frame(height: Theme.toolbarHeight)
       }
-      .foregroundStyle(Theme.text(scheme))
-      // The window's buttons sit at the leading edge of this band.
-      .padding(.leading, 16 + 72).padding(.trailing, 16)
-      .frame(height: Theme.toolbarHeight)
-      .overlay(alignment: .bottom) { Hairline() }
     }
-    .background(Theme.panel(scheme))
+    // The same stage and panel as the main window's playback page, on the window's backdrop.
+    .background(immersive ? Theme.stage : Theme.backdrop(scheme))
     .ignoresSafeArea(.container, edges: .top)
   }
   @ViewBuilder private var page: some View {

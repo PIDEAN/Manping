@@ -1,28 +1,11 @@
 import Combine
 import Foundation
 
-public enum AIPromptTask: String, CaseIterable, Identifiable, Sendable {
+public enum AIPromptTask: String, CaseIterable, Sendable {
   case videoSummary, videoEvaluation, videoQuestion, articleSummary, articleEvaluation, articleQuestion
-  public var id: String { rawValue }
-  public var title: String {
-    switch self {
-    case .videoSummary: "视频总结"
-    case .videoEvaluation: "视频评价"
-    case .videoQuestion: "视频问答"
-    case .articleSummary: "文章总结"
-    case .articleEvaluation: "文章评价"
-    case .articleQuestion: "文章问答"
-    }
-  }
   public var isArticle: Bool { [.articleSummary, .articleEvaluation, .articleQuestion].contains(self) }
   public var needsComments: Bool { self == .videoEvaluation || self == .articleEvaluation }
   public var isQuestion: Bool { self == .videoQuestion || self == .articleQuestion }
-  public var placeholders: [String] {
-    var result = isArticle ? ["title", "content"] : ["title", "description", "subtitle"]
-    if needsComments { result.append("comments") }
-    if isQuestion { result.append("question") }
-    return result
-  }
   // BiliCopilot 896a062 PromptConstants.cs (GPL-3.0, like this project), preserved verbatim.
   public var defaultTemplate: String {
     switch self {
@@ -237,26 +220,12 @@ public enum AIPromptRenderer {
   }
 }
 
-/// Stores only editable prompts and a streaming preference. Provider credentials never enter this store.
+/// Stores only the streaming preference. Old custom templates are migrated by `AIPresetStore`.
 @MainActor public final class AIPromptStore: ObservableObject {
   @Published public var streaming: Bool { didSet { defaults?.set(streaming, forKey: "Manping.AI.streaming") } }
-  @Published public private(set) var templates: [AIPromptTask: String]
   private let defaults: UserDefaults?
   public init(fixtures: Bool = false, defaults: UserDefaults = .standard) {
     self.defaults = fixtures ? nil : defaults
     streaming = fixtures ? true : (defaults.object(forKey: "Manping.AI.streaming") as? Bool ?? true)
-    templates = Dictionary(uniqueKeysWithValues: AIPromptTask.allCases.map { task in
-      (task, fixtures ? task.defaultTemplate : (defaults.string(forKey: "Manping.AI.prompt." + task.rawValue) ?? task.defaultTemplate))
-    })
-  }
-  public func template(for task: AIPromptTask) -> String { templates[task] ?? task.defaultTemplate }
-  public func save(_ text: String, for task: AIPromptTask) throws {
-    _ = try AIPromptRenderer.render(template: text, values: [:])
-    templates[task] = text
-    defaults?.set(text, forKey: "Manping.AI.prompt." + task.rawValue)
-  }
-  public func reset(_ task: AIPromptTask) {
-    templates[task] = task.defaultTemplate
-    defaults?.removeObject(forKey: "Manping.AI.prompt." + task.rawValue)
   }
 }

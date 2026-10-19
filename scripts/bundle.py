@@ -21,21 +21,32 @@ APP_NAME = '满屏.app'
 
 
 SIGNING_NAME = "Manping Local Signing"
+# Release signing kept outside the repository and outside the login keychain's search list:
+# a dedicated keychain file and its password (docs/Signing.md, 正式发布签名).
+RELEASE_SIGNING = pathlib.Path.home() / "Library/Application Support/Manping Signing"
+RELEASE_IDENTITY = "Manping Release Signing"
 
 
-def signing_identity():
-    """A stable local code-signing certificate keeps Keychain approvals across rebuilds.
+def signing_args():
+    """codesign arguments for a stable identity, so Keychain approvals survive updates.
 
     Ad-hoc signatures change with every build, so macOS treats each build as a new app and asks
-    for the Keychain password again. If the user created a self-signed "Manping Local
-    Signing" certificate (see docs/Signing.md) or set MANPING_SIGN_IDENTITY, sign with it instead.
+    for the Keychain password again. In order: MANPING_SIGN_IDENTITY (with an optional
+    MANPING_SIGN_KEYCHAIN), the release signing keychain, a self-signed "Manping Local Signing"
+    certificate in the login keychain (see docs/Signing.md), else ad-hoc.
     """
     explicit = os.environ.get("MANPING_SIGN_IDENTITY")
     if explicit:
-        return explicit
+        keychain = os.environ.get("MANPING_SIGN_KEYCHAIN")
+        return ['--sign', explicit] + (['--keychain', keychain] if keychain else [])
+    keychain = RELEASE_SIGNING / "signing.keychain-db"
+    password = RELEASE_SIGNING / "keychain-password"
+    if keychain.exists() and password.exists():
+        subprocess.check_call(['security', 'unlock-keychain', '-p', password.read_text().strip(), str(keychain)])
+        return ['--sign', RELEASE_IDENTITY, '--keychain', str(keychain)]
     listed = subprocess.run(["security", "find-identity", "-p", "codesigning"],
         capture_output=True, text=True).stdout
-    return SIGNING_NAME if f'"{SIGNING_NAME}"' in listed else "-"
+    return ['--sign', SIGNING_NAME if f'"{SIGNING_NAME}"' in listed else "-"]
 
 def run(*args, capture=False):
     return subprocess.check_output(args, text=True).strip() if capture else subprocess.check_call(args)
@@ -185,7 +196,7 @@ def main():
         if not (icon_build / produced).is_file(): raise RuntimeError('actool did not produce ' + produced)
         shutil.copy2(icon_build / produced, resources / produced)
     shutil.rmtree(icon_build)
-    plist = {'CFBundleName':'满屏', 'CFBundleDisplayName':'满屏', 'CFBundleExecutable':'Manping', 'CFBundleIdentifier':'io.github.pidean.manping', 'CFBundleVersion':'1', 'CFBundleShortVersionString':'0.1.0', 'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'27.0', 'NSHighResolutionCapable':True, 'CFBundleIconFile':'AppIcon', 'CFBundleIconName':'AppIcon', 'NSAppTransportSecurity':{'NSAllowsArbitraryLoads':False}, 'CFBundleURLTypes':[{'CFBundleURLName':'io.github.pidean.manping.link', 'CFBundleURLSchemes':['manping'], 'CFBundleTypeRole':'Viewer'}]}
+    plist = {'CFBundleName':'满屏', 'CFBundleDisplayName':'满屏', 'CFBundleExecutable':'Manping', 'CFBundleIdentifier':'io.github.pidean.manping', 'CFBundleVersion':'1', 'CFBundleShortVersionString':'0.1', 'CFBundlePackageType':'APPL', 'LSMinimumSystemVersion':'27.0', 'NSHighResolutionCapable':True, 'CFBundleIconFile':'AppIcon', 'CFBundleIconName':'AppIcon', 'NSAppTransportSecurity':{'NSAllowsArbitraryLoads':False}, 'CFBundleURLTypes':[{'CFBundleURLName':'io.github.pidean.manping.link', 'CFBundleURLSchemes':['manping'], 'CFBundleTypeRole':'Viewer'}]}
     with (app / 'Contents' / 'Info.plist').open('wb') as handle: plistlib.dump(plist, handle)
     copied = {}
     origins = {}
@@ -233,6 +244,7 @@ def main():
     rewrite(bin_dir/'Manping',executable)
     if {str(path) for path in copied} != {str(path) for path in actual if path != ffmpeg_input}:
         raise RuntimeError('Built executable changed the verified dependency closure')
+    SIGN = signing_args()
     manifest = []
     inputs = {target: source for source, target in copied.items()}
     inputs[ffmpeg] = ffmpeg_input
@@ -240,7 +252,7 @@ def main():
     for binary in [*frameworks.glob("*.dylib"),ffmpeg,executable]:
         for dep in links(binary):
             if not system(dep) and not dep.startswith('@rpath/'): raise RuntimeError(f'External runtime dependency remains: {dep}')
-        run('codesign','--force','--sign',signing_identity(),str(binary))
+        run('codesign','--force',*SIGN,str(binary))
         manifest.append({'bundledPath': str(binary.relative_to(app)),
             'arch': run('lipo', '-archs', str(binary), capture=True).split(),
             'dependencies': links(binary), 'inputSHA256': sha256(inputs[binary]),
@@ -252,7 +264,7 @@ def main():
     for item in manifest:
         item['signaturePhase'] = 'nested-signed' if item['bundledPath'] != 'Contents/MacOS/Manping' else 'before-app-resource-seal'
     (resources / 'BundleManifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    run('codesign','--force','--sign',signing_identity(),str(app))
+    run('codesign','--force',*SIGN,str(app))
     for item in manifest:
         final_sha = sha256(app / item['bundledPath'])
         if item['signaturePhase'] == 'nested-signed' and final_sha != item['signedSHA256']:

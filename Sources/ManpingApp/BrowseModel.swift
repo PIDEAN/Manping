@@ -1,12 +1,6 @@
 import ManpingCore
 import SwiftUI
 
-enum BrowseKind: String, Hashable {
-  case recommended
-  case popular
-  case ranking
-}
-
 struct BrowseFeedState {
   var items: [Video] = []
   var nextCursor: String?

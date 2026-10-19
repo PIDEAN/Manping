@@ -29,7 +29,6 @@ extension BiliService {
     }
     var fields = ["cid": String(categoryID ?? 0), "pn": String(page), "ps": "20"]
     if categoryID != nil { fields["sort"] = String(sort.rawValue) }
-    if let token = expectedIdentity.token { fields["mid"] = String(token.mid) }
     let data = try await appREST(categoryID == nil ? .articleRecommend : .articleList,
       fields: fields, expectedIdentity: expectedIdentity)
     try checkRESTIdentity(expectedIdentity)
@@ -69,6 +68,12 @@ extension BiliService {
 
 // Extract data only. Article HTML and INITIAL_STATE scripts are never executed.
 enum ArticleContentParser {
+  private static let entityExpression = try! NSRegularExpression(pattern: #"&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);"#)
+  private static let whitespaceExpression = try! NSRegularExpression(pattern: #"[\t\r\n ]+"#)
+  private static let attributeExpressions = Dictionary(uniqueKeysWithValues: ["data-src", "src", "alt", "href"].map { name in
+    let pattern = #"(?i)(?:\s)"# + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
+    return (name, try! NSRegularExpression(pattern: pattern))
+  })
   static func initialState(_ html: String) throws -> [String: Any] {
     guard html.utf8.count <= 8 * 1024 * 1024,
       let marker = html.range(of: "window.__INITIAL_STATE__") else {
@@ -131,7 +136,7 @@ enum ArticleContentParser {
     let stateAvailable = JSONValue.int64(view?["like"]) != nil && view?["favorite"] is Bool
     return ArticleDetail(article: article, blocks: blocks, tags: Array(tags.prefix(100)),
       isLiked: JSONValue.int(view?["like"]) > 0, isFavorited: view?["favorite"] as? Bool ?? false,
-      isFollowing: view?["attention"] as? Bool ?? false, contributedCoins: max(0, JSONValue.int(view?["coin"])),
+      isFollowing: view?["attention"] as? Bool ?? false,
       interactionStateAvailable: stateAvailable,
       metadataWarning: !stateAvailable ? (view == nil ? "互动状态暂时无法获取；统计来自文章正文，点赞和收藏暂不可用。" : "互动状态不完整；点赞和收藏暂不可用。") : nil)
   }
@@ -221,7 +226,9 @@ enum ArticleContentParser {
           else { links.append(attribute("href", in: token).flatMap(safeLink)) }
         }
       } else if blocked == nil {
-        let text = decodeEntities(token).replacingOccurrences(of: #"[\t\r\n ]+"#, with: " ", options: .regularExpression)
+        let decoded = decodeEntities(token)
+        let text = whitespaceExpression.stringByReplacingMatches(in: decoded,
+          range: NSRange(decoded.startIndex..., in: decoded), withTemplate: " ")
         if !text.isEmpty { runs.append(ArticleInlineText(text, bold: bold > 0, italic: italic > 0, link: links.last ?? nil)) }
       }
       guard blocks.count <= 4000 else { throw BiliError.invalidResponse("Too many article body blocks") }
@@ -230,8 +237,7 @@ enum ArticleContentParser {
     return blocks
   }
   private static func attribute(_ name: String, in token: String) -> String? {
-    let pattern = #"(?i)(?:\s)"# + NSRegularExpression.escapedPattern(for: name) + #"\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))"#
-    guard let expression = try? NSRegularExpression(pattern: pattern),
+    guard let expression = attributeExpressions[name],
       let match = expression.firstMatch(in: token, range: NSRange(token.startIndex..., in: token)) else { return nil }
     for index in 1...3 {
       if let range = Range(match.range(at: index), in: token) { return decodeEntities(String(token[range])) }
@@ -247,9 +253,8 @@ enum ArticleContentParser {
   private static func decodeEntities(_ text: String) -> String {
     let named = ["amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "nbsp": " ",
       "mdash": "—", "ndash": "–", "hellip": "…", "lsquo": "‘", "rsquo": "’", "ldquo": "\u{201C}", "rdquo": "\u{201D}"]
-    guard let expression = try? NSRegularExpression(pattern: #"&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);"#) else { return text }
     var result = text
-    for match in expression.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
+    for match in entityExpression.matches(in: text, range: NSRange(text.startIndex..., in: text)).reversed() {
       guard let range = Range(match.range, in: result), let keyRange = Range(match.range(at: 1), in: text) else { continue }
       let key = String(text[keyRange]); let replacement: String?
       if key.hasPrefix("#x") { replacement = UInt32(key.dropFirst(2), radix: 16).flatMap(UnicodeScalar.init).map(String.init) }

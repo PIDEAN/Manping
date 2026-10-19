@@ -36,7 +36,7 @@ struct M6MessagePage: View {
         refreshing: messages.loading, refresh: { Task { await messages.start(section) } }) {
         if section == .chat, let selected = messages.selected {
           Button { onUser(selected.id) } label: { Label("进入 UP 主空间", systemImage: "person") }
-            .buttonStyle(AppButtonStyle(size: .small))
+            .toolbarActionStyle()
         }
       }
       .onAppear { applyDiagnostic() }

@@ -336,6 +336,9 @@ private struct MiniPlayerStage: View {
     .onAppear { chrome.activity() }
     .onChange(of: player.paused) { _, _ in chrome.activity() }
     .onChange(of: player.commentsEnabled) { _, _ in chrome.activity() }
+    #if DEBUG
+    .modifier(DemoMiniHooks(chrome: chrome))
+    #endif
   }
 
   private var controls: some View {

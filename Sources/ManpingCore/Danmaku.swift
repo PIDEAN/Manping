@@ -201,12 +201,7 @@ public struct DanmakuTimeline: Sendable {
   public func visible(at clock: Double, speed: Double = 1) -> [PositionedComment] {
     guard clock.isFinite, clock >= 0 else { return [] }
     let duration = self.duration / (speed.isFinite ? min(2, max(0.5, speed)) : 1)
-    var lo = 0
-    var hi = entries.count
-    while lo < hi {
-      let mid = (lo + hi) / 2
-      if entries[mid].comment.time <= clock - duration { lo = mid + 1 } else { hi = mid }
-    }
+    let lo = firstOnScreen(at: clock, duration: duration)
     var result: [PositionedComment] = []
     for entry in entries.dropFirst(lo) {
       if entry.comment.time > clock { break }
@@ -216,5 +211,23 @@ public struct DanmakuTimeline: Sendable {
           progress: (clock - entry.comment.time) / duration))
     }
     return result
+  }
+  /// Whether `visible(at:speed:)` would return any line, without building the list (the
+  /// renderer asks every display refresh).
+  public func hasVisible(at clock: Double, speed: Double = 1) -> Bool {
+    guard clock.isFinite, clock >= 0 else { return false }
+    let duration = self.duration / (speed.isFinite ? min(2, max(0.5, speed)) : 1)
+    let lo = firstOnScreen(at: clock, duration: duration)
+    return lo < entries.count && entries[lo].comment.time <= clock
+  }
+  /// Index of the first entry that has not yet left the screen at `clock` (entries are in time order).
+  private func firstOnScreen(at clock: Double, duration: Double) -> Int {
+    var lo = 0
+    var hi = entries.count
+    while lo < hi {
+      let mid = (lo + hi) / 2
+      if entries[mid].comment.time <= clock - duration { lo = mid + 1 } else { hi = mid }
+    }
+    return lo
   }
 }

@@ -473,7 +473,7 @@ final class M10AIProtocolTests: XCTestCase {
 
   func testPlanRequestUsesPublicResponsesAPIWithStoreFalseAndStreaming() throws {
     let request = try AIChatRequestPlanner.request(provider: .chatGPTPlan, configuration: plan, secrets: .init(key: "plan-token"),
-      model: "gpt-6.1-sol", prompt: "总结", streaming: false, options: .init(temperature: 0.5, maxTokens: 99))
+      model: "gpt-6.1-sol", conversation: AIConversationRequest(system: nil, messages: [.user("总结")]), streaming: false, options: .init(temperature: 0.5, maxTokens: 99))
     XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/responses")
     XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer plan-token")
     let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
@@ -487,7 +487,7 @@ final class M10AIProtocolTests: XCTestCase {
   func testPlanBearerCannotBeRedirectedByPublicConfiguration() throws {
     var hostile = plan; hostile.endpoint = "https://collector.example.invalid/v1"
     let request = try AIChatRequestPlanner.request(provider: .chatGPTPlan, configuration: hostile, secrets: .init(key: "plan-token"),
-      model: "gpt-6.1-sol", prompt: "p")
+      model: "gpt-6.1-sol", conversation: AIConversationRequest(system: nil, messages: [.user("p")]))
     XCTAssertEqual(request.url?.absoluteString, "https://api.openai.com/v1/responses")
   }
 
@@ -498,7 +498,7 @@ final class M10AIProtocolTests: XCTestCase {
     let rejected = ScriptedTransport([(401, "{}")])
     do {
       _ = try await collect(AIChatClient(transport: rejected).response(provider: .chatGPTPlan, configuration: plan,
-        secrets: .init(key: "old"), model: "m", prompt: "p", refreshBearer: { throw ChatGPTPlanError.signInRequired }))
+        secrets: .init(key: "old"), model: "m", conversation: AIConversationRequest(system: nil, messages: [.user("p")]), refreshBearer: { throw ChatGPTPlanError.signInRequired }))
       XCTFail()
     } catch { XCTAssertEqual(error as? AIChatFailure, .planSignInRequired) }
   }
@@ -506,7 +506,7 @@ final class M10AIProtocolTests: XCTestCase {
   func testPlanStreamCompletesOnlyOnResponseCompleted() async throws {
     let client = AIChatClient(transport: ScriptedTransport([(200, Self.completed)]))
     let text = try await collect(client.response(provider: .chatGPTPlan, configuration: plan, secrets: .init(key: "t"),
-      model: "gpt-6.1-sol", prompt: "p", streaming: false))
+      model: "gpt-6.1-sol", conversation: AIConversationRequest(system: nil, messages: [.user("p")]), streaming: false))
     XCTAssertEqual(text, "你好，世界")
     var parser = AIStreamParser(family: .responses)
     _ = try parser.append(Data("data: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}\n\n".utf8))
@@ -517,31 +517,31 @@ final class M10AIProtocolTests: XCTestCase {
     let limit = "data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"subscription_sharing_usage_limit_exceeded\"}}}\n\n"
     do {
       _ = try await collect(AIChatClient(transport: ScriptedTransport([(200, limit)])).response(provider: .chatGPTPlan,
-        configuration: plan, secrets: .init(key: "t"), model: "m", prompt: "p")); XCTFail()
+        configuration: plan, secrets: .init(key: "t"), model: "m", conversation: AIConversationRequest(system: nil, messages: [.user("p")]))); XCTFail()
     } catch { XCTAssertEqual(error as? AIChatFailure, .planUsageLimit) }
     let notEligible = "{\"error\":{\"code\":\"subscription_sharing_user_not_eligible\"}}"
     do {
       _ = try await collect(AIChatClient(transport: ScriptedTransport([(403, notEligible)])).response(provider: .chatGPTPlan,
-        configuration: plan, secrets: .init(key: "t"), model: "m", prompt: "p")); XCTFail()
+        configuration: plan, secrets: .init(key: "t"), model: "m", conversation: AIConversationRequest(system: nil, messages: [.user("p")]))); XCTFail()
     } catch { XCTAssertEqual(error as? AIChatFailure, .planNotEligible) }
     // 503 usage-unavailable retries with bounded backoff, then succeeds without changing billing path.
     let busy = ScriptedTransport([(503, "{\"error\":{\"code\":\"subscription_sharing_usage_unavailable\"}}"), (200, Self.completed)])
     let retried = try await collect(AIChatClient(transport: busy).response(provider: .chatGPTPlan, configuration: plan,
-      secrets: .init(key: "t"), model: "m", prompt: "p", retryDelay: .milliseconds(1)))
+      secrets: .init(key: "t"), model: "m", conversation: AIConversationRequest(system: nil, messages: [.user("p")]), retryDelay: .milliseconds(1)))
     XCTAssertEqual(retried, "你好，世界")
     let sentCount = await busy.requests.count
     XCTAssertEqual(sentCount, 2)
     // 401 refreshes the token once and replays with the new bearer.
     let expired = ScriptedTransport([(401, "{}"), (200, Self.completed)])
     _ = try await collect(AIChatClient(transport: expired).response(provider: .chatGPTPlan, configuration: plan,
-      secrets: .init(key: "old"), model: "m", prompt: "p", refreshBearer: { "new" }))
+      secrets: .init(key: "old"), model: "m", conversation: AIConversationRequest(system: nil, messages: [.user("p")]), refreshBearer: { "new" }))
     let replay = await expired.requests.last?.value(forHTTPHeaderField: "Authorization")
     XCTAssertEqual(replay, "Bearer new")
   }
 
   func testCurrentClaudeModelsGetAdaptiveThinkingEffortAndFallback() throws {
     let request = try AIChatRequestPlanner.request(provider: .anthropic, configuration: .init(), secrets: .init(key: "k"),
-      model: "claude-opus-5-5", prompt: "p", options: .init(temperature: 0.7, effort: "low"))
+      model: "claude-opus-5-5", conversation: AIConversationRequest(system: nil, messages: [.user("p")]), options: .init(temperature: 0.7, effort: "low"))
     let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
     XCTAssertEqual((body["thinking"] as? [String: String])?["type"], "adaptive")
     XCTAssertEqual((body["output_config"] as? [String: String])?["effort"], "low")
@@ -550,10 +550,10 @@ final class M10AIProtocolTests: XCTestCase {
     XCTAssertNil(body["temperature"]); XCTAssertNil(body["budget_tokens"])
     // A custom endpoint (proxy) gets no fallback beta; Haiku has no default fallback.
     let proxy = try AIChatRequestPlanner.request(provider: .anthropic, configuration: .init(endpoint: "https://proxy.example.invalid"),
-      secrets: .init(key: "k"), model: "claude-opus-5-5", prompt: "p")
+      secrets: .init(key: "k"), model: "claude-opus-5-5", conversation: AIConversationRequest(system: nil, messages: [.user("p")]))
     XCTAssertNil(proxy.value(forHTTPHeaderField: "anthropic-beta"))
     let haiku = try AIChatRequestPlanner.request(provider: .anthropic, configuration: .init(), secrets: .init(key: "k"),
-      model: "claude-haiku-5-5", prompt: "p")
+      model: "claude-haiku-5-5", conversation: AIConversationRequest(system: nil, messages: [.user("p")]))
     let haikuBody = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(haiku.httpBody)) as? [String: Any])
     XCTAssertNil(haikuBody["fallbacks"]); XCTAssertNotNil(haikuBody["thinking"])
   }

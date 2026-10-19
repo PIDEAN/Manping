@@ -140,7 +140,7 @@ final class CoreTests: XCTestCase {
       UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: destination) }
     do {
-      _ = try await DownloadWorker.transfer(
+      _ = try await DownloadWorker.resumeTransfer(
         request: URLRequest(url: URL(string: "http://127.0.0.1:\(port)/missing")!), to: destination)
       XCTFail("The HTTP error page must not become a downloaded file")
     } catch BiliError.http(let code) { XCTAssertEqual(code, 501) }

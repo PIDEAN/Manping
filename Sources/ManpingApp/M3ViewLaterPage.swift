@@ -26,16 +26,16 @@ struct M3ViewLaterPage: View {
       .pageToolbar(title: "稍后再看", subtitle: collection.total > 0 ? "\(collection.total) 个视频" : nil,
         refreshing: collection.isLoading && !collection.entries.isEmpty, refresh: { Task { await collection.refresh() } }) {
         M3PlayAllButton(collection: collection) { playAll() }
-        M3CollectionButton(title: collection.isSelecting ? "退出多选" : "多选", icon: "checkmark.square", selected: collection.isSelecting) {
+        M3CollectionButton(title: collection.isSelecting ? "退出多选" : "多选", icon: "checkmark.square", selected: collection.isSelecting, toolbar: true) {
           collection.toggleSelectionMode()
         }.disabled(collection.entries.isEmpty || collection.isMutating)
         if collection.isSelecting {
-          M3CollectionButton(title: "移除所选", icon: "trash", destructive: true) {
+          M3CollectionButton(title: "移除所选", icon: "trash", destructive: true, toolbar: true) {
             pendingAction = collection.prepareRemoval(collection.removableSelected)
           }
             .disabled(collection.removableSelected.isEmpty || collection.isLoading || collection.isMutating)
         }
-        M3CollectionButton(title: "清空", icon: "trash", destructive: true) { pendingAction = collection.prepareClearAll() }
+        M3CollectionButton(title: "清空", icon: "trash", destructive: true, toolbar: true) { pendingAction = collection.prepareClearAll() }
           .disabled(collection.entries.isEmpty || collection.isLoading || collection.isMutating)
       }
       .overlay {

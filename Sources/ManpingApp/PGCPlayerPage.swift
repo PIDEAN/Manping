@@ -14,12 +14,15 @@ struct PGCPlayerPage: View {
   @State private var danmakuSettingsShown = DanmakuSettingsPopover.debugOpen
   @State private var networkShown = CDNPanel.debugOpen
   @State private var scrubbing = false
-  @State private var pictureWidth: CGFloat = 900
+  @State private var stageWidth: CGFloat = 900
   @AppStorage(PlayerPreferences.sidebarHiddenKey) private var sidebarHidden = false
+  /// Full screen: the picture fills the window; the right column's own setting is kept.
+  @Environment(\.immersivePlayback) private var immersive
   @State private var tab: Tab = .info
   @State private var onlyNumbers = false
   @State private var fixturePaused = false
   @State private var volumeShown = false
+  @State private var composeShown = false
   @State private var showingCoin = false
   @State private var showingFavorites = false
   @State private var showingTriple = false
@@ -68,20 +71,17 @@ struct PGCPlayerPage: View {
   private var duration: Double { max(1, player.duration > 0 ? player.duration : playback.manifest?.duration ?? Double(playback.episode?.duration ?? 0)) }
   private var time: Double { playback.usesFixtures ? playback.fixturePosition : player.time }
   var body: some View {
-    GeometryReader { geometry in
-      HStack(spacing: 0) {
-        media.frame(maxWidth: .infinity, maxHeight: .infinity)
-        if !sidebarHidden {
-          Hairline(axis: .vertical)
-          sidePanel.frame(width: min(372, geometry.size.width * 0.4))
-            .transition(.move(edge: .trailing).combined(with: .opacity))
-        }
-      }
+    PlayerPageLayout(showsPanel: !sidebarHidden, immersive: immersive) {
+      media
+    } panel: {
+      sidePanel
     }
     // The one toolbar above the page (the main window's, or the standalone window's).
     .pageToolbar(title: toolbarTitle, subtitle: toolbarSubtitle) {
-      if let episode = playback.episode { ToolbarShareButton(url: episode.publicURL) }
-      PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden)
+      ToolbarIconGroup {
+        if let episode = playback.episode { ToolbarShareButton(url: episode.publicURL) }
+        PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden)
+      }
     }
     .task(id: selection) { await playback.ensureLoaded(selection) }
       .onChange(of: playback.episode?.id) { _, _ in
@@ -114,11 +114,17 @@ struct PGCPlayerPage: View {
   private var paused: Bool { playback.usesFixtures ? fixturePaused : player.paused }
   /// Paused, a popover open, typing a comment or scrubbing: the controls stay up.
   private var controlsPinned: Bool {
-    playback.usesFixtures || paused || volumeShown || danmakuSettingsShown || networkShown || scrubbing || !features.input.isEmpty
+    playback.usesFixtures || paused || volumeShown || danmakuSettingsShown || networkShown || composeShown || scrubbing
+      || !features.input.isEmpty
   }
   private var controlsShown: Bool { chrome.visible || controlsPinned }
+  /// The picture's shape, from the stream being played (16:9 until it is known).
+  private var pictureAspect: CGFloat? { playerAspect(width: playback.selectedStream?.width, height: playback.selectedStream?.height) }
+  private var stageCover: URL? { playback.episode?.cover ?? playback.details?.season.cover }
   private var media: some View {
-    PlayerSurface(model: player).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+    // The surface fills the stage: the video is fitted to the picture inside it, the danmaku and
+    // the gestures cover the whole stage.
+    PlayerSurface(model: player, pictureAspect: stagePictureAspect(pictureAspect))
       .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
         if !pressing { restoreTemporarySpeed() }
       }) {
@@ -126,20 +132,22 @@ struct PGCPlayerPage: View {
       }
       // Live Text over the paused picture, under the status layer and the controls.
       .overlay { LiveTextLayer(controller: player.liveText) }
+      // An offline sample's artwork stands in for the picture, under the danmaku.
+      .background {
+        if playback.usesFixtures, playback.episode != nil {
+          Color.clear.overlay { CachedImage(url: stageCover) }.clipped()
+            .playerPictureFrame(aspect: stagePictureAspect(pictureAspect)).allowsHitTesting(false)
+        }
+      }
+      .playerStageBackdrop(cover: stageCover)
       // The cover sits under the status layer: loading, errors and retry stay visible over it.
       .overlay {
-        if player.audioOnly { AudioOnlyBackdrop(cover: playback.episode?.cover, title: playback.episode?.title ?? "") }
+        if player.audioOnly { AudioOnlyBackdrop(cover: stageCover, title: playback.episode?.title ?? "") }
       }
       .overlay {
-        if playback.usesFixtures, let episode = playback.episode {
-          GeometryReader { geometry in
-            CachedImage(url: episode.cover ?? playback.details?.season.cover)
-              .frame(width: geometry.size.width, height: min(geometry.size.height, geometry.size.width * 9 / 16))
-              .frame(maxHeight: .infinity)
-              .overlay(alignment: .topLeading) {
-                Text("本地预览 · 未加载媒体").font(Theme.Font.caption2).foregroundStyle(.white.opacity(0.65)).padding(10)
-              }
-          }.allowsHitTesting(false)
+        if playback.usesFixtures, playback.episode != nil {
+          Text("本地预览 · 未加载媒体").font(Theme.Font.caption2).foregroundStyle(.white.opacity(0.65)).padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).allowsHitTesting(false)
         } else if let error = playback.error, playback.manifest == nil {
           VStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 22)).foregroundStyle(Theme.highlight)
@@ -152,7 +160,7 @@ struct PGCPlayerPage: View {
       }
       .overlay(alignment: .topTrailing) {
         if let deadline = model.nextPlaybackDeadline {
-          NextPlaybackOverlay(deadline: deadline, onPlay: model.playNextNow, onCancel: model.cancelNextPlayback)
+          NextPlaybackOverlay(deadline: deadline, onPlay: model.playNext, onCancel: model.cancelNextPlayback)
         }
       }
       .overlay(alignment: .bottomTrailing) {
@@ -173,25 +181,34 @@ struct PGCPlayerPage: View {
       }
       .animation(.snappy(duration: 0.3), value: model.nextPlaybackDeadline == nil)
       .animation(.easeOut(duration: 0.2), value: controlsShown)
-      .reportsPictureWidth($pictureWidth)
+      .reportsStageWidth($stageWidth)
       .tracksPlayerChrome(chrome, pinned: controlsPinned)
       // Playback shortcuts (menu bar, media keys) bring the controls in.
       .onChange(of: player.speed) { _, _ in chrome.activity() }
       .onChange(of: player.volume) { _, _ in chrome.activity() }
       .onChange(of: player.commentsEnabled) { _, _ in chrome.activity() }
+      .playerStageShape(immersive: immersive)
   }
   private func restoreTemporarySpeed() {
     player.endTemporarySpeed()
   }
   private var streams: [MediaStream] { playback.manifest?.video ?? [] }
   private var controls: some View {
-    let layout = PlayerPanelLayout(pictureWidth: pictureWidth)
+    let layout = PlayerPanelLayout(stageWidth: stageWidth)
     return PlayerControlPanel(chrome: chrome) {
       PlaybackTimeline(clock: player.clock, duration: duration, override: playback.usesFixtures ? playback.fixturePosition : nil,
         enabled: playback.manifest != nil || playback.usesFixtures, preview: videoShot,
-        density: player.timeline.density(duration: duration), chapters: player.chapters,
+        density: player.timeline.density(duration: duration), chapters: player.chapters, markers: model.aiMarks(for: model.aiMediaKey),
         bufferedAhead: { [player] in player.bufferedAhead }, scrubbing: { scrubbing = $0 }) { playback.seek($0) }
-      HStack(spacing: 6) {
+      PlayerBarRow(model: model, player: player, layout: layout, page: barPage, cdn: model.cdn,
+        danmakuShown: $danmakuSettingsShown, networkShown: $networkShown, volumeShown: $volumeShown,
+        composeShown: $composeShown,
+        input: {
+          AnyView(PlaybackDanmakuInput(features: features) {
+            features.send(seconds: time) { model.showingLogin = true }
+          })
+        },
+        extraMenu: { AnyView(debugMenuItems) }) {
         PlayerPlayButton(paused: paused) {
           if playback.usesFixtures { fixturePaused.toggle() } else { player.togglePause() }
         }.disabled(playback.manifest == nil && !playback.usesFixtures)
@@ -207,23 +224,6 @@ struct PGCPlayerPage: View {
             .padding(.horizontal, 4)
         }
         DanmakuToggleButton(enabled: $player.commentsEnabled) { danmakuSettingsShown = true }
-        if layout.showsDanmakuInput {
-          PlaybackDanmakuInput(features: features) {
-            features.send(seconds: time) { model.showingLogin = true }
-          }.padding(.leading, 2)
-        }
-        Spacer(minLength: 6)
-        if layout.showsQuality {
-          PlayerQualityMenu(streams: streams, selected: playback.selectedStream) { playback.changeQuality($0) }
-            .disabled(playback.manifest == nil)
-        }
-        if layout.showsSpeed { PlayerSpeedMenu(player: player, holdSpeed: model.appSettings.number(.temporarySpeed)) }
-        if layout.showsSubtitles {
-          PlaybackSubtitleMenu(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle))
-        }
-        PlayerVolumeButton(player: player, maximum: model.appSettings.number(.maxVolume), shown: $volumeShown)
-        settingsMenu(layout)
-        PlayerWindowButtons(model: model, player: player)
       }
       if let message = features.message {
         Text(message).font(Theme.Font.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(2)
@@ -231,44 +231,27 @@ struct PGCPlayerPage: View {
       }
     }
   }
-  private func settingsMenu(_ layout: PlayerPanelLayout) -> some View {
-    PlayerSettingsMenu(player: player, settings: model.settingsModel, cdn: model.cdn,
-      setCDNSetting: { key, value in model.settingsModel.set(key, .bool(value)) }, setProxyRoute: model.setProxyMediaRoute,
-      danmakuShown: $danmakuSettingsShown, networkShown: $networkShown,
-      openDanmakuSettings: { model.openSettings(.danmaku) }) {
-      Button("弹幕设置…") { danmakuSettingsShown = true }
-      PlayerShaderMenu(model: model)
-      Button("网络与节点…") { networkShown = true }
-      Toggle("只听声音", isOn: Binding(get: { player.audioOnly }, set: { player.setAudioOnly($0) }))
-      if !layout.showsQuality || !layout.showsSpeed || !layout.showsSubtitles {
-        Divider()
-        if !layout.showsQuality {
-          Menu("画质") { PlayerQualityItems(streams: streams, selected: playback.selectedStream) { playback.changeQuality($0) } }
-        }
-        if !layout.showsSpeed {
-          Menu("倍速") { PlayerSpeedItems(player: player, holdSpeed: model.appSettings.number(.temporarySpeed)) }
-        }
-        if !layout.showsSubtitles {
-          Menu("字幕") { PlaybackSubtitleItems(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle)) }
-        }
-      }
+  /// 画质 and 字幕 come from this page; the rest of the bar is shared (设置 › 控制条).
+  private var barPage: PlayerBarPage {
+    PlayerBarPage(slots: [
+      .quality: .quality(streams: streams, selected: playback.selectedStream, enabled: playback.manifest != nil) {
+        playback.changeQuality($0)
+      },
+      .subtitle: .subtitle(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle)),
+    ], downloadEnabled: playback.manifest != nil)
+  }
+  @ViewBuilder private var debugMenuItems: some View {
+    #if DEBUG
+    if playback.usesFixtures {
       Divider()
-      Button("截取画面") { model.takePlayerScreenshot() }.disabled(!model.canTakeScreenshot)
-      Button("下载…") { model.enqueueDownload() }.disabled(playback.manifest == nil)
-      Button(model.playbackDetached ? "回到主窗口" : "在独立窗口播放") { model.togglePlaybackWindow() }
-      #if DEBUG
-      if playback.usesFixtures {
-        Divider()
-        Button("模拟播放结束（本地样本）") { player.simulatePlaybackEnd() }
-      }
-      #endif
+      Button("模拟播放结束（本地样本）") { player.simulatePlaybackEnd() }
     }
+    #endif
   }
   private var sidePanel: some View {
     VStack(spacing: 0) {
-      ScrollView(.horizontal, showsIndicators: false) {
-        SegmentedTabs(options: tabs.map { ($0, tabTitle($0)) }, selection: $tab).padding(.horizontal, 16).frame(height: Theme.pageHeaderHeight)
-      }.frame(height: Theme.pageHeaderHeight)
+      AdaptiveSegmentedTabs(options: tabs.map { ($0, tabTitle($0)) }, selection: $tab)
+        .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).frame(height: Theme.pageHeaderHeight)
       Hairline()
       ScrollView {
         Group {
@@ -283,20 +266,20 @@ struct PGCPlayerPage: View {
             }
             else { Text("当前分集暂时不能查看评论。").font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)) }
           case .ai:
-            if let episode = playback.episode {
-              M8AIResponseView(source: .video(aid: episode.aid ?? 0, cid: episode.cid ?? 0, title: episode.title,
-                description: playback.details?.description ?? ""), service: model.service,
-                rpc: try? model.standardRPCService(), configuration: model.aiConfiguration,
-                prompts: model.aiPrompts, fixtures: playback.usesFixtures, openSettings: model.openAISettings)
-            }
+            if let source = model.aiEpisodeSource(playback) { AIPanelView(runtime: model.ai, source: source) }
           }
         }.padding(.horizontal, tab == .info || tab == .comments || tab == .ai ? 18 : 10).padding(.vertical, 14)
           .frame(maxWidth: .infinity, alignment: .topLeading)
       }.prefetchOnScroll(enabled: tab == .comments && comments.thread == nil && !comments.loading && !comments.isEnd
         && comments.error == nil && !comments.comments.isEmpty) { Task { await comments.loadNext() } }
+      .aiThreadScrolling(tab == .ai)
       if tab == .comments, playback.episode?.aid != nil {
         Hairline()
         M4CommentComposer(comments: comments, model: model)
+      }
+      if tab == .ai, let source = model.aiEpisodeSource(playback) {
+        AIPanelComposer(runtime: model.ai, source: source)
+          .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
       }
     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
@@ -305,7 +288,7 @@ struct PGCPlayerPage: View {
       if let details = playback.details {
         descriptor(details)
         if !player.chapters.isEmpty {
-          LivePlaybackChapters(clock: player.clock, chapters: player.chapters,
+          PlaybackChapterList(clock: player.clock, chapters: player.chapters,
             override: playback.usesFixtures ? playback.fixturePosition : nil, seek: playback.seek)
         }
         operations(details)
@@ -326,7 +309,7 @@ struct PGCPlayerPage: View {
       if !details.description.isEmpty {
         PGCDescriptionText(text: details.description, color: scheme == .dark ? NSColor(white: 0.85, alpha: 1) : NSColor(white: 0.2, alpha: 1))
           .frame(maxWidth: .infinity, alignment: .leading)
-        if !details.description.isEmpty { TranslateLink(text: details.description) }
+        TranslateLink(text: details.description)
       }
     }.frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -379,8 +362,8 @@ struct PGCPlayerPage: View {
       }
       if let message = interactions.message { Text(message).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme)) }
       VStack(alignment: .leading, spacing: 4) {
-        (Text("SS") + Text(String(details.season.id)).bold()).textSelection(.enabled)
-        if let episode = playback.episode { (Text("EP") + Text(String(episode.id)).bold()).textSelection(.enabled) }
+        Text("SS\(Text(String(details.season.id)).bold())").textSelection(.enabled)
+        if let episode = playback.episode { Text("EP\(Text(String(episode.id)).bold())").textSelection(.enabled) }
       }.font(Theme.Font.caption2.monospacedDigit()).foregroundStyle(Theme.tertiaryText(scheme))
     }
   }

@@ -98,7 +98,6 @@ final class M6ArticleTests: XCTestCase, @unchecked Sendable {
       view: ["like": 1, "favorite": true, "attention": true, "coin": 1, "stats": ["view": 9]])
     XCTAssertEqual(detail.article.title, "A }; quoted \" brace {")
     XCTAssertTrue(detail.isLiked); XCTAssertTrue(detail.isFavorited); XCTAssertTrue(detail.isFollowing)
-    XCTAssertEqual(detail.contributedCoins, 1)
     let text = detail.blocks.compactMap { block -> String? in
       if case .text(let runs, _) = block { return runs.map(\.text).joined() }; return nil
     }.joined(separator: " ")

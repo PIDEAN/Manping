@@ -13,6 +13,8 @@ struct DanmakuSettingsPopover: View {
   let player: PlayerModel
   /// 「更多弹幕设置…」: the danmaku settings in the app's settings.
   var openMore: (() -> Void)? = nil
+  /// The power-saving note: 设置 › 播放 › 省电.
+  var openPowerSettings: (() -> Void)? = nil
   @Environment(\.colorScheme) private var scheme
   @ObservedObject private var power = PowerState.shared
   @ObservedObject private var accountShield = DanmakuShieldSync.shared
@@ -75,6 +77,13 @@ struct DanmakuSettingsPopover: View {
       for change in edits.changes(from: settings.values) { commit(change.key, change.value) }
       edits.removeAll()
     }
+    #if DEBUG
+    // README demo: previews only, nothing is saved.
+    .modifier(DemoDanmakuAppearance { size, area in
+      if let area { self.area = area; player.setDanmakuArea(area) }
+      if let size { fontSize = size; preview(.danmakuFontSize, .number(size)) }
+    })
+    #endif
   }
 
   private var appearance: some View {
@@ -93,11 +102,27 @@ struct DanmakuSettingsPopover: View {
         SegmentedTabs(options: [(0.25, "四分之一"), (0.5, "半屏"), (1.0, "全屏")], selection: Binding(
           get: { area }, set: { area = $0; player.setDanmakuArea($0) }))
       }
-      if power.constrained {
-        Label("低电量或发热中：弹幕暂以最高 60 帧、最多 40 条显示", systemImage: "leaf")
-          .font(Theme.Font.caption2).foregroundStyle(Theme.tertiaryText(scheme))
+      if let note = powerNote {
+        Button { openPowerSettings?() } label: {
+          Label(note, systemImage: "leaf").font(Theme.Font.caption2).foregroundStyle(Theme.tertiaryText(scheme))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(openPowerSettings == nil).help("省电设置…")
       }
     }
+  }
+
+  /// What power saving does to danmaku right now, following the effective level and the 省电
+  /// switches; nil when it changes nothing here.
+  private var powerNote: String? {
+    let sixty = power.level >= .light && power.preferences.danmakuSixty
+    let lines = power.constrained
+    guard sixty || lines else { return nil }
+    let conditions = power.conditions
+    let reason = conditions.lowPowerMode ? "低电量模式" : conditions.thermalState >= 1 ? "机身较热"
+      : conditions.onBattery ? "用电池时" : "省电中"
+    let effect = sixty && lines ? "最高 60 帧、最多 40 条" : sixty ? "最高 60 帧" : "最多 40 条"
+    return reason + "：弹幕暂以" + effect + "显示"
   }
 
   /// 「1.2×」, with the named speed when the value sits on one of the marks.

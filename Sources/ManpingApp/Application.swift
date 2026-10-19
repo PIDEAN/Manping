@@ -38,8 +38,7 @@ import SwiftUI
       return item
     }
     func header(_ title: String) {
-      if #available(macOS 14, *) { menu.addItem(.sectionHeader(title: title)) }
-      else { let item = menu.addItem(withTitle: title, action: nil, keyEquivalent: ""); item.isEnabled = false }
+      menu.addItem(.sectionHeader(title: title))
     }
     func submenu(_ title: String, image: String) -> NSMenu {
       let item = menu.addItem(withTitle: title, action: nil, keyEquivalent: "")
@@ -97,6 +96,8 @@ import SwiftUI
 
   private var statusItem: NSStatusItem?
   private var statusObservation: AnyCancellable?
+  /// The playback page hides the sidebar (or ⌃⌘S floats it over the page): the window buttons follow.
+  private var sidebarObservation: AnyCancellable?
   private var statusMenu: NSMenu?
   /// Shows or hides the menu bar item for 设置 › 在菜单栏显示.
   func updateStatusItem(visible: Bool) {
@@ -164,7 +165,10 @@ import SwiftUI
     if !model.openLink(field.stringValue) { model.error = "没有识别出哔哩哔哩链接或编号。" }
   }
   func applicationDidFinishLaunching(_ notification: Notification) {
-    NSApp.setActivationPolicy(.regular)
+    // Performance diagnostics run as an accessory (no Dock icon, never activated by launch) so they do
+    // not take focus or keystrokes from the user's frontmost app. `.prohibited` stops the display
+    // link from driving the window at all, so it cannot be used here.
+    NSApp.setActivationPolicy(PerformanceOptions.requested ? .accessory : .regular)
     let args = ProcessInfo.processInfo.arguments
     let options: DiagnosticArguments
     var diagnosticArgs = [args[0]]
@@ -172,7 +176,6 @@ import SwiftUI
     var launchPage: String?
     var launchTheme: AppTheme?
     var launchWindowSize: NSSize?
-    var networkProbe = false
     #if DEBUG
     var modelChecks = false
     var runtimeChecks: String?
@@ -180,10 +183,15 @@ import SwiftUI
     #endif
     var index = 1
     while index < args.count {
-      if ["--perf-fixture", "--perf-stability", "--perf-memory-stress"].contains(args[index]) {
+      if ["--perf-fixture", "--perf-stability", "--perf-memory-stress", "--perf-network-direct", "--perf-network-cancel-refresh"].contains(args[index]) ||
+        (PerformanceOptions.requested && args[index] == "--skip-auth") {
         index += 1; continue
       }
-      if ["--perf-scroll", "--perf-play-local", "--perf-media", "--perf-memory-iterations", "--perf-memory-ack-dir"].contains(args[index]), index + 1 < args.count {
+      if ["--perf-anonymous-bvid", "--perf-anonymous-live", "--perf-anonymous-seconds", "--perf-audio-driver", "--perf-audio-buffer", "--perf-cache-pause-wait",
+        "--perf-scroll", "--perf-play-local", "--perf-media", "--perf-memory-iterations", "--perf-memory-ack-dir",
+        "--perf-danmaku", "--perf-source-fps", "--perf-network", "--perf-network-seconds", "--perf-network-backup", "--perf-network-refresh", "--perf-network-third", "--perf-network-refresh-backup",
+        "--perf-network-hide-seconds", "--perf-network-hidden-reload-at", "--perf-network-node-policy",
+        "--perf-scroll-hz", "--perf-scroll-seconds", "--perf-scroll-speed", "--perf-covers", "--perf-pointer"].contains(args[index]), index + 1 < args.count {
         index += 2; continue
       }
       #if DEBUG
@@ -252,12 +260,15 @@ import SwiftUI
         if ["--ui-live-area", "--ui-live-sort"].contains(args[index]), index + 1 < args.count {
           index += 2; continue
         }
-        #if DEBUG
         if ["--ui-playback-report", "--ui-report-seconds", "--ui-report-actions"].contains(args[index]), index + 1 < args.count {
           index += 2; continue
         }
-        if ["--ui-cdn-panel", "--ui-danmaku-panel", "--ui-danmaku-shield"].contains(args[index]) { index += 1; continue }
+        if ["--ui-cdn-panel", "--ui-danmaku-panel", "--ui-danmaku-shield", "--ui-more-menu"].contains(args[index]) { index += 1; continue }
         if args[index] == "--ui-seek-preview", index + 1 < args.count { index += 2; continue }
+        // Playback stage screenshot checks (PlayerStageDebug).
+        if args[index] == "--ui-player-placement", index + 1 < args.count { index += 2; continue }
+        // 设置 › 控制条 screenshot checks (PlayerBarStore, PlayerBarCustomizer).
+        if ["--ui-player-bar", "--ui-bar-drag", "--ui-bar-width"].contains(args[index]), index + 1 < args.count { index += 2; continue }
         if args[index] == "--ui-status-menu" || args[index] == "--ui-translate" { index += 1; continue }
         if args[index] == "--ui-snapshot", index + 2 < args.count, let delay = Double(args[index + 2]), (1...120).contains(delay) {
           snapshotRequest = (URL(fileURLWithPath: args[index + 1]), delay); index += 3; continue
@@ -266,19 +277,20 @@ import SwiftUI
           DispatchQueue.main.asyncAfter(deadline: .now() + 12) { WatchActivity.debugReport() }
           index += 1; continue
         }
-        #endif
         if args[index] == "--ui-ai-preview" {
           guard DebugUIFixtures.enabled else { model.shutdown(); NSApp.terminate(nil); return }
           index += 1; continue
         }
+        // AI panel screenshot scenes (fixture service only; nothing leaves the Mac).
+        if args[index] == "--ui-ai-scene", index + 1 < args.count {
+          guard DebugUIFixtures.enabled, ["intro", "chapters", "context", "highlights", "comments", "clips", "official", "settings"].contains(args[index + 1]) else {
+            model.shutdown(); NSApp.terminate(nil); return
+          }
+          index += 2; continue
+        }
         if args[index] == "--ui-ai-provider", index + 1 < args.count {
           guard DebugUIFixtures.enabled, AIProvider(rawValue: args[index + 1]) != nil else { model.shutdown(); NSApp.terminate(nil); return }
           index += 2; continue
-        }
-        if args[index] == "--ui-network-probe" {
-          networkProbe = true
-          index += 1
-          continue
         }
       #endif
       diagnosticArgs.append(args[index])
@@ -319,13 +331,6 @@ import SwiftUI
         }
         return
       }
-      if networkProbe {
-        Task {
-          await runNetworkProbe()
-          NSApp.terminate(nil)
-        }
-        return
-      }
     #endif
 
     installMenus()
@@ -360,7 +365,10 @@ import SwiftUI
     if launchWindowSize == nil, !(options.requested && options.flags.contains("--fixed-viewport")) {
       window.setFrameAutosaveName("MainWindow")
     }
-    window.makeKeyAndOrderFront(nil)
+    // Performance diagnostics run beside whatever the user is doing: the window shows (it must be on
+    // screen to draw) but the app never takes focus from the frontmost app.
+    let quietDiagnostics = PerformanceOptions.requested
+    if quietDiagnostics { window.ignoresMouseEvents = true; window.orderFrontRegardless() } else { window.makeKeyAndOrderFront(nil) }
     // 设置 › 在菜单栏显示, now and whenever it changes.
     updateStatusItem(visible: model.appSettings.bool(.menuBarItem))
     statusObservation = model.$appSettings.map { $0.bool(.menuBarItem) }.removeDuplicates().dropFirst()
@@ -369,11 +377,13 @@ import SwiftUI
     DispatchQueue.main.async { [weak self] in self?.model.updateDockBadge() }
     alignTrafficLights()
     DispatchQueue.main.async { [weak self] in self?.alignTrafficLights() }
-    NSApp.activate(ignoringOtherApps: true)
+    sidebarObservation = ShellSidebarState.shared.objectWillChange
+      .sink { [weak self] in DispatchQueue.main.async { MainActor.assumeIsolated { self?.alignTrafficLights() } } }
+    if !quietDiagnostics { NSApp.activate(ignoringOtherApps: true) }
     SettingsWindowController.shared.diagnosticTheme = launchTheme
     // `--ui-page settings…` opens the settings window on that category; screenshots capture it.
     let settingsWindow: NSWindow? = model.launchSettingsGroup.flatMap { group in
-      model.openSettings(group)
+      if model.launchSettingsPlayerBar { model.openPlayerBarSettings() } else { model.openSettings(group) }
       return SettingsWindowController.shared.window
     }
     #if DEBUG
@@ -597,41 +607,6 @@ import SwiftUI
     }
   }
 
-  #if DEBUG
-    private func runNetworkProbe() async {
-      let url = URL(string: "https://api.bilibili.com/x/web-interface/popular?pn=1&ps=24")!
-      let request = model.service.request(url)
-      let isolated = IsolatedAuthTransport()
-      for (name, send) in [
-        ("shared", { try await URLSession.shared.data(for: request) }),
-        (
-          "isolated",
-          {
-            let response = try await isolated.send(request)
-            return (response.body, response.response as URLResponse)
-          }
-        ),
-      ] {
-        let start = Date()
-        var status = 0
-        var code = -1
-        var count = 0
-        do {
-          let (data, response) = try await send()
-          status = (response as? HTTPURLResponse)?.statusCode ?? 0
-          if let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            code = root["code"] as? Int ?? -1
-            count = ((root["data"] as? [String: Any])?["list"] as? [Any])?.count ?? 0
-          }
-        } catch {
-          code = (error as NSError).code
-        }
-        print(
-          "\(name) status=\(status) code=\(code) list=\(count) elapsed=\(String(format: "%.2f", Date().timeIntervalSince(start)))s"
-        )
-      }
-    }
-  #endif
   /// The menu bar (DesignSystem.md section 8): 满屏 / 文件 / 编辑 / 显示 / 前往 / 播放 / 窗口 / 帮助.
   private func installMenus() {
     let menu = NSMenu()
@@ -809,7 +784,7 @@ import SwiftUI
     guard let action = item.action else { return true }
     switch action {
     case #selector(toggleSidebar):
-      item.title = sidebarHidden ? "显示侧边栏" : "隐藏侧边栏"
+      item.title = sidebarShown ? "隐藏侧边栏" : "显示侧边栏"
       return true
     case #selector(toggleFullScreen):
       let full = (model.hasPlayback ? model.player.surface?.window : nil)?.styleMask.contains(.fullScreen)
@@ -839,8 +814,20 @@ import SwiftUI
     return true
   }
   private var sidebarHidden: Bool { PerformanceEnvironment.defaults.bool(forKey: ShellPreferences.sidebarHiddenKey) }
+  /// The sidebar is on screen: in the layout, or floating over the playback page.
+  private var sidebarShown: Bool {
+    let shell = ShellSidebarState.shared
+    return shell.suppressed ? shell.peeking : !sidebarHidden
+  }
+  /// On the playback page the sidebar stays out of the layout; ⌃⌘S floats it over the page for a
+  /// moment instead of changing the 隐藏侧边栏 preference.
   @objc private func toggleSidebar() {
-    PerformanceEnvironment.defaults.set(!sidebarHidden, forKey: ShellPreferences.sidebarHiddenKey)
+    let shell = ShellSidebarState.shared
+    if shell.suppressed {
+      shell.peeking.toggle()
+    } else {
+      PerformanceEnvironment.defaults.set(!sidebarHidden, forKey: ShellPreferences.sidebarHiddenKey)
+    }
     DispatchQueue.main.async { [weak self] in self?.alignTrafficLights() }
   }
   @objc private func goToDestination(_ sender: NSMenuItem) {
@@ -887,11 +874,12 @@ import SwiftUI
     }
     append("Manping · 原生 Apple Silicon 哔哩哔哩客户端\n")
     append("项目主页", link: "https://github.com/PIDEAN/Manping")
-    append("\n\n致谢：")
-    append("Bili.Copilot", link: "https://github.com/Richasy/Bili.Copilot")
-    append("（Richasy，MIT License）提供了原版页面结构；播放基于 ")
-    append("mpv", link: "https://mpv.io")
-    append("。")
+    append("\n\n致谢\n")
+    for entry in Acknowledgements.entries(in: .original) {
+      append(entry.name, link: entry.url)
+      append("（\(entry.author)，\(entry.license)）\n")
+    }
+    append("完整致谢见 设置 › 致谢。")
     let paragraph = NSMutableParagraphStyle(); paragraph.alignment = .center
     credits.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: credits.length))
     NSApp.activate()
@@ -937,7 +925,9 @@ import SwiftUI
     // An icon rail leaves less room, so the buttons move in less there.
     let rail = window.frame.width < Theme.sidebarCollapseWidth
     // Only the main window's own sidebar counts; 小窗 is a separate panel.
-    let inset: CGFloat = PerformanceEnvironment.defaults.bool(forKey: ShellPreferences.sidebarHiddenKey) ? 4 : rail ? 2 : 10
+    // On the playback page the sidebar is out of the layout; floated over it with ⌃⌘S it is full width.
+    let shell = ShellSidebarState.shared
+    let inset: CGFloat = !sidebarShown ? 4 : shell.suppressed || !rail ? 10 : 2
     for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
       guard let button = window.standardWindowButton(type), let parent = button.superview else { continue }
       let base = trafficLightBaseX[type] ?? button.frame.origin.x
@@ -953,8 +943,34 @@ import SwiftUI
   }
   // Entering or leaving full screen from the window's own button moves the picture as much as
   // the menu does: an open still loading keeps it where the user put it.
-  func windowWillEnterFullScreen(_ notification: Notification) { model.userPlacedPicture() }
-  func windowWillExitFullScreen(_ notification: Notification) { model.userPlacedPicture() }
+  func windowWillEnterFullScreen(_ notification: Notification) {
+    model.userPlacedPicture()
+    fullScreen.willEnter(window)
+  }
+  func windowWillExitFullScreen(_ notification: Notification) {
+    model.userPlacedPicture()
+    fullScreen.willExit()
+  }
+  /// The playback page enters and leaves full screen with its own live animation; other pages
+  /// keep the system transition.
+  private lazy var fullScreen = PlayerFullScreenTransition(
+    showsPlayer: { [unowned self] in model.showsPlayerInMainWindow },
+    setFullScreen: { [unowned self] in model.setWindowFullScreen($0, detached: false) })
+  func customWindowsToEnterFullScreen(for window: NSWindow) -> [NSWindow]? { fullScreen.customWindowsToEnter(window) }
+  func window(_ window: NSWindow, startCustomAnimationToEnterFullScreenWithDuration duration: TimeInterval) {
+    fullScreen.startEntering(window, duration: duration)
+  }
+  func customWindowsToExitFullScreen(for window: NSWindow) -> [NSWindow]? { fullScreen.customWindowsToExit(window) }
+  func window(_ window: NSWindow, startCustomAnimationToExitFullScreenWithDuration duration: TimeInterval) {
+    fullScreen.startExiting(window, duration: duration)
+  }
+  func window(_ window: NSWindow, willUseFullScreenContentSize proposedSize: NSSize) -> NSSize {
+    fullScreen.fullScreenContentSize(proposed: proposedSize)
+  }
+  func windowDidEnterFullScreen(_ notification: Notification) { fullScreen.didEnter() }
+  func windowDidExitFullScreen(_ notification: Notification) { fullScreen.didExit() }
+  func windowDidFailToEnterFullScreen(_ window: NSWindow) { fullScreen.didFailToEnter() }
+  func windowDidFailToExitFullScreen(_ window: NSWindow) { fullScreen.didFailToExit() }
   func applicationWillTerminate(_ notification: Notification) { model.shutdown() }
   func windowWillClose(_ notification: Notification) {
     // The settings window belongs to this one; closing the main window quits.

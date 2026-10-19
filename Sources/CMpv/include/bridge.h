@@ -4,7 +4,10 @@
 #include <stddef.h>
 typedef struct bili_mpv bili_mpv;
 // Commands/events belong to one serial worker. Render is serialized by the layer lock and uses one current CGL context.
-bili_mpv *bili_mpv_create(const char *library_path, char *error, size_t capacity);
+bili_mpv *bili_mpv_create(const char *library_path, int isolated, char *error, size_t capacity);
+// Read-back proof captured at initialization: bit 0 ytdl=no, bit 1 load-scripts=no,
+// bit 2 cookies=no. Zero for ordinary engines; isolated creation fails unless all are set.
+int bili_mpv_isolation_mask(bili_mpv *engine);
 int bili_mpv_render_create(bili_mpv *engine);
 int bili_mpv_render_pending(bili_mpv *engine);
 int bili_mpv_render(bili_mpv *engine, int floating);

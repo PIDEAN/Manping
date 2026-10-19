@@ -171,7 +171,9 @@ private final class AuthRedirectDelegate: NSObject, URLSessionTaskDelegate, Send
 }
 public final class IsolatedAuthTransport: AuthTransport, Sendable {
   public let session: URLSession
-  public init(configuration: URLSessionConfiguration = .ephemeral) {
+  private let diagnosticLogging: Bool
+  public init(configuration: URLSessionConfiguration = .ephemeral, diagnosticLogging: Bool = true) {
+    self.diagnosticLogging = diagnosticLogging
     let config = configuration.copy() as! URLSessionConfiguration
     config.httpCookieStorage = nil
     config.httpShouldSetCookies = false
@@ -182,7 +184,7 @@ public final class IsolatedAuthTransport: AuthTransport, Sendable {
       configuration: config, delegate: AuthRedirectDelegate(), delegateQueue: nil)
   }
   public func send(_ request: URLRequest) async throws -> AuthHTTPResponse {
-    let diagnostics = ProcessInfo.processInfo.environment["MANPING_NETWORK_DIAGNOSTICS"] == "1"
+    let diagnostics = diagnosticLogging && ProcessInfo.processInfo.environment["MANPING_NETWORK_DIAGNOSTICS"] == "1"
     let started = Date()
     func log(status: Int, code: Int?) {
       guard diagnostics else { return }

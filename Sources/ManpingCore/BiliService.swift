@@ -7,7 +7,6 @@ public struct QRLogin: Sendable {
 }
 public enum QRStatus: Sendable { case waiting, scanned, expired, success }
 public actor BiliService {
-  public let session: URLSession
   private nonisolated let credentials: any AuthCredentialStore
   private let transport: any AuthTransport
   /// The proxied path for region-locked requests (see `RegionRoute`), when a proxy is configured.
@@ -30,6 +29,8 @@ public actor BiliService {
   private var identityObservers: [UUID: AsyncStream<AuthIdentityEvent>.Continuation] = [:]
   private var refreshTask: AuthRefreshFlight?
   private var tvCodes: Set<String> = []
+  /// /x/player/wbi/v2 results shared by subtitle playback and AI, per media and identity.
+  var playerMetadataCache = PlayerMetadataCache()
   public init(
     session: URLSession? = nil, transport: (any AuthTransport)? = nil,
     credentials: any AuthCredentialStore = CredentialStore(),
@@ -38,9 +39,7 @@ public actor BiliService {
     webDeviceCookies: Bool = false
   ) {
     usesWebDeviceCookies = webDeviceCookies
-    let isolated = IsolatedAuthTransport(configuration: session?.configuration ?? .ephemeral)
-    self.session = isolated.session
-    self.transport = transport ?? isolated
+    self.transport = transport ?? IsolatedAuthTransport(configuration: session?.configuration ?? .ephemeral)
     self.credentials = credentials
     self.now = now
     self.localID = localID
@@ -242,8 +241,7 @@ public actor BiliService {
   /// Web device cookies (`buvid3`/`buvid4`/`b_nut`) that Bilibili's risk control expects on
   /// api.bilibili.com. Fetched once from the public `finger/spi` endpoint when missing; they
   /// identify the device, not the account, and are never persisted with login credentials.
-  public var usesWebDeviceCookies = false
-  public func enableWebDeviceCookies() { usesWebDeviceCookies = true }
+  private let usesWebDeviceCookies: Bool
   private var deviceCookieAttempt: Date?
   private var deviceCookieTask: Task<Void, Never>?
   static let deviceCookieNames: Set<String> = ["buvid3", "buvid4", "b_nut"]
@@ -377,6 +375,25 @@ public actor BiliService {
     }
     return payload
   }
+  /// The signed-in account for data ownership: the App token's mid, else the web login's
+  /// DedeUserID while a SESSDATA cookie exists. nil when nobody is signed in.
+  public func accountMid() -> Int64? {
+    if let mid = authSnapshot().token?.mid, mid > 0 { return mid }
+    guard cookieValue("SESSDATA") != nil, let raw = cookieValue("DedeUserID"), let mid = Int64(raw), mid > 0 else { return nil }
+    return mid
+  }
+  /// WBI-signed GET returning the raw body, so callers can interpret non-zero envelope codes.
+  func wbiSignedBody(_ path: String, params: [String: String], expectedIdentity: AuthSnapshot) async throws -> Data {
+    try checkRESTIdentity(expectedIdentity)
+    if keys == nil { try await refreshKeys() }
+    try checkRESTIdentity(expectedIdentity)
+    guard let keys else { throw BiliError.invalidResponse("Missing WBI keys") }
+    var parts = URLComponents(string: "https://api.bilibili.com" + path)!
+    parts.percentEncodedQuery = try WBI.sign(params, imageKey: keys.0, subKey: keys.1)
+    let body = try await data(parts.url!)
+    try checkRESTIdentity(expectedIdentity)
+    return body
+  }
   public func refreshKeys() async throws {
     // Anonymous nav returns -101 but still supplies wbi_img.
     let body = try await data(URL(string: "https://api.bilibili.com/x/web-interface/nav")!)
@@ -394,17 +411,6 @@ public actor BiliService {
     let payload = try await json(
       "/x/web-interface/popular", params: ["pn": String(page), "ps": "24"])
     return try (payload["list"] as? [[String: Any]] ?? []).map(Video.parse)
-  }
-  public func ranking(rid: Int = 0) async throws -> [Video] {
-    let payload = try await json(
-      "/x/web-interface/ranking/v2", params: ["rid": String(rid), "type": "all"])
-    return try (payload["list"] as? [[String: Any]] ?? []).map(Video.parse)
-  }
-  public func search(_ term: String, page: Int = 1) async throws -> [Video] {
-    let payload = try await json(
-      "/x/web-interface/wbi/search/type",
-      params: ["search_type": "video", "keyword": term, "page": String(page)], signed: true)
-    return try (payload["result"] as? [[String: Any]] ?? []).map(Video.parse)
   }
   public func detail(_ bvid: String, expectedIdentity: AuthSnapshot? = nil) async throws -> Video {
     if let expectedIdentity { try checkRESTIdentity(expectedIdentity) }

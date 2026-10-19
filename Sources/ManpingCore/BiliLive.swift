@@ -114,14 +114,6 @@ public enum LiveStreamSelector {
   /// Peer-assisted (PCDN) hosts carry `mcdn` in their name; they are tried last.
   public static func isPeerAssisted(_ url: URL) -> Bool { url.host?.contains("mcdn") ?? false }
 
-  /// The requested quality (or the closest one below it, then above it) first; then the
-  /// preferred hardware codec (AV1 last, it decodes in software on most Macs); then FLV (lowest
-  /// latency), fMP4 HLS, TS HLS. Without a request the highest delivered quality wins.
-  public static func select(_ playback: LivePlayback, preferHEVC: Bool, requested: Int? = nil,
-    avoidPeerAssisted: Bool = true) -> LiveStream? {
-    ranked(playback, preferHEVC: preferHEVC, requested: requested, avoidPeerAssisted: avoidPeerAssisted).first
-  }
-
   /// Races a small read on every line of the given streams at once and returns the
   /// best-ranked line that answers with media. A live CDN hostname resolves to several edges
   /// and one of them may be dead; mpv would wait on it for its full connect timeout, while
@@ -166,6 +158,9 @@ public enum LiveStreamSelector {
   }
 
   /// Every stream in preference order, each with its peer-assisted lines moved last.
+  /// The requested quality (or the closest one below it, then above it) first; then the
+  /// preferred hardware codec (AV1 last, it decodes in software on most Macs); then FLV (lowest
+  /// latency), fMP4 HLS, TS HLS. Without a request the highest delivered quality wins.
   public static func ranked(_ playback: LivePlayback, preferHEVC: Bool, requested: Int? = nil,
     avoidPeerAssisted: Bool = true) -> [LiveStream] {
     func distance(_ quality: Int) -> Int {
@@ -282,8 +277,6 @@ public enum LiveChatPacket {
     guard data.count > 6 else { return nil }
     return try? (data.subdata(in: (data.startIndex + 2)..<(data.endIndex - 4)) as NSData).decompressed(using: .zlib) as Data
   }
-
-  public static func events(_ frame: Data) -> [LiveChatEvent] { decode(frame).events }
 
   /// Events in a frame, and whether it carried an auth reply that was not `{"code":0}`. A
   /// rejected (or unreadable) auth reply is not a connection: the client closes the socket so the

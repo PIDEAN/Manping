@@ -1,14 +1,5 @@
 import Foundation
 
-public struct MediaSegmentBase: Sendable, Equatable {
-  public let initialization: String
-  public let indexRange: String
-  public init(initialization: String, indexRange: String) {
-    self.initialization = initialization
-    self.indexRange = indexRange
-  }
-}
-
 public struct MediaStream: Identifiable, Equatable, Sendable {
   public var id: String { "\(quality)-\(codec)" }
   public let quality: Int
@@ -16,30 +7,23 @@ public struct MediaStream: Identifiable, Equatable, Sendable {
   public let url: URL
   public let bandwidth: Int
   public let label: String
-  public let mimeType: String
   public let width: Int
   public let height: Int
   public let backupURLs: [URL]
-  public let frameRate: String
   public let codecID: Int
-  public let segmentBase: MediaSegmentBase?
   public init(
     quality: Int, codec: String, url: URL, bandwidth: Int, label: String,
-    mimeType: String = "", width: Int = 0, height: Int = 0, backupURLs: [URL] = [],
-    frameRate: String = "", codecID: Int = 0, segmentBase: MediaSegmentBase? = nil
+    width: Int = 0, height: Int = 0, backupURLs: [URL] = [], codecID: Int = 0
   ) {
     self.quality = quality
     self.codec = codec
     self.url = url
     self.bandwidth = bandwidth
     self.label = label
-    self.mimeType = mimeType
     self.width = width
     self.height = height
     self.backupURLs = backupURLs
-    self.frameRate = frameRate
     self.codecID = codecID
-    self.segmentBase = segmentBase
   }
 }
 
@@ -89,21 +73,13 @@ public struct PlaybackManifest: Sendable {
         guard let url = JSONValue.url(item["baseUrl"] ?? item["base_url"]),
           let id = item["id"] as? Int
         else { return nil }
-        let base = (item["SegmentBase"] ?? item["segment_base"]) as? [String: Any]
-        let segment = base.map {
-          MediaSegmentBase(
-            initialization: ($0["Initialization"] ?? $0["initialization"]) as? String ?? "",
-            indexRange: ($0["indexRange"] ?? $0["index_range"]) as? String ?? "")
-        }
         return MediaStream(
           quality: id, codec: item["codecs"] as? String ?? "", url: url,
           bandwidth: JSONValue.int(item["bandwidth"]), label: labels[id] ?? "\(id)",
-          mimeType: (item["mimeType"] ?? item["mime_type"]) as? String ?? "",
           width: JSONValue.int(item["width"]), height: JSONValue.int(item["height"]),
           backupURLs: ((item["backupUrl"] ?? item["backup_url"]) as? [String] ?? []).compactMap(
             JSONValue.url),
-          frameRate: (item["frameRate"] ?? item["frame_rate"]) as? String ?? "",
-          codecID: JSONValue.int(item["codecid"]), segmentBase: segment)
+          codecID: JSONValue.int(item["codecid"]))
       }.sorted {
         $0.quality > $1.quality || ($0.quality == $1.quality && $0.bandwidth > $1.bandwidth)
       }

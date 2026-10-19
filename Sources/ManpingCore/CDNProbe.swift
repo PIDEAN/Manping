@@ -22,7 +22,7 @@ public protocol CDNRangeFetching: Sendable {
   func fetch(_ url: URL, range: ClosedRange<Int>, timeout: TimeInterval) async -> CDNFetchOutcome
 }
 
-/// URLSession transport: no cookies, no cache, Bilibili referer and a desktop user agent.
+/// URLSession transport: no credentials, no cookies, no cache, Bilibili referer and a desktop user agent.
 public final class CDNURLSessionFetcher: CDNRangeFetching {
   private let session: URLSession
   /// `configuration` carries a proxy (`ProxyRuntime.configuration`) for the proxied path.
@@ -30,6 +30,7 @@ public final class CDNURLSessionFetcher: CDNRangeFetching {
     let configuration = base.copy() as! URLSessionConfiguration
     configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
     configuration.urlCache = nil
+    configuration.urlCredentialStorage = nil
     configuration.httpCookieStorage = nil
     configuration.httpShouldSetCookies = false
     configuration.httpMaximumConnectionsPerHost = maximumConnectionsPerHost
@@ -77,7 +78,6 @@ public final class CDNURLSessionFetcher: CDNRangeFetching {
     return (Int(bounds[0].trimmingCharacters(in: .whitespaces)), Int(bounds[1].trimmingCharacters(in: .whitespaces)), total)
   }
 
-  static func totalLength(_ header: String) -> Int? { contentRange(header).total }
 }
 
 /// Collects one ranged response. The response head decides whether the body is wanted at all;
@@ -245,7 +245,7 @@ public struct CDNProber: Sendable {
     let quickResults = await quick(targets)
     let ranked = Set(quickResults.filter { $0.ok }.sorted { $0.mbps > $1.mbps }.prefix(finalists).map(\.host))
     let finals = targets.filter { ranked.contains($0.key) }
-    guard !finals.isEmpty else { return quickResults }
+    guard !Task.isCancelled, !finals.isEmpty else { return quickResults }
     let sustainedResults = await sustained(finals)
     let replaced = Set(sustainedResults.map(\.host))
     return sustainedResults + quickResults.filter { !replaced.contains($0.host) }
@@ -259,8 +259,12 @@ public struct CDNProber: Sendable {
       var iterator = targets.makeIterator()
       var running = 0
       func launch() -> Bool {
-        guard let target = iterator.next() else { return false }
+        guard !Task.isCancelled, let target = iterator.next() else { return false }
         group.addTask {
+          guard !Task.isCancelled else {
+            return CDNBenchmarkResult(host: target.key, ok: false, stage: stage, status: 0,
+              bytes: 0, ttfbMs: 0, durationMs: 0, error: "已取消")
+          }
           let outcome = await fetcher.fetch(target.url, range: range, timeout: timeout)
           return CDNBenchmarkResult(host: target.key, ok: outcome.ok, stage: stage, status: outcome.status,
             bytes: outcome.data.count, ttfbMs: outcome.ttfbMs, durationMs: outcome.durationMs, error: outcome.error)

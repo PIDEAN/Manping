@@ -1,0 +1,3 @@
+# A separate install from the app (README animations only).
+allowBuilds:
+  esbuild: true

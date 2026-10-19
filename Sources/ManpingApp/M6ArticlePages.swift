@@ -30,7 +30,7 @@ struct ArticleBrowserPage: View {
             ForEach(ArticleSort.allCases, id: \.rawValue) { value in
               Button(value.title) { Task { await browse.selectSort(value) } }
             }
-          } label: { MenuLabel(title: browse.sort.title) }.appMenuStyle()
+          } label: { MenuLabel(title: browse.sort.title) }.appMenuStyle(toolbar: true)
         }
       }
       .task(id: refreshToken) { await browse.initialize(selection: initialSection) }

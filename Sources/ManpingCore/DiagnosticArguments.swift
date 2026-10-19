@@ -17,6 +17,8 @@ public struct DiagnosticArguments {
     let toggles: Set<String> = [
       "--verbose", "--pause-probe", "--stall-main", "--stress", "--sdr",
       "--login", "--fixed-viewport", "--danmaku-probe", "--glyph-probe",
+      // Production output choice (EDR for HDR sources only) instead of EDR for every source.
+      "--edr-hdr-only",
     ]
     var values: [String: String] = [:]
     var flags: Set<String> = []

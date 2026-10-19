@@ -28,9 +28,6 @@ struct M3SearchPage: View {
             }.buttonStyle(SidebarRowStyle(selected: type == item))
           }
           Spacer()
-          if library.total > 0 {
-            Text("\(library.total) 个结果").font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)).padding(.horizontal, 10)
-          }
         }.padding(.horizontal, 10).padding(.bottom, 12)
       }.frame(width: Theme.secondarySidebarWidth)
       Hairline(axis: .vertical)
@@ -46,7 +43,7 @@ struct M3SearchPage: View {
             Picker("排序", selection: $order) {
               ForEach(LibrarySearchOrder.allCases, id: \.self) { Text($0.title).tag($0) }
             }.pickerStyle(.inline).labelsHidden()
-          } label: { MenuLabel(title: order.title) }.appMenuStyle()
+          } label: { MenuLabel(title: order.title) }.appMenuStyle(toolbar: true)
         }
       }
       .task(id: queryID) {

@@ -71,6 +71,19 @@ public struct VideoUploader: Sendable, Equatable {
   }
 }
 
+/// The archive's partition (分区), used to recommend AI presets.
+public struct VideoCategory: Sendable, Equatable, Codable {
+  public let id: Int
+  public let name: String
+  public init(id: Int, name: String) { self.id = id; self.name = name }
+  static func parse(_ view: [String: Any]) -> VideoCategory? {
+    let name = (view["tname"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? (view["tname_v2"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    let id = JSONValue.int(view["tid"]) > 0 ? JSONValue.int(view["tid"]) : JSONValue.int(view["tid_v2"])
+    guard id > 0 || name != nil else { return nil }
+    return VideoCategory(id: id, name: name ?? "")
+  }
+}
+
 public struct VideoDetails: Sendable, Equatable {
   public let video: Video
   public let parts: [VideoPart]
@@ -81,11 +94,14 @@ public struct VideoDetails: Sendable, Equatable {
   public let uploader: VideoUploader
   public let tagsAvailable: Bool
   public let relatedAvailable: Bool
+  /// Partition id and name when the detail response carries them.
+  public let category: VideoCategory?
   public init(
     video: Video, parts: [VideoPart], collections: [VideoCollectionSection],
     tags: [String], related: [Video], stats: VideoStats, uploader: VideoUploader,
-    tagsAvailable: Bool = true, relatedAvailable: Bool = true
+    tagsAvailable: Bool = true, relatedAvailable: Bool = true, category: VideoCategory? = nil
   ) {
+    self.category = category
     self.video = video
     self.parts = parts
     self.collections = collections
@@ -115,7 +131,7 @@ extension VideoDetails {
     return VideoDetails(
       video: selected, parts: parts, collections: collections, tags: tags, related: related,
       stats: stats, uploader: uploader, tagsAvailable: tagsAvailable,
-      relatedAvailable: relatedAvailable)
+      relatedAvailable: relatedAvailable, category: category)
   }
 
   public static func parse(_ payload: [String: Any]) throws -> VideoDetails {
@@ -177,7 +193,8 @@ extension VideoDetails {
         avatar: JSONValue.url(user?["face"] ?? owner["face"]),
         followers: JSONValue.int(card?["follower"] ?? user?["fans"])),
       tagsAvailable: rawTags != nil && tags.count == rawTags?.count,
-      relatedAvailable: rawRelated != nil && related.count == rawRelated?.count)
+      relatedAvailable: rawRelated != nil && related.count == rawRelated?.count,
+      category: VideoCategory.parse(view))
   }
 }
 

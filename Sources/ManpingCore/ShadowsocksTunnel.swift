@@ -4,8 +4,7 @@ import CryptoKit
 
 /// 内置 Shadowsocks 客户端：在本机回环地址上开一个 SOCKS5 入口，每个连接经 AEAD 加密直连云服务器。
 /// 代理会话（URLSession 的 SOCKS 代理）直接指向这个入口。
-/// 移植自作者另一个 macOS 项目里的同名实现；入口重建与状态变化
-/// 改由回调通知，不再依赖那边的全局网络层和日志。
+/// 移植自作者另一个 macOS 项目里的同名实现；入口重建通过回调更新代理会话。
 ///
 /// 协议：Shadowsocks AEAD（SIP004）
 /// - 主密钥 = EVP_BytesToKey(MD5, 密码)；每个方向一个随机盐，子密钥 = HKDF-SHA1(主密钥, 盐, "ss-subkey")
@@ -33,25 +32,12 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
         }
     }
 
-    /// 运行统计（诊断用）
-    public struct Stats: Sendable {
-        public var active = 0
-        public var total = 0
-        public var failed = 0
-        public var bytesDown: Int64 = 0
-        public var bytesUp: Int64 = 0
-        public var lastError: String?
-        /// 最近一次连上服务器用的时间（毫秒）
-        public var lastConnectMs: Double?
-    }
-
     private let queue = DispatchQueue(label: "ss.tunnel", qos: .userInitiated)
     private let lock = NSLock()
     private var listener: NWListener?
     private var config: Config?
     private var masterKey = Data()
     private var _port: UInt16 = 0
-    private var _stats = Stats()
     private var sessions: [ObjectIdentifier: SSSession] = [:]
 
     // 健康状态：连续 3 次连不上云服务器 → 不健康（代理路由临时让位给直连），后台探测到恢复后自动回来。
@@ -76,8 +62,7 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
     /// 串行化 start / stop / 重建：后台的重建不会和设置页的启动交错，旧配置的重建也不会盖掉新配置
     private let opLock = NSRecursiveLock()
     // 预热连接池：提前握手好的 TCP 连接，新代理连接省掉一次到服务器的往返（约 70ms）
-    public var prewarm = true
-    public var poolSize = 2
+    private static let poolSize = 2
     private var pool: [(conn: NWConnection, at: Date)] = []
     private var pending: [ObjectIdentifier: NWConnection] = [:]
     private var maintainer: DispatchSourceTimer?
@@ -85,19 +70,13 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
 
     /// 本机 SOCKS5 入口端口（未启动时为 0）
     public var port: UInt16 { lock.withLock { _port } }
-    public var stats: Stats { lock.withLock { _stats } }
     public var isRunning: Bool { lock.withLock { listener != nil && _port != 0 } }
     /// 本机入口自动重建成功：代理会话要改指向新端口。带上重建所用的配置，
     /// 接收方据此丢弃旧配置迟到的通知（通知在 opLock 之外发出，可能晚于新配置的 start）
     public var onRebuilt: (@Sendable (Config, UInt16) -> Void)?
-    /// 状态变化（不健康、恢复、入口失效与重建），供界面和诊断显示
-    public var onEvent: (@Sendable (String) -> Void)?
-    /// 当前的本机入口（自检模拟入口失效用）
-    var currentListener: NWListener? { lock.withLock { listener } }
     /// 云服务器可达（连续 3 次连不上判为不可达）
     public var healthy: Bool { lock.withLock { connectFailures < 3 } }
     private var unhealthyLocked: Bool { connectFailures >= 3 }
-    public var warmCount: Int { lock.withLock { pool.count } }
 
     /// 启动（配置相同则复用），返回本机入口端口
     @discardableResult
@@ -132,7 +111,7 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
                 if startup.markReady() { ready.signal() }
             case .failed(let e):
                 // 运行中入口失效：没人处理的话 isRunning 仍为真，经代理的请求全部被拒绝
-                if startup.isReady { self?.listenerFailed(l, e) } else { startup.fail(e); ready.signal() }
+                if startup.isReady { self?.listenerFailed(l) } else { startup.fail(e); ready.signal() }
             default: break
             }
         }
@@ -178,8 +157,6 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
     private func teardown() {
         let (l, ss, warm, m): (NWListener?, [SSSession], [NWConnection], DispatchSourceTimer?) = lock.withLock {
             let r = (listener, Array(sessions.values), pool.map(\.conn) + Array(pending.values), maintainer)
-            // 被清掉的会话之后结束时已查不到自己，不会再扣减计数：这里一并扣掉
-            _stats.active = max(0, _stats.active - sessions.count)
             listener = nil; _port = 0; config = nil; sessions = [:]
             pool = []; pending = [:]; maintainer = nil; connectFailures = 0
             lastFailureAt = nil; probeDelay = 1; probeScheduled = false; runID += 1
@@ -213,7 +190,7 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
             let now = Date()
             let old = pool.filter { now.timeIntervalSince($0.at) > Self.warmMaxAge }.map(\.conn)
             pool.removeAll { now.timeIntervalSince($0.at) > Self.warmMaxAge }
-            let target = prewarm ? poolSize : (unhealthyLocked ? 1 : 0)
+            let target = Self.poolSize
             var n = max(0, target - pool.count - pending.count)
             // 不健康时池子满了也要探测：池里的空闲连接说明不了服务器现在能不能连上
             if unhealthyLocked && pending.isEmpty { n = max(n, 1) }
@@ -227,22 +204,21 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
     private func warmUp(_ c: Config) {
         guard let conn = Self.makeRemote(c) else { return }
         let id = ObjectIdentifier(conn)
-        let t0 = Date()
         lock.withLock { pending[id] = conn }
         conn.stateUpdateHandler = { [weak self, weak conn] st in
             guard let self, let conn else { return }
             switch st {
             case .ready:
-                self.connected(ms: Date().timeIntervalSince(t0) * 1000)
+                self.connected()
                 let keep: Bool = self.lock.withLock {
                     guard self.pending.removeValue(forKey: id) != nil, self.config != nil else { return false }
-                    if self.prewarm && self.pool.count < self.poolSize { self.pool.append((conn, Date())); return true }
+                    if self.pool.count < Self.poolSize { self.pool.append((conn, Date())); return true }
                     return false
                 }
                 if !keep { conn.cancel() }
-            case .failed(let e), .waiting(let e):
+            case .failed, .waiting:
                 let wasPending: Bool = self.lock.withLock { self.pending.removeValue(forKey: id) != nil }
-                if wasPending { self.connectFailed("连不上服务器：\(e)") }
+                if wasPending { self.connectFailed() }
                 // 已进入预热池的连接失效：从池里移除
                 self.lock.withLock { self.pool.removeAll { $0.conn === conn } }
                 conn.cancel()
@@ -268,9 +244,8 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
         return c
     }
 
-    func connectFailed(_ msg: String) {
+    func connectFailed() {
         let becameUnhealthy: Bool = lock.withLock {
-            _stats.lastError = msg
             let now = Date()
             if let last = lastFailureAt, now.timeIntervalSince(last) < Self.failureBurst { return false }
             lastFailureAt = now
@@ -278,7 +253,6 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
             return connectFailures == 3
         }
         if becameUnhealthy {
-            onEvent?("代理服务器连续 3 次连接失败，暂时改走直连：\(msg)")
             scheduleProbe()
         }
     }
@@ -345,14 +319,13 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
     }
 
     /// 入口在运行中失效：标记为未运行（经代理的请求临时直连，而不是全部被拒绝），稍后重建入口并让代理会话指向新端口
-    func listenerFailed(_ l: NWListener, _ e: NWError) {
+    func listenerFailed(_ l: NWListener) {
         let cfg: Config? = lock.withLock {
             guard listener === l else { return nil }
             _port = 0
             return desired ?? config
         }
         guard let cfg else { return }
-        onEvent?("代理隧道的本机入口失效（\(e)），正在重建")
         scheduleRebuild(cfg)
     }
 
@@ -388,13 +361,10 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
             do {
                 port = try start(c)
             } catch {
-                let next = lock.withLock { rebuildScheduled ? rebuildDelay / 2 : 0 }
-                onEvent?("代理隧道的本机入口重建失败（\(error)）\(next > 0 ? "，\(Int(next)) 秒后再试" : "")")
                 port = nil
             }
         }
         guard let port else { return }
-        onEvent?("代理隧道的本机入口已重建（127.0.0.1:\(port)）")
         // 代理会话还指向旧端口（或启动失败时的拒绝端口）：改指向新入口
         onRebuilt?(c, port)
     }
@@ -405,34 +375,22 @@ public final class ShadowsocksTunnel: @unchecked Sendable {
         let s = SSSession(client: client, config: c, masterKey: key, queue: queue, tunnel: self)
         lock.withLock {
             sessions[ObjectIdentifier(s)] = s
-            _stats.active += 1
-            _stats.total += 1
         }
         s.start()
     }
 
-    fileprivate func finished(_ s: SSSession, error: String?) {
+    fileprivate func finished(_ s: SSSession) {
         lock.withLock {
-            guard sessions.removeValue(forKey: ObjectIdentifier(s)) != nil else { return }
-            _stats.active -= 1
-            if let error { _stats.failed += 1; _stats.lastError = error }
+            sessions.removeValue(forKey: ObjectIdentifier(s))
         }
     }
 
-    fileprivate func count(down: Int = 0, up: Int = 0) {
-        lock.withLock { _stats.bytesDown += Int64(down); _stats.bytesUp += Int64(up) }
-    }
-
-    fileprivate func connected(ms: Double) {
-        let recovered: Bool = lock.withLock {
-            let was = unhealthyLocked
-            _stats.lastConnectMs = ms
+    fileprivate func connected() {
+        lock.withLock {
             connectFailures = 0
             lastFailureAt = nil
             probeDelay = 1
-            return was
         }
-        if recovered { onEvent?(String(format: "代理服务器已恢复（连接用了 %.0f ms）", ms)) }
     }
 
     // MARK: 密钥
@@ -566,11 +524,11 @@ final class SSSession: @unchecked Sendable {
         closed = true
         if error == nil, !closedByTunnel, !remoteReady, remote != nil,
            Date().timeIntervalSince(connectStart) > Self.slowConnect {
-            tunnel?.connectFailed(String(format: "连接服务器 %.0f 秒没有响应", Date().timeIntervalSince(connectStart)))
+            tunnel?.connectFailed()
         }
         client.cancel()
         remote?.cancel()
-        tunnel?.finished(self, error: error)
+        tunnel?.finished(self)
     }
 
     // MARK: SOCKS5 握手（只支持无认证 + CONNECT）
@@ -650,15 +608,15 @@ final class SSSession: @unchecked Sendable {
             guard let self, !self.closed else { return }
             switch st {
             case .ready:
-                self.tunnel?.connected(ms: Date().timeIntervalSince(self.connectStart) * 1000)
+                self.tunnel?.connected()
                 self.remoteReady = true
                 self.flushUp()
                 self.pumpRemote()
             case .failed(let e):
-                self.tunnel?.connectFailed("连不上服务器：\(e)")
+                self.tunnel?.connectFailed()
                 self.fail("连不上服务器：\(e)")
             case .waiting(let e):
-                self.tunnel?.connectFailed("服务器不可达：\(e)")
+                self.tunnel?.connectFailed()
                 self.fail("服务器不可达：\(e)")
             default: break
             }
@@ -682,7 +640,6 @@ final class SSSession: @unchecked Sendable {
             } else if !pendingUp.isEmpty {
                 out += try enc!.encryptChunks(pendingUp)
             }
-            tunnel?.count(up: pendingUp.count)
             pendingUp = Data()
             guard !out.isEmpty else { then?(); return }
             r.send(content: out, completion: .contentProcessed { [weak self] err in
@@ -729,7 +686,6 @@ final class SSSession: @unchecked Sendable {
                 if finishAfter { self.finish(nil) } else { self.pumpRemote() }
                 return
             }
-            self.tunnel?.count(down: plain.count)
             self.client.send(content: plain, completion: .contentProcessed { [weak self] e in
                 guard let self, !self.closed else { return }
                 if e != nil || finishAfter { self.finish(nil); return }

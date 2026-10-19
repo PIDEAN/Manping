@@ -7,15 +7,6 @@ public struct DownloadSubtitleCue: Equatable, Sendable {
   public init(start: Double, end: Double, text: String) { self.start = start; self.end = end; self.text = text }
 }
 public enum DownloadExport {
-  /// XML contains only the fields available in the parsed comments; no account identifiers are fabricated.
-  public static func danmakuXML(_ comments: [DanmakuComment]) -> Data {
-    var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><i>"
-    for comment in comments where comment.time.isFinite && comment.time >= 0 {
-      xml += "<d p=\"\(comment.time),\(comment.mode),25,\(comment.color),0,0,0,0\">\(escapeXML(comment.text))</d>"
-    }
-    xml += "</i>"
-    return Data(xml.utf8)
-  }
   public static func parseSubtitleJSON(_ data: Data) throws -> [DownloadSubtitleCue] {
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
       let body = object["body"] as? [[String: Any]] else { throw BiliError.invalidResponse("字幕格式无效") }
@@ -42,14 +33,5 @@ public enum DownloadExport {
   private static func timestamp(_ seconds: Double) -> String {
     let ms = Int((seconds * 1000).rounded())
     return String(format: "%02d:%02d:%02d,%03d", ms / 3_600_000, (ms / 60_000) % 60, (ms / 1000) % 60, ms % 1000)
-  }
-  private static func escapeXML(_ text: String) -> String {
-    let valid = String(String.UnicodeScalarView(text.unicodeScalars.filter {
-      $0.value == 9 || $0.value == 10 || $0.value == 13 || ($0.value >= 32 && $0.value <= 0xd7ff)
-        || ($0.value >= 0xe000 && $0.value <= 0xfffd) || ($0.value >= 0x10000 && $0.value <= 0x10ffff)
-    }))
-    return valid.replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
-      .replacingOccurrences(of: "\"", with: "&quot;").replacingOccurrences(of: "'", with: "&apos;")
   }
 }

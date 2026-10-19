@@ -6,15 +6,17 @@ struct VideoDetailPage: View {
   @ObservedObject var model: AppModel
   @ObservedObject var player: PlayerModel
   let video: Video
-  @StateObject private var interactions: VideoDetailInteractionModel
+  @StateObject private var interactions: VideoInteractionModel
   @StateObject private var comments: M4CommentModel
   @StateObject private var features: PlaybackFeaturesModel
   @StateObject private var chrome = PlayerChromeState()
   @State private var danmakuSettingsShown = DanmakuSettingsPopover.debugOpen
   @State private var networkShown = CDNPanel.debugOpen
   @State private var scrubbing = false
-  @State private var pictureWidth: CGFloat = 900
+  @State private var stageWidth: CGFloat = 900
   @AppStorage(PlayerPreferences.sidebarHiddenKey) private var sidebarHidden = false
+  /// Full screen: the picture fills the window; the right column's own setting is kept.
+  @Environment(\.immersivePlayback) private var immersive
   @Environment(\.colorScheme) private var scheme
   @State private var section: Section = .info
   @State private var userPickedSection = false
@@ -28,6 +30,7 @@ struct VideoDetailPage: View {
   @State private var fixturePaused = false
   @State private var fixtureTime = 0.0
   @State private var showingVolume = false
+  @State private var composeShown = false
   @State private var videoShot: VideoShot?
 
   init(model: AppModel, player: PlayerModel, video: Video) {
@@ -35,10 +38,10 @@ struct VideoDetailPage: View {
     self.player = player
     self.video = video
     if model.usesUIFixtures {
-      _interactions = StateObject(wrappedValue: VideoDetailInteractionModel(service: model.service,
+      _interactions = StateObject(wrappedValue: VideoInteractionModel(service: model.service,
         stateLoader: { _, _ in VideoOperationState(liked: true, following: true, favorited: true) }))
     } else {
-      _interactions = StateObject(wrappedValue: VideoDetailInteractionModel(service: model.service))
+      _interactions = StateObject(wrappedValue: VideoInteractionModel(service: model.service))
     }
 
     _comments = StateObject(wrappedValue: M4CommentModel(model: model))
@@ -78,20 +81,17 @@ struct VideoDetailPage: View {
   }
 
   var body: some View {
-    GeometryReader { geometry in
-      HStack(spacing: 0) {
-        mainColumn.frame(maxWidth: .infinity, maxHeight: .infinity)
-        if !sidebarHidden {
-          Hairline(axis: .vertical)
-          sidePanel.frame(width: min(372, geometry.size.width * 0.4))
-            .transition(.move(edge: .trailing).combined(with: .opacity))
-        }
-      }
+    PlayerPageLayout(showsPanel: !sidebarHidden, immersive: immersive) {
+      playerPanel
+    } panel: {
+      sidePanel
     }
     // The one toolbar above the page (the main window's, or the standalone window's).
     .pageToolbar(title: pageTitle) {
-      if let shareURL { ToolbarShareButton(url: shareURL) }
-      PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden)
+      ToolbarIconGroup {
+        if let shareURL { ToolbarShareButton(url: shareURL) }
+        PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden)
+      }
     }
     // Keyed by bvid: `Video.id` switches from BV to av when details arrive, which used to
     // re-run this and throw the user back to the default tab.
@@ -132,6 +132,12 @@ struct VideoDetailPage: View {
       try? await Task.sleep(for: .seconds(1.5))
       model.toggleCompactPlayer()
     }
+    .task {
+      // Screenshot checks of the stage (`--ui-player-placement detached|fullscreen`), once per launch.
+      guard model.usesUIFixtures, let placement = PlayerStageDebug.takePlacement() else { return }
+      try? await Task.sleep(for: .seconds(1.5))
+      if placement == "fullscreen" { model.togglePlayerFullScreen() } else { model.togglePlaybackWindow() }
+    }
     #endif
     .alert(
       "操作结果",
@@ -150,7 +156,7 @@ struct VideoDetailPage: View {
     ) {
       Button("确认三连") {
         guard let aid = details?.video.aid, aid > 0 else { return }
-        Task { await interactions.triple(aid: aid, model: model) }
+        Task { await interactions.triple(aid: aid) { model.showingLogin = true } }
       }
     }
     // A login request from inside a sheet would be blocked by that sheet: close it first.
@@ -171,26 +177,37 @@ struct VideoDetailPage: View {
     guard let part = currentPart, (details?.parts.count ?? 0) > 1, !part.title.isEmpty, part.title != title else { return title }
     return title + " · " + part.title
   }
-  private var displayTime: Double { model.usesUIFixtures ? fixtureTime : player.time }
-  private var displayDuration: Double {
-    model.usesUIFixtures ? Double(currentPart?.duration ?? details?.video.duration ?? 0) : player.duration
+  /// Offline samples stand in for playback: the page keeps its own time and pause state. The
+  /// README demo (Debug only) plays a local file over them, so the page follows the real player.
+  private var fixturePlayback: Bool {
+    #if DEBUG
+    if DemoConfig.playsLocalMedia { return false }
+    #endif
+    return model.usesUIFixtures
   }
-  private var displayPaused: Bool { model.usesUIFixtures ? fixturePaused : player.paused }
-  private var mainColumn: some View { playerPanel }
+  private var displayTime: Double { fixturePlayback ? fixtureTime : player.time }
+  private var displayDuration: Double {
+    fixturePlayback ? Double(currentPart?.duration ?? details?.video.duration ?? 0) : player.duration
+  }
+  private var displayPaused: Bool { fixturePlayback ? fixturePaused : player.paused }
   private var fixtureMedia: Bool { model.usesUIFixtures && !PerformanceOptions.playsLocalMedia }
   /// Paused, a popover open, typing a comment or scrubbing: the controls stay up.
   private var controlsPinned: Bool {
-    model.usesUIFixtures || PlaybackTimeline.debugHover != nil || displayPaused || showingVolume ||
-      danmakuSettingsShown || networkShown || scrubbing || !features.input.isEmpty
+    fixturePlayback || PlaybackTimeline.debugHover != nil || displayPaused || showingVolume ||
+      danmakuSettingsShown || networkShown || composeShown || scrubbing || !features.input.isEmpty
   }
   private var controlsShown: Bool { chrome.visible || controlsPinned }
+  /// The picture's shape, from the stream being played (16:9 until it is known).
+  private var pictureAspect: CGFloat? { playerAspect(width: model.selectedStream?.width, height: model.selectedStream?.height) }
+  private var stageCover: URL? { details?.video.cover ?? model.selected?.cover }
   private var playerPanel: some View {
-    // Controls float over the picture so showing them never resizes the GL layer. They fade
+    // Controls float over the stage so showing them never resizes the GL layer. They fade
     // instead of being removed, so menus and popovers anchored to them stay open.
-    PlayerSurface(model: player)
+    // The surface fills the stage: the video is fitted to the picture inside it, the danmaku and
+    // the gestures cover the whole stage.
+    PlayerSurface(model: player, pictureAspect: stagePictureAspect(pictureAspect))
       .id(ObjectIdentifier(player))
-      .frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
-      // Long-press for temporary speed applies to the picture only, never to the controls.
+      // Long-press for temporary speed applies to the stage, never to the controls.
       .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
         if !pressing { restoreTemporarySpeed() }
       }) {
@@ -198,18 +215,20 @@ struct VideoDetailPage: View {
       }
       // Live Text over the paused picture, under the status layer and the controls.
       .overlay { LiveTextLayer(controller: player.liveText) }
+      // An offline sample's artwork stands in for the picture, under the danmaku.
+      .background {
+        if fixtureMedia {
+          Color.clear.overlay { CachedImage(url: details?.video.cover) }.clipped()
+            .playerPictureFrame(aspect: stagePictureAspect(pictureAspect)).allowsHitTesting(false)
+        }
+      }
+      .playerStageBackdrop(cover: stageCover)
       // The cover sits under the status layer: loading, errors and retry stay visible over it.
       .overlay {
-        if player.audioOnly { AudioOnlyBackdrop(cover: details?.video.cover ?? model.selected?.cover, title: details?.video.title ?? model.selected?.title ?? "") }
+        if player.audioOnly { AudioOnlyBackdrop(cover: stageCover, title: details?.video.title ?? model.selected?.title ?? "") }
       }
       .overlay {
-        if fixtureMedia {
-          GeometryReader { geometry in
-            CachedImage(url: details?.video.cover)
-              .frame(width: geometry.size.width, height: min(geometry.size.height, geometry.size.width * 9 / 16))
-              .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-          }.allowsHitTesting(false)
-        } else {
+        if !fixtureMedia {
           PlayerStatusOverlay(player: player, loading: model.selectedStream == nil && detailLoadError == nil) {
             Task { await model.refresh() }
           }
@@ -217,7 +236,7 @@ struct VideoDetailPage: View {
       }
       .overlay(alignment: .topLeading) {
         if fixtureMedia {
-          Text("本地预览 · 未加载媒体").font(Theme.Font.caption2).foregroundStyle(.white.opacity(0.65)).padding(10)
+          Text("本地预览 · 未加载媒体").font(Theme.Font.caption2).foregroundStyle(.white.opacity(0.65)).padding(14)
         } else if let detailLoadError {
           HStack(spacing: 8) {
             Text(detailLoadError).font(Theme.Font.caption).foregroundStyle(.white).lineLimit(2)
@@ -229,7 +248,7 @@ struct VideoDetailPage: View {
       .overlay(alignment: .bottom) {
         ZStack(alignment: .bottom) {
           if model.appSettings.bool(.bottomProgress) {
-            PlaybackProgressBar(clock: player.clock, duration: displayDuration, override: model.usesUIFixtures ? fixtureTime : nil)
+            PlaybackProgressBar(clock: player.clock, duration: displayDuration, override: fixturePlayback ? fixtureTime : nil)
               .opacity(controlsShown ? 0 : 1).animation(.easeOut(duration: 0.2), value: controlsShown)
           }
           playerControls.playerChromeFade(controlsShown)
@@ -237,31 +256,43 @@ struct VideoDetailPage: View {
       }
       .overlay(alignment: .topTrailing) {
         if let deadline = model.nextPlaybackDeadline {
-          NextPlaybackOverlay(deadline: deadline, onPlay: model.playNextNow, onCancel: model.cancelNextPlayback)
+          NextPlaybackOverlay(deadline: deadline, onPlay: model.playNext, onCancel: model.cancelNextPlayback)
         }
       }
       .animation(.snappy(duration: 0.3), value: model.nextPlaybackDeadline == nil)
-      .reportsPictureWidth($pictureWidth)
+      .reportsStageWidth($stageWidth)
       .tracksPlayerChrome(chrome, pinned: controlsPinned)
       // Playback shortcuts (menu bar, media keys) bring the controls in.
       .onChange(of: player.speed) { _, _ in chrome.activity() }
       .onChange(of: player.volume) { _, _ in chrome.activity() }
       .onChange(of: player.commentsEnabled) { _, _ in chrome.activity() }
+      #if DEBUG
+      .modifier(DemoPlayerHooks(chrome: chrome, danmakuShown: $danmakuSettingsShown))
+      #endif
+      .playerStageShape(immersive: immersive)
   }
   private var playableStreams: [MediaStream] {
     model.manifest?.video.filter { ["http", "https"].contains($0.url.scheme ?? "") && $0.url.host != nil } ?? []
   }
   private var playerControls: some View {
-    let layout = PlayerPanelLayout(pictureWidth: pictureWidth)
+    let layout = PlayerPanelLayout(stageWidth: stageWidth)
     return PlayerControlPanel(chrome: chrome) {
-      PlaybackTimeline(clock: player.clock, duration: displayDuration, override: model.usesUIFixtures ? fixtureTime : nil,
-        preview: videoShot, density: timelineDensity, chapters: timelineChapters,
+      PlaybackTimeline(clock: player.clock, duration: displayDuration, override: fixturePlayback ? fixtureTime : nil,
+        preview: videoShot, density: timelineDensity, chapters: timelineChapters, markers: model.aiMarks(for: model.aiMediaKey),
         bufferedAhead: { [player] in player.bufferedAhead }, scrubbing: { scrubbing = $0 }) { position in
-        if model.usesUIFixtures { fixtureTime = position } else { player.seek(position) }
+        if fixturePlayback { fixtureTime = position } else { player.seek(position) }
       }
-      HStack(spacing: 6) {
+      PlayerBarRow(model: model, player: player, layout: layout, page: barPage, cdn: model.cdn,
+        danmakuShown: $danmakuSettingsShown, networkShown: $networkShown, volumeShown: $showingVolume,
+        composeShown: $composeShown,
+        input: {
+          AnyView(PlaybackDanmakuInput(features: features) {
+            features.send(seconds: displayTime) { model.showingLogin = true }
+          })
+        },
+        extraMenu: { AnyView(debugMenuItems) }) {
         PlayerPlayButton(paused: displayPaused) {
-          if model.usesUIFixtures { fixturePaused.toggle() } else { player.togglePause() }
+          if fixturePlayback { fixturePaused.toggle() } else { player.togglePause() }
         }
         if model.playbackQueue.count > 0 {
           Button { model.playPrevious() } label: { Image(systemName: "backward.end.fill") }
@@ -272,26 +303,10 @@ struct VideoDetailPage: View {
           .buttonStyle(PlayerControlButtonStyle(size: 32)).disabled(!model.canPlayNext)
           .help("下一个（⇧⌘]）").accessibilityLabel("下一个")
         if layout.showsTime {
-          PlayerTimeLabel(clock: player.clock, duration: displayDuration, override: model.usesUIFixtures ? fixtureTime : nil)
+          PlayerTimeLabel(clock: player.clock, duration: displayDuration, override: fixturePlayback ? fixtureTime : nil)
             .padding(.horizontal, 4)
         }
         DanmakuToggleButton(enabled: $player.commentsEnabled) { danmakuSettingsShown = true }
-        if layout.showsDanmakuInput {
-          PlaybackDanmakuInput(features: features) {
-            features.send(seconds: displayTime) { model.showingLogin = true }
-          }.padding(.leading, 2)
-        }
-        Spacer(minLength: 6)
-        if layout.showsQuality {
-          PlayerQualityMenu(streams: playableStreams, selected: model.selectedStream) { model.changeQuality($0) }
-        }
-        if layout.showsSpeed { PlayerSpeedMenu(player: player, holdSpeed: model.appSettings.number(.temporarySpeed)) }
-        if layout.showsSubtitles {
-          PlaybackSubtitleMenu(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle))
-        }
-        PlayerVolumeButton(player: player, maximum: model.appSettings.number(.maxVolume), shown: $showingVolume)
-        settingsMenu(layout)
-        PlayerWindowButtons(model: model, player: player)
       }
       if let message = features.message {
         Text(message).font(Theme.Font.caption).foregroundStyle(.white.opacity(0.75)).lineLimit(2)
@@ -310,38 +325,20 @@ struct VideoDetailPage: View {
       }
     }
   }
-  private func settingsMenu(_ layout: PlayerPanelLayout) -> some View {
-    PlayerSettingsMenu(player: player, settings: model.settingsModel, cdn: model.cdn,
-      setCDNSetting: { key, value in model.settingsModel.set(key, .bool(value)) }, setProxyRoute: model.setProxyMediaRoute,
-      danmakuShown: $danmakuSettingsShown, networkShown: $networkShown,
-      openDanmakuSettings: { model.openSettings(.danmaku) }) {
-      Button("弹幕设置…") { danmakuSettingsShown = true }
-      PlayerShaderMenu(model: model)
-      Button("网络与节点…") { networkShown = true }
-      Toggle("只听声音", isOn: Binding(get: { player.audioOnly }, set: { player.setAudioOnly($0) }))
-      if !layout.showsQuality || !layout.showsSpeed || !layout.showsSubtitles {
-        Divider()
-        if !layout.showsQuality {
-          Menu("画质") { PlayerQualityItems(streams: playableStreams, selected: model.selectedStream) { model.changeQuality($0) } }
-        }
-        if !layout.showsSpeed {
-          Menu("倍速") { PlayerSpeedItems(player: player, holdSpeed: model.appSettings.number(.temporarySpeed)) }
-        }
-        if !layout.showsSubtitles {
-          Menu("字幕") { PlaybackSubtitleItems(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle)) }
-        }
-      }
+  /// 画质 and 字幕 come from this page; the rest of the bar is shared (设置 › 控制条).
+  private var barPage: PlayerBarPage {
+    PlayerBarPage(slots: [
+      .quality: .quality(streams: playableStreams, selected: model.selectedStream) { model.changeQuality($0) },
+      .subtitle: .subtitle(features: features, player: player, filterAI: model.appSettings.bool(.filterAISubtitle)),
+    ], downloadEnabled: model.manifest != nil)
+  }
+  @ViewBuilder private var debugMenuItems: some View {
+    #if DEBUG
+    if model.usesUIFixtures && model.playbackQueue.count > 0 {
       Divider()
-      Button("截取画面") { model.takePlayerScreenshot() }.disabled(!model.canTakeScreenshot)
-      Button("下载…") { model.enqueueDownload() }.disabled(model.manifest == nil)
-      Button(model.playbackDetached ? "回到主窗口" : "在独立窗口播放") { model.togglePlaybackWindow() }
-      #if DEBUG
-      if model.usesUIFixtures && model.playbackQueue.count > 0 {
-        Divider()
-        Button("模拟播放结束（本地样本）") { player.simulatePlaybackEnd() }
-      }
-      #endif
+      Button("模拟播放结束（本地样本）") { player.simulatePlaybackEnd() }
     }
+    #endif
   }
   private var timelineChapters: [PlaybackChapter] {
     #if DEBUG
@@ -383,7 +380,7 @@ struct VideoDetailPage: View {
         Spacer()
         Button(interactions.following.map { $0 ? "已关注" : "关注" } ?? "关注状态…") {
           guard let aid = details.video.aid, aid > 0 else { return }
-          Task { await interactions.follow(mid: details.uploader.mid, aid: aid, model: model) }
+          Task { await interactions.follow(mid: details.uploader.mid, aid: aid) { model.showingLogin = true } }
         }.buttonStyle(AppButtonStyle(role: interactions.following == true ? .secondary : .primary, size: .small))
           .disabled(details.uploader.mid <= 0 || interactions.busy || details.video.aid == nil || interactions.following == nil)
       }
@@ -429,7 +426,7 @@ struct VideoDetailPage: View {
             icon: interactions.liked == true ? "hand.thumbsup.fill" : "hand.thumbsup"
           ) {
             guard let aid = details.video.aid, aid > 0 else { return }
-            Task { await interactions.like(aid: aid, model: model) }
+            Task { await interactions.like(aid: aid) { model.showingLogin = true } }
           }
           operation("投币", value: details.stats.coin, icon: "circle.hexagongrid") {
             coinCount = 1
@@ -442,7 +439,7 @@ struct VideoDetailPage: View {
           ) {
             guard let aid = details.video.aid, aid > 0 else { return }
             Task {
-              if await interactions.loadFolders(aid: aid, model: model) { showingFavorites = true }
+              if await interactions.loadFolders(aid: aid, requiresLogin: { model.showingLogin = true }) { showingFavorites = true }
             }
           }
           Button { showingTriple = true } label: { GlassTileLabel(symbol: "sparkles", value: "三连") }
@@ -496,10 +493,9 @@ struct VideoDetailPage: View {
 
   private var sidePanel: some View {
     VStack(alignment: .leading, spacing: 0) {
-      ScrollView(.horizontal, showsIndicators: false) {
-        SegmentedTabs(options: availableSections.map { ($0, sectionTitle($0)) },
-          selection: Binding(get: { section }, set: { section = $0; userPickedSection = true })).padding(.horizontal, 16).frame(height: Theme.pageHeaderHeight)
-      }.frame(height: Theme.pageHeaderHeight)
+      AdaptiveSegmentedTabs(options: availableSections.map { ($0, sectionTitle($0)) },
+        selection: Binding(get: { section }, set: { section = $0; userPickedSection = true }))
+        .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).frame(height: Theme.pageHeaderHeight)
       Hairline()
       ScrollView {
         Group {
@@ -511,9 +507,9 @@ struct VideoDetailPage: View {
               VStack(alignment: .leading, spacing: 20) {
                 detailInformation(details)
                 if !player.chapters.isEmpty {
-                  LivePlaybackChapters(clock: player.clock, chapters: player.chapters,
-                    override: model.usesUIFixtures ? fixtureTime : nil) { position in
-                    if model.usesUIFixtures { fixtureTime = position } else { player.seek(position) }
+                  PlaybackChapterList(clock: player.clock, chapters: player.chapters,
+                    override: fixturePlayback ? fixtureTime : nil) { position in
+                    if fixturePlayback { fixtureTime = position } else { player.seek(position) }
                   }
                 }
               }
@@ -522,11 +518,7 @@ struct VideoDetailPage: View {
             case .comments: M4EmbeddedComments(comments: comments, model: model,
               target: M4CommentTarget(oid: details.video.aid ?? 0, type: 1),
               total: details.stats.reply > 0 ? Int64(details.stats.reply) : nil, ownerMid: details.video.authorID)
-            case .ai:
-              M8AIResponseView(source: .video(aid: details.video.aid ?? 0, cid: model.selected?.cid ?? details.video.cid ?? 0,
-                title: details.video.title, description: details.video.description ?? ""), service: model.service,
-                rpc: try? model.standardRPCService(), configuration: model.aiConfiguration,
-                prompts: model.aiPrompts, fixtures: model.usesUIFixtures, openSettings: model.openAISettings)
+            case .ai: AIPanelView(runtime: model.ai, source: model.aiVideoSource(details))
             }
           } else if let detailLoadError {
             InlineErrorText(message: detailLoadError)
@@ -541,10 +533,15 @@ struct VideoDetailPage: View {
         !comments.isEnd && comments.error == nil && !comments.comments.isEmpty) {
         Task { await comments.loadNext() }
       }
+      .aiThreadScrolling(section == .ai)
       .id(section)
       if section == .comments, details != nil {
         Hairline()
         M4CommentComposer(comments: comments, model: model)
+      }
+      if section == .ai, let details {
+        AIPanelComposer(runtime: model.ai, source: model.aiVideoSource(details))
+          .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 16)
       }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -627,7 +624,7 @@ struct VideoDetailPage: View {
         Text(collection.title).font(Theme.Font.headline).padding(.horizontal, 6).padding(.top, 4)
         ForEach(collection.episodes) { episode in
           Button {
-            model.openCollectionVideo(episode)
+            model.open(episode)
           } label: {
             MediaRow(cover: episode.cover, title: episode.title, subtitle: episode.author, thumbWidth: 96)
           }.buttonStyle(SidebarRowStyle(selected: details.matches(episode)))
@@ -669,7 +666,7 @@ struct VideoDetailPage: View {
           guard let aid = details?.video.aid, aid > 0 else { return }
           Task {
             await interactions.coin(
-              aid: aid, count: coinCount, alsoLike: coinAlsoLike, model: model)
+              aid: aid, count: coinCount, alsoLike: coinAlsoLike) { model.showingLogin = true }
             if !interactions.busy { showingCoin = false }
           }
         }.buttonStyle(AppButtonStyle(role: .primary)).keyboardShortcut(.defaultAction).disabled(interactions.busy)
@@ -704,7 +701,7 @@ struct VideoDetailPage: View {
         Button("保存") {
           guard let aid = details?.video.aid, aid > 0 else { return }
           Task {
-            if await interactions.saveFolders(aid: aid, model: model) { showingFavorites = false }
+            if await interactions.saveFolders(aid: aid, requiresLogin: { model.showingLogin = true }) { showingFavorites = false }
           }
         }.buttonStyle(AppButtonStyle(role: .primary)).keyboardShortcut(.defaultAction).disabled(interactions.busy || interactions.folders.isEmpty)
       }

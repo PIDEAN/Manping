@@ -26,6 +26,7 @@ import VideoToolbox
   var onMediaReady: (() -> Void)?
   /// 设置 › 自动跳过片头片尾, read on every check so a change applies while the episode plays.
   var automaticSkip: () -> Bool = { false }
+  var skipNextPrompt: () -> Bool = { false }
   /// Which marked ranges of this episode were skipped already. Kept here, not in a view, so it
   /// works from the first frame, in the mini window and across window moves.
   private var skipTracker = PlaybackSkipTracker()
@@ -60,6 +61,7 @@ import VideoToolbox
   }
   deinit { identityTask?.cancel(); flight?.cancel() }
   func cancelRequests() {
+    cdn?.detach()
     generation = UUID(); flight?.cancel(); flight = nil; eofObservation = nil; skipObservation = nil; isLoading = false
   }
   func shutdown() { interactions.shutdown(); cancelRequests(); identityTask?.cancel(); identityTask = nil; player.shutdown() }
@@ -159,7 +161,8 @@ import VideoToolbox
     fixturePosition = start
     if usesFixtures { player.status = "本地样本 · 未加载在线媒体" }
     else if let cdn {
-      let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: preferences.avoidP2P)
+      let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: preferences.avoidP2P,
+        reportFailureTo: player)
       try await check(revision, expected: expected)
       // nil: a quality change made during startup already loaded the newer stream.
       if let prepared {
@@ -173,7 +176,7 @@ import VideoToolbox
     var prompted = false
     eofObservation = player.clock.$time.combineLatest(player.$duration, player.$eofReached).sink { [weak self] position, duration, ended in
       guard let self, !prompted, self.generation == revision, self.canPlayNext else { return }
-      let threshold = MacSettings.load(from: .standard).bool(.skipNextPrompt) ? 0.1 : 2
+      let threshold = skipNextPrompt() ? 0.1 : 2
       guard ended || (duration > 5 && abs(position - duration) < threshold) else { return }
       prompted = true
       self.player.endTemporarySpeed()
@@ -228,7 +231,7 @@ import VideoToolbox
     seek(target)
   }
   /// `persist: false` is used by automatic downgrades so they do not overwrite the user's choice.
-  func changeQuality(_ stream: MediaStream, persist: Bool = true) {
+  func changeQuality(_ stream: MediaStream, persist: Bool = true, recovering: Bool = false) {
     guard let expected, let manifest,
       manifest.video.contains(where: { $0.id == stream.id }), let audio = manifest.audio.max(by: { $0.bandwidth < $1.bandwidth }) else { return }
     let revision = generation
@@ -239,7 +242,7 @@ import VideoToolbox
       guard !usesFixtures else { return }
       if let cdn {
         let time = player.time, paused = player.paused
-        guard let prepared = await cdn.prepare(video: stream, audio: audio, avoidP2P: preferences.avoidP2P, allowProbe: false),
+        guard let prepared = await cdn.prepare(video: stream, audio: audio, avoidP2P: preferences.avoidP2P, allowProbe: false, preserveRecovery: recovering),
           (try? await check(revision, expected: expected)) != nil, selectedStream?.id == stream.id else { return }
         player.load(video: prepared.video, audio: prepared.audio, start: time, paused: paused)
         attachCDN(ticket: prepared.ticket)
@@ -249,6 +252,11 @@ import VideoToolbox
     }
   }
   private func attachCDN(ticket: Int) {
+    let revision = generation
+    let target = player
+    let episode = episode
+    let identity = expected
+    let stream = selectedStream
     cdn?.attach(player: player, ticket: ticket, reload: { [weak player] video, audio in
       guard let player else { return }
       player.load(video: video, audio: audio, start: player.time, paused: player.paused)
@@ -256,8 +264,19 @@ import VideoToolbox
       guard let self, let manifest = self.manifest, let current = self.selectedStream else { return false }
       let lower = manifest.video.filter { $0.quality < current.quality }.sorted { $0.quality > $1.quality }
       guard let next = lower.first(where: { $0.codec.hasPrefix(current.codec.prefix(3)) }) ?? lower.first else { return false }
-      self.changeQuality(next, persist: false)
+      self.changeQuality(next, persist: false, recovering: true)
       return true
+    }, refresh: { [weak self, weak target] in
+      guard let self, let target, self.player === target, let episode, let identity,
+        !self.usesFixtures else { throw CancellationError() }
+      try await self.check(revision, expected: identity)
+      let streams = try await self.service.pgcPlayback(episode, expectedIdentity: identity)
+      try await self.check(revision, expected: identity)
+      guard self.player === target else { throw CancellationError() }
+      let choice = try PlaybackSelector.select(streams, preferences: self.preferences, supportsHardware: Self.supportsHardware)
+      let selected = streams.video.first { $0.quality == stream?.quality && $0.codec == stream?.codec } ?? choice.video
+      self.manifest = streams; self.selectedStream = selected
+      return (selected, choice.audio)
     })
   }
   private func preferredURL(_ stream: MediaStream) -> URL {

@@ -63,7 +63,6 @@ final class M7SettingsTests: XCTestCase {
     XCTAssertEqual(Set(MacSettingsCatalog.descriptors.map(\.key)).count, MacSettingKey.allCases.count)
   }
   func testWindowsOnlyOptionsAreRetiredAndTheirSavedValuesAreLeftAlone() throws {
-    XCTAssertTrue(MacSettingsCatalog.descriptors.allSatisfy { $0.unavailableReason == nil })
     for raw in MacSettingsCatalog.retiredKeys {
       XCTAssertNil(MacSettingKey(rawValue: raw))
       XCTAssertFalse(MacSettingsCatalog.descriptors.contains { $0.key.rawValue == raw })

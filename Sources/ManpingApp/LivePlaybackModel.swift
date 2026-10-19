@@ -31,7 +31,6 @@ import Foundation
     }
   }
   func setConnected(_ value: Bool) { if connected != value { connected = value } }
-  func clear() { flush?.cancel(); flush = nil; pending = []; lines = [] }
 }
 
 /// One live room: resolves the room, picks a stream, plays it in mpv and keeps it alive.
@@ -58,9 +57,11 @@ import Foundation
     guard let stream, !stream.urls.isEmpty else { return nil }
     return stream.urls[lineIndex % stream.urls.count].host
   }
+  #if DEBUG
   /// Diagnostics: chat events received and whether the chat auth carried a device id.
   private(set) var chatEvents = 0
   private(set) var chatHasBuvid = false
+  #endif
   let player: PlayerModel
   let chat = LiveChatModel()
   let roomID: Int64
@@ -70,7 +71,7 @@ import Foundation
   private let avoidPeerAssisted: Bool
   /// Index into `stream.urls` of the line now playing (the fastest one when the stream was chosen).
   @Published private(set) var lineIndex = 0
-  private var attempts = 0
+  private var retryBudget = LiveReconnectBudget()
   private var loadTask: Task<Void, Never>?
   private var chatTask: Task<Void, Never>?
   private let chatClient = LiveChatClient()
@@ -110,7 +111,7 @@ import Foundation
   }
 
   func refresh() {
-    attempts = 0; lineIndex = 0; ended = false
+    retryBudget.reset(); lineIndex = 0; ended = false
     load(quality: requestedQuality, refreshRoom: true)
     if chatTask == nil { startChat() }
   }
@@ -123,7 +124,7 @@ import Foundation
 
   func changeQuality(_ qn: Int) {
     PerformanceEnvironment.defaults.set(qn, forKey: Self.qualityKey)
-    attempts = 0; lineIndex = 0
+    retryBudget.reset(); lineIndex = 0
     load(quality: qn, refreshRoom: false)
   }
 
@@ -151,6 +152,16 @@ import Foundation
     loadTask = Task { [weak self] in
       guard let self else { return }
       do {
+        #if DEBUG
+        // The README demo shows the offline sample room playing its local file (the samples have no room API).
+        if DemoConfig.playsLocalMedia, let media = DemoConfig.media {
+          let stream = LiveStream(protocolName: "http_stream", formatName: "flv", codecName: "avc",
+            currentQuality: 10000, acceptedQualities: [10000], urls: [media])
+          self.stream = stream; self.lineIndex = 0
+          self.play(stream)
+          return
+        }
+        #endif
         if refreshRoom || self.room == nil {
           let room = try await self.service.liveRoom(self.roomID)
           guard current == self.generation else { return }
@@ -177,7 +188,7 @@ import Foundation
       } catch {
         guard current == self.generation else { return }
         self.isLoading = false
-        if self.attempts > 0 { self.scheduleReconnect(reason: "获取直播地址失败") }
+        if self.retryBudget.attempts > 0 { self.scheduleReconnect(reason: "获取直播地址失败") }
         else { self.error = Self.message(error) }
       }
     }
@@ -190,7 +201,10 @@ import Foundation
     // Set before loadfile (both run on the player's serial queue) so the open uses it.
     player.start()
     // rw_timeout turns a dead edge into an error (and a watchdog reconnect) instead of a hang.
-    player.set("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2,rw_timeout=8000000")
+    // (HTTP options only: the README demo plays a local file.)
+    if !url.isFileURL {
+      player.set("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=2,rw_timeout=8000000")
+    }
     player.load(video: url, audio: nil)
     AppModel.configurePlayerPreferences(player)
     // A fresh stream restarts the media clock; start a new chat timeline with it.
@@ -237,14 +251,15 @@ import Foundation
   }
 
   private func check() {
-    guard active, !ended, !isLoading, reconnecting == nil else { return }
+    guard active, !ended, !retryBudget.terminal, !isLoading, reconnecting == nil else { return }
     let now = Date()
     let clock = player.time
+    retryBudget.recordProgress(at: ProcessInfo.processInfo.systemUptime,
+      advancing: clock > lastClock + 0.2, paused: player.paused)
     if player.paused { stalledSince = nil; lastClock = clock; return }
     if clock > lastClock + 0.2 {
       if lastClock >= 0 { playedSinceLoad = true }
       lastClock = clock; stalledSince = nil
-      if attempts > 0, now.timeIntervalSince(loadedAt) > 20 { attempts = 0 }
       return
     }
     // Opening a live stream may take a few seconds; once frames flowed, a frozen clock is a drop.
@@ -258,15 +273,19 @@ import Foundation
 
   /// Backs off 1, 2, 4… 16 s, then reloads with a new address and a new line race.
   private func scheduleReconnect(reason: String) {
-    guard active, !ended, reconnecting == nil else { return }
-    attempts += 1; reconnects += 1
-    guard attempts <= 8 else {
-      reconnecting = nil
+    guard active, !ended, !retryBudget.terminal, reconnecting == nil else { return }
+    guard let delay = retryBudget.nextDelay() else {
+      generation += 1
+      loadTask?.cancel(); loadTask = nil
+      watchdog?.invalidate(); watchdog = nil
+      errorObservation = nil; endObservation = nil
+      isLoading = false; reconnecting = nil
+      player.command(["stop"])
       error = "直播连接多次中断（\(reason)），请稍后点「重新连接」。"
       return
     }
-    let delay = min(16, pow(2, Double(attempts - 1)))
-    reconnecting = "\(reason)，\(Int(delay)) 秒后重新连接（第 \(attempts) 次）"
+    reconnects += 1
+    reconnecting = "\(reason)，\(Int(delay)) 秒后重新连接（第 \(retryBudget.attempts) 次）"
     watchdog?.invalidate(); watchdog = nil
     let current = generation
     loadTask?.cancel()
@@ -301,7 +320,9 @@ import Foundation
           try? await Task.sleep(nanoseconds: UInt64(min(30, 3 * failures)) * 1_000_000_000)
           continue
         }
+        #if DEBUG
         self.chatHasBuvid = !endpoint.buvid.isEmpty
+        #endif
         for await event in self.chatClient.connect(endpoint) {
           guard self.active else { break }
           failures = 0
@@ -317,7 +338,9 @@ import Foundation
   }
 
   private func handle(_ event: LiveChatEvent) {
+    #if DEBUG
     chatEvents += 1
+    #endif
     switch event {
     case .connected:
       chat.setConnected(true)
@@ -337,7 +360,9 @@ import Foundation
     case .popularity:
       break
     case .liveStarted:
-      if ended { chat.add(user: "", text: "主播开播了", kind: .notice); refresh() }
+      if retryBudget.shouldRestartRoom(after: event, roomEnded: ended) {
+        chat.add(user: "", text: "主播开播了", kind: .notice); refresh()
+      }
     case .liveEnded:
       chat.add(user: "", text: "直播已结束", kind: .notice)
       markEnded()

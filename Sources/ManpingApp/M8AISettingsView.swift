@@ -5,10 +5,13 @@ import SwiftUI
 /// Embedded in 设置 › AI; this view does not create another scroll container.
 struct M8AISettingsView: View {
   @ObservedObject var model: M8AISettingsModel
-  var templates: AnyView? = nil
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
+      if let runtime = model.runtime {
+        AISettingsSections(runtime: runtime).padding(.bottom, 12)
+      }
+      Text("AI 服务").font(Theme.Font.section).padding(.leading, 10)
       HStack(spacing: 12) {
         SettingIcon(symbol: "sparkles")
         VStack(alignment: .leading, spacing: 2) {
@@ -21,9 +24,8 @@ struct M8AISettingsView: View {
           .buttonStyle(AppButtonStyle(size: .small))
       }.padding(14).background(Theme.selectedFill(scheme).opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
         .padding(.bottom, 4)
-      if let templates { templates }
       M8AppleLocalCard()
-      if model.chatGPTAvailable { M8ChatGPTPlanCard(model: model) }
+      M8ChatGPTPlanCard(model: model)
       ForEach(AIProvider.sourceProviders) { provider in M8AIProviderCard(model: model, provider: provider) }
       if let error = model.loadError {
         InlineErrorText(message: error).padding(12)
@@ -43,11 +45,7 @@ private struct M8ChatGPTPlanCard: View {
   private var signedIn: Bool { model.chatGPTAccount != nil }
   init(model: M8AISettingsModel) {
     self.model = model
-    #if DEBUG
-    let args = ProcessInfo.processInfo.arguments
-    if DebugUIFixtures.enabled, let index = args.firstIndex(of: "--ui-ai-provider"), args.indices.contains(index + 1),
-      args[index + 1] == AIProvider.chatGPTPlan.rawValue { _expanded = State(initialValue: true) }
-    #endif
+    _expanded = State(initialValue: aiSettingsDebugExpanded(.chatGPTPlan))
   }
   var body: some View {
     VStack(spacing: 0) {
@@ -65,18 +63,18 @@ private struct M8ChatGPTPlanCard: View {
       if expanded {
         Hairline()
         VStack(spacing: 0) {
-          row("账号", detail: "用 ChatGPT Plus 或 Pro 账号登录后，AI 请求计入套餐用量，不需要 API key。") {
+          AIServiceSettingsRow("账号", detail: "用 ChatGPT Plus 或 Pro 账号登录后，AI 请求计入套餐用量，不需要 API key。") {
             Text(model.chatGPTAccount.map { $0.email ?? "ChatGPT 账号" } ?? "未登录").font(Theme.Font.body)
               .foregroundStyle(Theme.secondaryText(scheme)).textSelection(.enabled)
           }
           if signedIn {
-            row("可用模型", detail: models.isEmpty ? "尚未获取到可用模型。"
+            AIServiceSettingsRow("可用模型", detail: models.isEmpty ? "尚未获取到可用模型。"
               : models.prefix(6).map(\.name).joined(separator: "、") + (models.count > 6 ? " 等 \(models.count) 个" : "")) {
               Button("刷新模型") { Task { await model.refreshChatGPTModels() } }
                 .buttonStyle(AppButtonStyle(size: .small))
             }
           }
-          row("用量", detail: "在 ChatGPT 设置中查看或管理满屏使用的额度。") {
+          AIServiceSettingsRow("用量", detail: "在 ChatGPT 设置中查看或管理满屏使用的额度。") {
             HStack(spacing: 12) {
               Button("了解更多") { NSWorkspace.shared.open(URL(string: "https://help.openai.com")!) }
                 .foregroundStyle(Theme.accentText(scheme)).buttonStyle(AppButtonStyle(role: .plain, size: .small))
@@ -113,15 +111,6 @@ private struct M8ChatGPTPlanCard: View {
         Text("在满屏中发起的 AI 总结、评价和问答会使用你的 ChatGPT 套餐额度。可以随时在 ChatGPT 设置中管理用量或断开本应用。")
       }
   }
-  private func row<Content: View>(_ title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
-    HStack(spacing: 16) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).font(Theme.Font.body)
-        Text(detail).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-      }.frame(maxWidth: .infinity, alignment: .leading)
-      content()
-    }.padding(.horizontal, 16).padding(.vertical, 10).frame(minHeight: 56)
-  }
 }
 
 private struct M8AIProviderCard: View {
@@ -135,13 +124,7 @@ private struct M8AIProviderCard: View {
   private var busy: Bool { model.busy.contains(provider) }
   init(model: M8AISettingsModel, provider: AIProvider) {
     self.model = model; self.provider = provider
-    #if DEBUG
-    let args = ProcessInfo.processInfo.arguments
-    if DebugUIFixtures.enabled, let index = args.firstIndex(of: "--ui-ai-provider"),
-      args.indices.contains(index + 1), args[index + 1] == provider.rawValue {
-      _expanded = State(initialValue: true)
-    }
-    #endif
+    _expanded = State(initialValue: aiSettingsDebugExpanded(provider))
   }
   private func binding<Value>(_ keyPath: WritableKeyPath<M8AIProviderDraft, Value>) -> Binding<Value> {
     Binding(get: { model.draft(provider)[keyPath: keyPath] }, set: { value in model.update(provider) { $0[keyPath: keyPath] = value } })
@@ -168,36 +151,36 @@ private struct M8AIProviderCard: View {
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           if provider != .ollama {
-            row("访问密钥", detail: configuration?.keyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
+            AIServiceSettingsRow("访问密钥", detail: configuration?.keyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
               secureField("API key", text: binding(\.key))
             }
           }
           if provider == .ernie {
-            row("Secret 密钥", detail: configuration?.secretConfigured == true ? "已保存在钥匙串，留空保留。" : "文心千帆配置中的 Secret。") {
+            AIServiceSettingsRow("Secret 密钥", detail: configuration?.secretConfigured == true ? "已保存在钥匙串，留空保留。" : "文心千帆配置中的 Secret。") {
               secureField("Secret key", text: binding(\.secret))
             }
           }
           if provider == .mistral {
-            row("使用 Codestral", detail: "使用独立的 Codestral API 和密钥。") {
+            AIServiceSettingsRow("使用 Codestral", detail: "使用独立的 Codestral API 和密钥。") {
               switchButton(binding(\.useCodestral))
             }
-            row("Codestral 密钥", detail: configuration?.codestralKeyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
+            AIServiceSettingsRow("Codestral 密钥", detail: configuration?.codestralKeyConfigured == true ? "已保存在钥匙串，留空保留。" : "仅保存在钥匙串。") {
               secureField("Codestral key", text: binding(\.codestralKey))
             }
           }
           if provider.supportsEndpoint {
-            row("终结点", detail: provider.defaultEndpoint == nil ? "请输入此资源的终结点。" : "留空使用原版默认终结点。") {
+            AIServiceSettingsRow("终结点", detail: provider.defaultEndpoint == nil ? "请输入此资源的终结点。" : "留空使用原版默认终结点。") {
               textField(provider.defaultEndpoint ?? "https://…", text: binding(\.endpoint))
             }
           }
           if provider == .openAI {
-            row("组织 ID", detail: "可选。") { textField("org-…", text: binding(\.organization)) }
+            AIServiceSettingsRow("组织 ID", detail: "可选。") { textField("org-…", text: binding(\.organization)) }
           }
           if provider == .azureOpenAI || provider == .azureAI {
-            row("API 版本", detail: "可选，留空使用这种协议的默认版本。") { textField("例如 2024-02-01", text: binding(\.apiVersion)) }
+            AIServiceSettingsRow("API 版本", detail: "可选，留空使用这种协议的默认版本。") { textField("例如 2024-02-01", text: binding(\.apiVersion)) }
           }
           if !provider.predefinedModels.isEmpty {
-            row("预定义模型", detail: "与固定原版 SDK 的模型列表一致。") {
+            AIServiceSettingsRow("预定义模型", detail: "与固定原版 SDK 的模型列表一致。") {
               Button("查看所有预定义模型") { showPredefined.toggle() }.foregroundStyle(Theme.accentText(scheme)).buttonStyle(AppButtonStyle(role: .plain, size: .small))
                 .popover(isPresented: $showPredefined) {
                   ScrollView {
@@ -257,15 +240,6 @@ private struct M8AIProviderCard: View {
       }
     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
   }
-  private func row<Content: View>(_ title: String, detail: String, @ViewBuilder content: () -> Content) -> some View {
-    HStack(spacing: 16) {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(title).font(Theme.Font.body)
-        Text(detail).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-      }.frame(maxWidth: .infinity, alignment: .leading)
-      content()
-    }.padding(.horizontal, 16).padding(.vertical, 10).frame(minHeight: 56)
-  }
   private func textField(_ prompt: String, text: Binding<String>) -> some View {
     TextField(prompt, text: text).textFieldStyle(AppTextFieldStyle()).frame(width: 260)
   }
@@ -286,7 +260,7 @@ private struct M8AppleLocalCard: View {
   @State private var reason = AppleLocalModel.unavailableReason
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
-      Image(systemName: "apple.logo").font(.system(size: 20)).frame(width: 28, height: 28)
+      AIProviderLogo(provider: .appleLocal, size: 28)
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 8) {
           Text(AIProvider.appleLocal.title).font(Theme.Font.headline)
@@ -301,4 +275,33 @@ private struct M8AppleLocalCard: View {
     .background(Theme.card(scheme), in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
     .onAppear { reason = AppleLocalModel.unavailableReason }
   }
+}
+
+private struct AIServiceSettingsRow<Content: View>: View {
+  let title: String
+  let detail: String
+  let content: Content
+  @Environment(\.colorScheme) private var scheme
+  init(_ title: String, detail: String, @ViewBuilder content: () -> Content) {
+    self.title = title; self.detail = detail; self.content = content()
+  }
+  var body: some View {
+    HStack(spacing: 16) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title).font(Theme.Font.body)
+        Text(detail).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
+      }.frame(maxWidth: .infinity, alignment: .leading)
+      content
+    }.padding(.horizontal, 16).padding(.vertical, 10).frame(minHeight: 56)
+  }
+}
+
+private func aiSettingsDebugExpanded(_ provider: AIProvider) -> Bool {
+  #if DEBUG
+  let args = ProcessInfo.processInfo.arguments
+  if DebugUIFixtures.enabled, let index = args.firstIndex(of: "--ui-ai-provider"), args.indices.contains(index + 1) {
+    return args[index + 1] == provider.rawValue
+  }
+  #endif
+  return false
 }

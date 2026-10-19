@@ -5,25 +5,25 @@ import SwiftUI
 struct M3HistoryPage: View {
   @ObservedObject var model: AppModel
   @StateObject private var history: HistoryPageModel
-  private let term: String
   @State private var tab: HistoryBusiness = .archive
   @State private var searchText = ""
   @State private var consumedScopeRequest: UUID?
   @Environment(\.colorScheme) private var scheme
-  init(model: AppModel, term: String = "") {
-    self.model = model; self.term = term
+  init(model: AppModel) {
+    self.model = model
+    _history = StateObject(wrappedValue: HistoryPageModel(service: model.service, rpc: Self.makeRPC(model)))
+  }
+  private static func makeRPC(_ model: AppModel) -> LibraryRPCService? {
     // Write only the first time: a defaults write on every init re-renders views that observe
     // defaults (the shell's sidebar preference), which re-creates this view, in a loop.
     let installation: String
     if let saved = UserDefaults.standard.string(forKey: "libraryInstallationID") { installation = saved }
     else { installation = UUID().uuidString; UserDefaults.standard.set(installation, forKey: "libraryInstallationID") }
-    let rpc: LibraryRPCService?
     if let transport = model.libraryRPCTransport {
-      rpc = LibraryRPCService(auth: model.service, transport: transport, installationID: installation)
+      return LibraryRPCService(auth: model.service, transport: transport, installationID: installation)
     } else {
-      rpc = try? LibraryRPCService(auth: model.service, installationID: installation)
+      return try? LibraryRPCService(auth: model.service, installationID: installation)
     }
-    _history = StateObject(wrappedValue: HistoryPageModel(service: model.service, rpc: rpc))
   }
   var body: some View {
     VStack(spacing: 0) {
@@ -40,12 +40,12 @@ struct M3HistoryPage: View {
     }
       .pageToolbar(title: "历史记录", subtitle: history.keyword.isEmpty ? nil : "搜索「\(history.keyword)」",
         refreshing: history.isLoading && !history.records.isEmpty, refresh: { Task { await history.refresh() } }) { headerControls }
-      .task(id: "\(tab.rawValue):\(model.refreshToken):\(term)") {
+      .task(id: "\(tab.rawValue):\(model.refreshToken)") {
         if let request = model.regionalSearchRequest, request.route == .history,
           consumedScopeRequest != request.revision {
           consumedScopeRequest = request.revision; searchText = request.keyword
           await history.load(business: tab, keyword: request.keyword)
-        } else { await history.load(business: tab, keyword: term) }
+        } else { await history.load(business: tab, keyword: "") }
       }
       .onChange(of: model.regionalSearchRequest?.revision) { _, _ in
         guard let request = model.regionalSearchRequest, request.route == .history else { return }
@@ -69,13 +69,13 @@ struct M3HistoryPage: View {
       SegmentedTabs(options: HistoryBusiness.allCases.map { ($0, $0.title) }, selection: $tab)
     } else {
       Button { searchText = ""; Task { await history.exitSearch() } } label: { Label("退出搜索", systemImage: "xmark") }
-        .buttonStyle(AppButtonStyle(size: .small))
+        .toolbarActionStyle()
     }
-    TextField("在历史记录中搜索", text: $searchText).textFieldStyle(AppTextFieldStyle(height: Theme.compactControlHeight)).frame(width: 150)
+    TextField("在历史记录中搜索", text: $searchText).textFieldStyle(AppTextFieldStyle(height: Theme.toolbarControlHeight)).frame(width: 150)
       .onSubmit { Task { await history.load(business: tab, keyword: searchText) } }
     if history.keyword.isEmpty {
       Button { history.requestClear() } label: { Label("清空", systemImage: "trash") }
-        .buttonStyle(AppButtonStyle(role: .destructive, size: .small)).disabled(history.records.isEmpty || history.busy || history.isLoading)
+        .toolbarActionStyle(.destructive).disabled(history.records.isEmpty || history.busy || history.isLoading)
     }
   }
   private var results: some View {
@@ -93,8 +93,8 @@ struct M3HistoryPage: View {
         } else if history.isLoading || history.hasMore {
           LoadMoreFooter(isLoading: history.isLoading, autoLoad: false) { Task { await history.loadNext() } }
         }
-      }.padding(Theme.gridPadding)
-    }.prefetchOnScroll(enabled: history.hasMore && !history.isLoading && !history.busy && history.error == nil) {
+      }.cardGridContent().padding(Theme.gridPadding)
+    }.cardGrid().prefetchOnScroll(enabled: history.hasMore && !history.isLoading && !history.busy && history.error == nil) {
       Task { await history.loadNext() }
     }
   }
@@ -104,15 +104,7 @@ struct M3HistoryPage: View {
     if case .video(let video) = record.entry.destination {
       VideoCard(video: video, action: { model.open(video) }, menuExtra: AnyView(remove)).help(record.entry.subtitle)
     } else {
-      LibraryEntryCard(entry: record.entry) { open(record.entry) }.contextMenu { remove }
-    }
-  }
-  private func open(_ entry: LibraryEntry) {
-    switch entry.destination {
-    case .video(let video): model.open(video)
-    case .user(let mid): model.openOverlay(.userSpace(mid))
-    case .web(let url): model.openLibraryURL(url)
-    case .unavailable: break
+      LibraryEntryCard(entry: record.entry) { model.open(record.entry) }.contextMenu { remove }
     }
   }
 }

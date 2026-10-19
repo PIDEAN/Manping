@@ -33,12 +33,16 @@ def main():
     parser.add_argument("--video-tab", choices=["info", "parts", "episodes", "seasons", "collections", "related", "comments", "ai"])
     parser.add_argument("--ai-preview", action="store_true", help="Synthetic AI answer preview; fixture only")
     parser.add_argument("--ai-provider", help="Expand one provider's configuration card; fixture only")
+    parser.add_argument("--ai-scene", choices=["intro", "chapters", "context", "highlights", "comments", "clips", "official", "settings"],
+        help="AI panel scene with the offline fixture service (use with --video-tab ai; settings: 设置 › AI lower groups first); fixture only")
     parser.add_argument("--mini", action="store_true",
         help="Fixture only: open the mini window (小窗) on video pages, controls pinned, and capture it as <page>-mini.png")
+    parser.add_argument("--app-args", default="",
+        help="Extra launch arguments for the app, e.g. \"--ui-bar-drag insert --ui-player-bar quality,speed\"")
     parser.add_argument("--window-size", nargs=2, type=int, metavar=("WIDTH", "HEIGHT"), default=(1362, 895),
         help="Main window content size in points (720–3840 × 600–2160), e.g. 900 700 to check the narrow player panel")
     args = parser.parse_args()
-    if (args.ai_preview or args.ai_provider) and not args.fixture:
+    if (args.ai_preview or args.ai_provider or args.ai_scene) and not args.fixture:
         parser.error("--ai-preview requires --fixture; live checks never generate paid AI responses")
     if args.mini and not args.fixture:
         parser.error("--mini requires --fixture")
@@ -87,8 +91,11 @@ def main():
                 argv += ["--ui-video-tab", args.video_tab]
             if args.ai_preview:
                 argv += ["--ui-ai-preview"]
+            argv += args.app_args.split()
             if args.ai_provider:
                 argv += ["--ui-ai-provider", args.ai_provider]
+            if args.ai_scene:
+                argv += ["--ui-ai-scene", args.ai_scene]
             app_env = dict(os.environ, MANPING_UI_MINI_PLAYER="hover") if mini else None
             # Fallback when screen recording is unavailable: the app renders its own window
             # (no window shadow, and Liquid Glass may render flatter than on screen).
@@ -102,6 +109,11 @@ def main():
                     if process.poll() is not None or time.monotonic() >= deadline:
                         raise RuntimeError("window unavailable")
                     time.sleep(.1)
+                # A build launched from a script may stay in the background (Stage Manager then
+                # shows only a thumbnail of its window); bring it to the front before capturing.
+                subprocess.run(["osascript", "-e", "tell application \"System Events\" to set frontmost of "
+                    f"(first process whose unix id is {process.pid}) to true"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 time.sleep(args.wait)
                 if process.poll() is not None:
                     raise RuntimeError("app exited")

@@ -155,11 +155,9 @@ public final class ProxyRuntime: @unchecked Sendable {
   private var failures = 0
   private var lastFailure = Date.distantPast
   public var onChange: (@Sendable () -> Void)?
-  public var onEvent: (@Sendable (String) -> Void)?
 
   public init() {
     tunnel.onRebuilt = { [weak self] config, port in self?.tunnelRebuilt(config, port: port) }
-    tunnel.onEvent = { [weak self] message in self?.onEvent?(message) }
   }
   deinit { tunnel.stop() }
 

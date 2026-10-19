@@ -242,7 +242,8 @@ struct ArticleReaderPage: View {
                 .buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true)).help("关闭")
             }.padding(.leading, 16).padding(.trailing, 10).frame(height: Theme.pageHeaderHeight)
             Hairline()
-            ScrollView { aiContent(detail).padding(16) }
+            // The AI panel scrolls its thread and pins its composer itself.
+            aiContent(detail)
           }.frame(width: 340).overlay(alignment: .leading) { Hairline(axis: .vertical) }
         } else if reader.commentsOpened { commentPanel.frame(width: 380) }
       }
@@ -253,11 +254,9 @@ struct ArticleReaderPage: View {
       .onChange(of: reader.detail?.article.id) { _, value in
         #if DEBUG
         if value != nil, DebugUIFixtures.enabled, ProcessInfo.processInfo.arguments.contains("--ui-ai-preview") { showingAI = true }
-        #if DEBUG
         if value != nil, ProcessInfo.processInfo.arguments.contains("--ui-translate") {
           DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showingTranslation = true }
         }
-        #endif
         #endif
       }
       .environment(\.openURL, OpenURLAction { routeLink($0) })

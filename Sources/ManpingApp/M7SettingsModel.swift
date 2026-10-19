@@ -8,22 +8,20 @@ import SwiftUI
   @Published private(set) var clearing = false
   @Published private(set) var status: String?
   let capabilities: Set<MacSettingKey>
-  let unavailableReasons: [MacSettingKey: String]
   private let defaults: UserDefaults
   private let apply: (MacSettings) -> Void
   private let clearImages: (() async throws -> Void)?
   private let screenshot: (() -> Void)?
   init(defaults: UserDefaults = .standard, capabilities: Set<MacSettingKey>,
-    unavailableReasons: [MacSettingKey: String] = [:], apply: @escaping (MacSettings) -> Void,
+    apply: @escaping (MacSettings) -> Void,
     clearImageCache: (() async throws -> Void)? = nil, takeScreenshot: (() -> Void)? = nil) {
-    self.defaults = defaults; self.capabilities = capabilities; self.unavailableReasons = unavailableReasons
+    self.defaults = defaults; self.capabilities = capabilities
     self.apply = apply; clearImages = clearImageCache; screenshot = takeScreenshot; values = MacSettings.load(from: defaults)
   }
   var canClearImages: Bool { clearImages != nil && !clearing }
   func takeScreenshot() { screenshot?() }
   func reason(_ descriptor: MacSettingDescriptor) -> String? {
-    descriptor.unavailableReason ?? (!capabilities.contains(descriptor.key)
-      ? unavailableReasons[descriptor.key] ?? "这个功能暂时还不能在 Mac 上使用。" : nil)
+    capabilities.contains(descriptor.key) ? nil : "这个功能暂时还不能在 Mac 上使用。"
   }
   /// The one path for preference changes (settings window, player menus, danmaku panel). The
   /// field is merged into what is stored now, so a value saved elsewhere since this model last

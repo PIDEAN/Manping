@@ -250,13 +250,10 @@ public enum SmartCachePolicy {
   /// - Parameters:
   ///   - bitsPerSecond: combined video+audio bandwidth from the manifest.
   ///   - recentStalls: stalls in the last few minutes; more stalls → deeper buffer and longer refill before resuming.
-  public static func plan(bitsPerSecond: Int, userForwardMB: Double, userBackMB: Double, userSeconds: Double,
+  public static func plan(bitsPerSecond: Int, userForwardMB: Double, userBackMB: Double,
     recentStalls: Int, ceilingMB: Double = 1536) -> Plan {
     let bytesPerSecond = max(Double(bitsPerSecond) / 8, 250_000)
-    // The plan owns the read-ahead while smart cache is on: the user's seconds setting (300 s by
-    // default) held a whole 4K episode in memory (about 1.4 GB measured) for no benefit on a
-    // healthy network. Two minutes is ample; recent stalls deepen it to three.
-    _ = userSeconds
+    // Smart cache owns read-ahead; recent stalls deepen the two-minute target to three.
     let target: Double = recentStalls > 0 ? 180 : 120
     let needed = bytesPerSecond * target * 1.15
     let forward = min(max(needed, userForwardMB * 1_048_576), ceilingMB * 1_048_576)

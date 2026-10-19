@@ -27,3 +27,8 @@ __pycache__/
 *.tar.gz
 
 Resources/AppIcon/*.iconset/
+
+# README animations (docs/media): recordings, rendered frames and the Remotion install
+docs/media/.out/
+docs/media/remotion/frames/
+node_modules/

@@ -8,6 +8,7 @@ struct M4MomentPage: View {
   @AppStorage("moment.sidebarWidth") private var sidebarWidth = 240.0
   @AppStorage("moment.sidebarHidden") private var sidebarHidden = false
   @State private var commentsPresented = false
+  @State private var commentItem: RPCDynamic?
   @State private var commentTask: Task<Void, Never>?
   @State private var initialized = false
   @Environment(\.colorScheme) private var scheme
@@ -40,7 +41,8 @@ struct M4MomentPage: View {
         if commentsPresented {
           ZStack(alignment: .trailing) {
             Theme.scrim(scheme).opacity(0.4).contentShape(Rectangle()).onTapGesture(perform: closeComments)
-            M4CommentPanel(comments: comments, model: model, close: closeComments).padding(12)
+            M4CommentPanel(comments: comments, model: model, close: closeComments,
+              total: commentItem?.replies, ownerMid: commentItem?.author?.mid).padding(12)
               .transition(.move(edge: .trailing).combined(with: .opacity))
           }
         }
@@ -123,11 +125,11 @@ struct M4MomentPage: View {
   }
   private func openComments(_ item: RPCDynamic) {
     guard let target = M4CommentTarget(dynamic: item) else { return }
-    commentTask?.cancel(); commentsPresented = true
+    commentTask?.cancel(); commentItem = item; commentsPresented = true
     commentTask = Task { await comments.select(target) }
   }
   private func closeComments() {
-    commentTask?.cancel(); commentTask = nil; comments.cancel(); commentsPresented = false
+    commentTask?.cancel(); commentTask = nil; comments.cancel(); commentsPresented = false; commentItem = nil
   }
   private var fixtureLaunchTarget: String? {
     #if DEBUG

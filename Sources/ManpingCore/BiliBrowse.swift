@@ -53,23 +53,6 @@ extension BiliService {
       items: items, nextCursor: next.flatMap { $0 > 0 && $0 != index ? String($0) : nil })
   }
 
-  public func popularFeed(cursor: String? = nil) async throws -> BrowseVideoPage {
-    let page = try browsePage(cursor)
-    let payload = try await json(
-      "/x/web-interface/popular", params: ["pn": String(page), "ps": "24"])
-    guard let raw = payload["list"] as? [[String: Any]] else {
-      throw BiliError.invalidResponse("Missing popular list")
-    }
-    let terminal = (payload["no_more"] as? Bool) ?? (raw.count < 24)
-    return BrowseVideoPage(
-      items: try raw.map(Video.parse), nextCursor: terminal ? nil : String(page + 1))
-  }
-
-  public func rankingFeed(rid: Int = 0) async throws -> BrowseVideoPage {
-    guard rid >= 0 else { throw BiliError.invalidResponse("Invalid partition") }
-    return BrowseVideoPage(items: try await ranking(rid: rid))
-  }
-
   public func videoPartitions() async throws -> [VideoPartition] {
     guard let raw = try await appREST(.partitions) as? [[String: Any]] else {
       throw BiliError.invalidResponse("Missing partition list")
@@ -130,11 +113,6 @@ extension BiliService {
       throw BiliError.invalidResponse("Invalid feed cursor")
     }
     return value
-  }
-  private func browsePage(_ cursor: String?) throws -> Int64 {
-    let page = try browseOffset(cursor)
-    guard page < Int64.max else { throw BiliError.invalidResponse("Invalid page cursor") }
-    return max(page, 1)
   }
   private static func uniqueAppVideos(_ raw: [[String: Any]]) throws -> [Video] {
     var seen = Set<String>()

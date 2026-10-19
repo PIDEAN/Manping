@@ -5,34 +5,26 @@ import SwiftUI
 struct PopularPage: View {
   @ObservedObject var model: AppModel
   @StateObject private var feed = BrowseFeedModel()
-  @Environment(\.colorScheme) private var scheme
-  private var kind: BrowseKind {
-    switch model.popularTab {
-    case .recommended: .recommended
-    case .popular: .popular
-    case .ranking: .ranking
-    }
-  }
-  private var requestKey: String { kind.rawValue }
+  private var requestKey: String { String(describing: model.popularTab) }
   var body: some View {
-    BrowseVideoResults(feed: feed, open: model.open)
+    BrowseVideoResults(feed: feed, open: model.open).equatable()
       .pageToolbar(title: "首页", refreshing: feed.state.isLoading && !feed.state.items.isEmpty, refresh: { feed.refresh() }) {
         Button { model.playCuratedList() } label: {
           Label("播放精选", systemImage: "play.square.stack")
-        }.buttonStyle(AppButtonStyle(size: .small)).disabled(model.curatedLoading)
+        }.toolbarActionStyle().disabled(model.curatedLoading)
           .help("把推荐里的精选视频排成一个列表连续播放")
         if model.curatedLoading {
-          Button { model.cancelCuratedPlaylist() } label: { Image(systemName: "xmark") }
-            .buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true)).help("停止加载精选")
+          Button { model.cancelCuratedPlaylist() } label: { ToolbarIcon("xmark") }
+            .toolbarIconStyle().help("停止加载精选").accessibilityLabel("停止加载精选")
         }
       }
       .task(id: "\(requestKey):\(model.refreshToken)") {
-        let selectedKind = kind; let service = model.service
-        feed.activate(key: requestKey, refreshToken: model.refreshToken) { [model, selectedKind, service] cursor in
+        let selectedTab = model.popularTab; let service = model.service
+        feed.activate(key: requestKey, refreshToken: model.refreshToken) { [model, selectedTab, service] cursor in
           if PerformanceOptions.requested {
             return BrowseVideoPage(items: PerformanceFixtures.videos, nextCursor: nil)
           }
-          switch selectedKind {
+          switch selectedTab {
           case .recommended: return try await service.recommend(cursor: cursor)
           case .popular:
             return try await RPCBrowseSource(rpc: model.standardRPCService()).popularFeed(cursor: cursor)
@@ -41,14 +33,6 @@ struct PopularPage: View {
           }
         }
       }.onDisappear { feed.deactivate() }
-  }
-}
-
-/// Kept as the name used by browse sidebars; renders the shared sidebar row.
-struct SecondaryNavigationStyle: ButtonStyle {
-  var selected = false
-  func makeBody(configuration: Configuration) -> some View {
-    SidebarRowStyle(selected: selected).makeBody(configuration: configuration)
   }
 }
 

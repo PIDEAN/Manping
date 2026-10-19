@@ -8,7 +8,6 @@ import SwiftUI
   @Published private(set) var selectedCategory: Int64?
   @Published private(set) var sort: ArticleSort = .recommended
   @Published private(set) var articles: [ArticleSummary] = []
-  @Published private(set) var ranks: [ArticleSummary] = []
   @Published private(set) var isLoading = false
   @Published private(set) var directoryLoading = false
   @Published private(set) var error: String?
@@ -32,7 +31,7 @@ import SwiftUI
       for await event in await service.identityEvents() {
         guard let self, !Task.isCancelled, let expected = self.expected else { continue }
         if event.epoch != expected.epoch || event.identityRevision != expected.identityRevision {
-          self.cancel(); self.expected = nil; self.articles = []; self.ranks = []; self.hasMore = false
+          self.cancel(); self.expected = nil; self.articles = []; self.hasMore = false
           self.error = "登录状态已改变，请刷新页面。"
         }
       }
@@ -71,7 +70,7 @@ import SwiftUI
   }
   func refresh() async { cancel(); await resetFeed() }
   private func resetFeed() async {
-    articles = []; ranks = []; page = 1; emptyPages = 0; error = nil; hasMore = true
+    articles = []; page = 1; emptyPages = 0; error = nil; hasMore = true
     let revision = generation; let snapshot = await service.authSnapshot()
     guard revision == generation, !Task.isCancelled else { return }
     expected = snapshot
@@ -103,7 +102,6 @@ import SwiftUI
         var known = Set(articles.map(\.id))
         let fresh = result.items.filter { known.insert($0.id).inserted }
         articles += fresh; self.page += 1
-        if page == 1 { ranks = result.ranks }
         emptyPages = fresh.isEmpty ? emptyPages + 1 : 0
         hasMore = result.hasMore && emptyPages < 3
         if result.hasMore && emptyPages >= 3 { self.error = "连续分页未返回新文章，请刷新。" }

@@ -65,7 +65,6 @@ struct M3FollowersPage: View {
   let mid: Int64
   @StateObject private var library: LibraryModel
   @StateObject private var relations: UserRelationsModel
-  @Environment(\.colorScheme) private var scheme
   init(model: AppModel, mid: Int64) {
     self.model = model; self.mid = mid
     _library = StateObject(wrappedValue: LibraryModel(model: model))
@@ -173,7 +172,18 @@ struct M3UserCard: View {
   }
 }
 
+/// The compact heart is a small chrome capsule in a card; the 36 pt one in the toolbar is a glass circle.
+private struct FollowButtonStyle: ViewModifier {
+  let compact: Bool
+  let followed: Bool
+  func body(content: Content) -> some View {
+    if compact { content.buttonStyle(ChromeButtonStyle(selected: followed, icon: true, capsule: true)) }
+    else { content.toolbarIconStyle() }
+  }
+}
+
 struct M3UserFollowButton: View {
+  @Environment(\.colorScheme) private var scheme
   let mid: Int64
   @ObservedObject var relations: UserRelationsModel
   @ObservedObject var model: AppModel
@@ -183,9 +193,10 @@ struct M3UserFollowButton: View {
     Button { Task { await relations.toggle(mid: mid) { model.showingLogin = true } } } label: {
       Group {
         if relations.busy.contains(mid) { ProgressView().controlSize(.mini) }
-        else { Image(systemName: followed ? "heart.fill" : "heart").font(.system(size: compact ? 10 : 14)) }
-      }.frame(width: compact ? 24 : 28, height: compact ? 24 : 28)
-    }.buttonStyle(ChromeButtonStyle(selected: followed, icon: true, capsule: true))
+        else if compact { Image(systemName: followed ? "heart.fill" : "heart").font(.system(size: 10)) }
+        else { ToolbarIcon(followed ? "heart.fill" : "heart").foregroundStyle(followed ? Theme.accentText(scheme) : Theme.text(scheme)) }
+      }.frame(width: compact ? 24 : nil, height: compact ? 24 : nil)
+    }.modifier(FollowButtonStyle(compact: compact, followed: followed))
       .disabled(!relations.canToggle(mid))
       .help(relations.errors[mid] ?? (mid == relations.selfID ? "当前账号" :
         relations.relations[mid]?.isFollowing == nil ? "关注状态尚未确认；可在菜单刷新" : followed ? "取消关注" : "关注"))

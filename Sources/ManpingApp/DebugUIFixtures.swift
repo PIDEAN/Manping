@@ -34,19 +34,6 @@ enum DebugUIFixtures {
       "stat": ["view": 120_000 + index * 1249, "danmaku": 860, "reply": 36,
         "like": 6800, "coin": 1280, "favorite": 2400, "share": 318]]
   }
-  static func comment(_ index: Int, root: Int64 = 0) -> RPCComment {
-    let messages = ["这段画面让人一下就放松了[微笑]，感谢分享[爱心]。", "从开头一直看到最后，细节很用心！",
-      "收藏起来周末再看，期待下一期。", "音乐和镜头的节奏搭配得很舒服。", "这个想法很有意思，可以再展开聊聊吗？"]
-    let object: [String: Any] = [
-      "id": (root > 0 ? Int(root) * 100 : 2000) + index, "root": root,
-      "author": ["mid": 3000 + index, "name": "样本观众 \(index + 1)", "avatar": "https://fixture.invalid/avatar/\(index % 4)"],
-      "text": messages[index % messages.count], "emotes": index % messages.count == 0 ? [
-        ["text": "[微笑]", "image": "https://fixture.invalid/emote/smile"],
-        ["text": "[爱心]", "image": "https://fixture.invalid/emote/heart"]] : [], "createdAt": 1_760_000_000 - index * 300,
-      "likes": 120 - index, "replyCount": root > 0 ? 0 : 8, "liked": false,
-      "pinned": index == 0 && root == 0, "replies": []]
-    return try! JSONDecoder().decode(RPCComment.self, from: JSONSerialization.data(withJSONObject: object))
-  }
 }
 
 struct DebugUICredentialStore: AuthCredentialStore {
@@ -153,6 +140,9 @@ actor DebugUITransport: AuthTransport {
           }
         }, "audio": [["id": 30280, "codecs": "mp4a.40.2", "base_url": "https://fixture.invalid/audio", "bandwidth": 128000]]]]
     case "/x/v1/dm/list.so":
+      #if DEBUG
+      if let demo = DemoConfig.danmakuXML() { return response(url, body: demo) }
+      #endif
       return response(url, body: Data("<i></i>".utf8))
     case "/x/dm/filter/user":
       data = ["rule": [["id": 1, "type": 0, "filter": "剧透"], ["id": 2, "type": 0, "filter": "前方高能"],

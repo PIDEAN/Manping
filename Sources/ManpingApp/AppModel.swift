@@ -18,7 +18,6 @@ import WebKit
     case article = "文章"
     case message = "消息"
     case downloads = "下载"
-    var isAvailable: Bool { [.popular, .moment, .video, .anime, .cinema, .live, .article, .message, .downloads].contains(self) }
     /// The name shown in the sidebar, toolbar and menus (the raw values are the original names).
     var title: String {
       switch self {
@@ -96,7 +95,6 @@ import WebKit
     case recommended = "推荐"
     case popular = "热门"
     case ranking = "排行榜"
-    var isAvailable: Bool { true }
   }
   enum OverlayRoute: Equatable {
     case search(String)
@@ -121,6 +119,20 @@ import WebKit
   private var launchPGCSelection: PGCSelection?
   @Published private(set) var pgcPlayback: PGCPlaybackModel?
   @Published private(set) var livePlayback: LivePlaybackModel?
+  /// AI presets, conversations (ai.sqlite) and panels; created at launch (`initialize`) or on
+  /// first use.
+  var ai: AIRuntime {
+    if let aiRuntime { return aiRuntime }
+    let runtime = AIRuntime(app: self)
+    aiRuntime = runtime
+    return runtime
+  }
+  /// Nil until `ai` is first used, so quitting never creates ai.sqlite just to close it.
+  private var aiRuntime: AIRuntime?
+  /// 只看 3 分钟 依次播放, independent of the AI panel and of the window showing the picture.
+  let clipPlayback = ClipPlaybackController()
+  /// Amber marks on the progress bar for the answer the AI panel shows.
+  @Published var aiTimelineMarks: AITimelineMarks?
   private var launchLiveRoom: Int64?
   /// A video, an episode or a live room is open (in this window or the detached one).
   var hasPlayback: Bool { selected != nil || pgcPlayback != nil || livePlayback != nil }
@@ -182,13 +194,11 @@ import WebKit
   @Published var searchFocusRequest = 0
   /// 热搜 (⌘K): bumped to open the trending list under the toolbar search box.
   @Published var hotSearchRequest = 0
-  @Published var listTitle = "热门"
   @Published var theme: AppTheme =
     AppTheme(rawValue: PerformanceEnvironment.defaults.string(forKey: "appTheme") ?? "") ?? .system
   {
     didSet { PerformanceEnvironment.defaults.set(theme.rawValue, forKey: "appTheme") }
   }
-  let videoCollection = PagedCollection<Video>()
   var canGoBack: Bool { !overlays.isEmpty }
   var canGoForward: Bool { !forwardRoutes.isEmpty }
   var currentOverlay: OverlayRoute? { overlays.last }
@@ -245,6 +255,8 @@ import WebKit
   }
   /// `--ui-page settings…`: the settings window opens on this category after launch.
   var launchSettingsGroup: MacSettingGroup?
+  /// `--ui-page settings:playerbar`: the settings window on 控制条.
+  var launchSettingsPlayerBar = false
   var launchVideoTab: String?
   @Published var player = PlayerModel()
   /// CDN selection, multi-node relay, stall recovery and smart cache for every playback.
@@ -397,7 +409,11 @@ import WebKit
   lazy var aiPrompts: AIPromptStore = makeAIPrompts()
   private func makeAIPrompts() -> AIPromptStore { AIPromptStore(fixtures: usesUIFixtures) }
   lazy var aiSettings: M8AISettingsModel = makeAISettings()
-  private func makeAISettings() -> M8AISettingsModel { M8AISettingsModel(store: aiConfiguration) }
+  private func makeAISettings() -> M8AISettingsModel {
+    let settings = M8AISettingsModel(store: aiConfiguration)
+    settings.runtime = ai
+    return settings
+  }
   lazy var settingsModel: M7SettingsModel = makeSettingsModel()
   private func makeSettingsModel() -> M7SettingsModel {
     M7SettingsModel(defaults: PerformanceEnvironment.defaults, capabilities: Set(MacSettingKey.allCases),
@@ -471,7 +487,6 @@ import WebKit
       pgcFavoriteIntent = nil
       cancelCuratedPlaylist()
       leavePlaybackPage()
-      videoCollection.cancel()
       overlays = [route]
       forwardRoutes = []
     }
@@ -479,6 +494,10 @@ import WebKit
   /// 设置… (⌘,) and every「设置」link open the settings window, optionally on one category.
   func openSettings(_ group: MacSettingGroup? = nil) {
     SettingsWindowController.shared.show(model: self, group: group)
+  }
+  /// 「更多」 › 自定义控制条…: the settings window on 控制条; playback carries on.
+  func openPlayerBarSettings() {
+    SettingsWindowController.shared.show(model: self, page: .playerBar)
   }
   private func applySettings(_ settings: MacSettings) {
     let previous = appSettings; appSettings = settings
@@ -495,7 +514,7 @@ import WebKit
       Self.configurePlayerPreferences(target, settings: settings, previous: previous)
     }
     if previous.bool(.autoSkipClips) != settings.bool(.autoSkipClips) { pgcPlayback?.automaticSkipChanged() }
-    cdn.apply(settings, force: true)
+    cdn.apply(settings)
   }
   static func configurePlayerPreferences(_ target: PlayerModel, settings: MacSettings = MacSettings.load(from: PerformanceEnvironment.defaults), previous: MacSettings? = nil) {
     target.configureRuntime(settings: settings, previous: previous)
@@ -634,6 +653,7 @@ import WebKit
   }
   #endif
   func initialize(skipAuthentication: Bool = false) async {
+    configureAI()
     // The account's shield list and the user's own rules both re-filter every open player.
     let refreshShields: () -> Void = { [weak self] in
       guard let self else { return }
@@ -706,16 +726,13 @@ import WebKit
   }
   func navigate(to page: Page) {
     noteNavigation()
-    guard page.isAvailable else { return }
     if hasPlayback && playbackElsewhere { leavePlaybackPage() } else { closePlayer() }
     overlays = []
     forwardRoutes = []
-    videoCollection.cancel()
     self.page = page
     Task { await refresh() }
   }
   func selectPopularTab(_ tab: PopularTab) {
-    guard tab.isAvailable else { return }
     popularTab = tab
     Task { await refresh() }
   }
@@ -750,7 +767,6 @@ import WebKit
     pgcFavoriteIntent = nil
     cancelCuratedPlaylist()
     leavePlaybackPage()
-    videoCollection.cancel()
     overlays.append(route)
   }
   func submitRegionalSearch(_ keyword: String) {
@@ -783,7 +799,6 @@ import WebKit
     case .video, .pgc, .live: leavePlaybackPage()
     default: forwardRoutes.append(route); overlays.removeLast()
     }
-    videoCollection.cancel()
     Task { await refresh() }
   }
   /// 前进 (⌘]): reopens the route last left with 返回.
@@ -793,7 +808,6 @@ import WebKit
     pgcFavoriteIntent = nil
     cancelCuratedPlaylist()
     leavePlaybackPage()
-    videoCollection.cancel()
     steppingForward = true
     overlays.append(route)
     steppingForward = false
@@ -813,17 +827,7 @@ import WebKit
       }
       return
     }
-    if case .search(let term) = currentOverlay {
-      listTitle = term.isEmpty ? "搜索" : "「\(term)」的搜索结果"
-      videoCollection.cancel()
-      refreshToken &+= 1
-      return
-    } else if currentOverlay == nil {
-      refreshToken &+= 1
-      return
-    } else if currentOverlay != nil {
-      refreshToken &+= 1
-    }
+    refreshToken &+= 1
   }
   func standardRPCService() throws -> any BiliRPCService {
     if let libraryStandardRPC { return libraryStandardRPC }
@@ -873,6 +877,8 @@ import WebKit
     case "settings", "settings:general", "settings:appearance", "settings:navigation", "settings:cache":
       launchSettingsGroup = .general
     case "settings:playback", "settings:behavior": launchSettingsGroup = .playback
+    case "settings:playerbar":
+      launchSettingsGroup = .playback; launchSettingsPlayerBar = true
     case "settings:danmaku": launchSettingsGroup = .danmaku
     case "settings:network", "settings:proxy": launchSettingsGroup = .network
     case "settings:download", "settings:screenshot": launchSettingsGroup = .download
@@ -955,7 +961,7 @@ import WebKit
   /// another place for episodes).
   func openPGC(_ selection: PGCSelection) {
     noteNavigation()
-    closePlayer(); videoCollection.cancel()
+    closePlayer()
     pendingOpenMode = defaultOpenPlacement
     player = PlayerModel()
     Self.configurePlayerPreferences(player, settings: appSettings)
@@ -965,9 +971,15 @@ import WebKit
     playback.onPlaybackEnd = { [weak self] in self?.requestNextPlayback() }
     playback.onEpisodeChange = { [weak self] in
       self?.noteNavigation(); self?.progressReporter.flush(); self?.cancelNextPlayback()
+      self?.clipPlayback.stop(.mediaChanged)
     }
     playback.onMediaReady = { [weak self] in self?.playbackDidLoad() }
-    playback.automaticSkip = { [weak self] in self?.appSettings.bool(.autoSkipClips) ?? false }
+    playback.skipNextPrompt = { [weak self] in self?.appSettings.bool(.skipNextPrompt) ?? false }
+    // 依次播放 moves the playhead itself: automatic skips wait until it ends.
+    playback.automaticSkip = { [weak self] in
+      guard let self else { return false }
+      return self.appSettings.bool(.autoSkipClips) && !self.clipPlayback.isActive
+    }
     // Subtitles and danmaku sending follow the episode wherever the picture is.
     pgcEpisodeObservation = playback.$episode
       .map { EpisodeMedia(aid: $0?.aid, cid: $0?.cid) }
@@ -1058,7 +1070,7 @@ import WebKit
   func openLive(_ roomID: Int64, mode: MacOpenMode?) {
     noteNavigation()
     guard roomID > 0 else { return }
-    closePlayer(); videoCollection.cancel()
+    closePlayer()
     defer { if let mode { applyOpenMode(OpenPlacement(mode: mode)) } }
     player = PlayerModel()
     player.suspendAudioOnly()
@@ -1082,7 +1094,7 @@ import WebKit
           guard let self, let live, self.livePlayback === live else { return }
           if let web = URL(string: "https://live.bilibili.com/\(room.roomID)") {
             self.watchActivity.begin(.init(link: "manping://live/\(room.roomID)", web: web, title: room.title,
-              author: room.anchorName, cover: room.cover))
+              author: room.anchorName))
           }
           self.systemMedia.attach(player: live.player, title: room.title,
             artist: room.anchorName.isEmpty ? "直播" : room.anchorName, live: true, previous: nil, next: nil)
@@ -1108,7 +1120,6 @@ import WebKit
   func openPGCFavorites(cinema: Bool) {
     openOverlay(.favorites); pgcFavoriteIntent = (cinema, UUID())
   }
-  func openAISettings() { openSettings(.ai) }
   /// Opens a pasted, dropped or `manping://` link in the app. Returns false when the text is not
   /// a Bilibili destination, so callers can say so instead of guessing.
   @discardableResult func openLink(_ text: String) -> Bool {
@@ -1151,6 +1162,14 @@ import WebKit
     navigationGeneration &+= 1
     linkTask?.cancel(); linkTask = nil
   }
+  func open(_ entry: LibraryEntry) {
+    switch entry.destination {
+    case .video(let video): open(video)
+    case .user(let mid): openOverlay(.userSpace(mid))
+    case .web(let url): openLibraryURL(url)
+    case .unavailable: break
+    }
+  }
   func openLibraryURL(_ url: URL) {
     if ["www.bilibili.com", "bilibili.com"].contains(url.host?.lowercased() ?? ""),
       url.user == nil, url.password == nil, ["http", "https"].contains(url.scheme ?? ""),
@@ -1171,7 +1190,9 @@ import WebKit
   /// The clip generation of a launch video whose anonymous load failed (not cancelled).
   private var anonymousLoadFailure: UUID?
   private func startVideo(_ video: Video, preservingQueue: Bool, identityRetry: Bool = false) {
+    cdn.detach()
     noteNavigation()
+    clipPlayback.stop(.mediaChanged)
     progressReporter.flush()
     cancelNextPlayback()
     playbackFeatures.shutdown()
@@ -1188,7 +1209,6 @@ import WebKit
     }
     if !preservingQueue { cancelCuratedPlaylist(); clearPlaybackQueue() }
     eofObservation = nil; clipGeneration = UUID()
-    videoCollection.cancel()
     // A new video replaces what plays; the main window shows its page (or placeholder) again.
     browsingBesidePlayback = false
     if case .video = overlays.last {
@@ -1229,12 +1249,14 @@ import WebKit
         selectedStream = choice.video
         if usesUIFixtures { player.status = "本地样本 · 不加载在线媒体" }
         else {
-          let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P)
+          let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P,
+            reportFailureTo: player)
           try await checkCurrentLoad(loadGeneration, expected: expected)
           // nil: a quality change made during startup already loaded the newer stream.
           if let prepared {
             player.load(video: prepared.video, audio: prepared.audio); Self.configurePlayerPreferences(player)
-            attachCDN(to: player, ticket: prepared.ticket)
+            await attachCDN(to: player, ticket: prepared.ticket)
+            try await checkCurrentLoad(loadGeneration, expected: expected)
           }
         }
         observePlaybackEnd()
@@ -1272,17 +1294,31 @@ import WebKit
     guard !usesUIFixtures, queueLoadIdentity == nil, manifest != nil, let video = selected,
       let details = videoDetails else { return }
     let generation = clipGeneration
-    Task { [weak self] in
-      guard let self, let streams = try? await service.playback(details.video),
-        generation == clipGeneration, selected?.bvid == video.bvid, manifest != nil else { return }
-      manifest = streams
-      guard let preferred = preferredVideo(streams) else { return }
-      let current = selectedStream
-      if current == nil || preferred.quality > current!.quality || !streams.video.contains(where: { $0.id == current!.id }) {
-        changeQuality(preferred, persist: false)
+    let target = player
+    Task { [weak self, weak target] in
+      guard let self, let target else { return }
+      let identity = await service.authSnapshot()
+      do {
+        try await checkCurrentLoad(generation, expected: identity)
+        let streams = try await service.playback(details.video, expectedIdentity: identity)
+        try await checkCurrentLoad(generation, expected: identity)
+        guard player === target, selected?.bvid == video.bvid, manifest != nil else { return }
+        manifest = streams
+        guard let preferred = preferredVideo(streams) else { return }
+        let current = selectedStream
+        let replacement = streams.video.first { $0.id == current?.id }
+        let next = current == nil || preferred.quality > current!.quality ? preferred : replacement ?? preferred
+        // The old identity was detached immediately; attach even when quality stays unchanged.
+        changeQuality(next, persist: false)
+      } catch is CancellationError {
+        return
+      } catch {
+        guard player === target, (try? await checkCurrentLoad(generation, expected: identity)) != nil else { return }
+        target.failPlayback("登录状态已变化，重新获取播放地址失败。请重试。")
       }
     }
   }
+
   private func refreshVideoDetails(_ video: Video) async {
     let generation = clipGeneration
     do {
@@ -1304,10 +1340,11 @@ import WebKit
     try? PlaybackSelector.select(manifest, preferences: playbackPreferences,
                                 supportsHardware: Self.supportsHardware).video
   }
-  func openCollectionVideo(_ video: Video) { open(video) }
   func openPart(_ part: VideoPart) {
     noteNavigation()
+    clipPlayback.stop(.mediaChanged)
     guard let details = videoDetails else { return }
+    cdn.detach()
     progressReporter.flush()
     cancelNextPlayback()
     eofObservation = nil; clipGeneration = UUID(); player.resetPlaybackEnd()
@@ -1340,12 +1377,14 @@ import WebKit
         selectedStream = choice.video
         if usesUIFixtures { player.status = "本地样本 · 不加载在线媒体" }
         else {
-          let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P)
+          let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P,
+            reportFailureTo: player)
           try await checkCurrentLoad(loadGeneration, expected: expected)
           // nil: a quality change made during startup already loaded the newer stream.
           if let prepared {
             player.load(video: prepared.video, audio: prepared.audio); Self.configurePlayerPreferences(player)
-            attachCDN(to: player, ticket: prepared.ticket)
+            await attachCDN(to: player, ticket: prepared.ticket)
+            try await checkCurrentLoad(loadGeneration, expected: expected)
           }
         }
         observePlaybackEnd()
@@ -1362,6 +1401,7 @@ import WebKit
   func closePlayer() {
     // First, so closing the mini or standalone window below does not put the page back.
     browsingBesidePlayback = false
+    clipPlayback.stop(.mediaChanged)
     noteNavigation()
     progressReporter.flush()
     cancelNextPlayback()
@@ -1505,6 +1545,7 @@ import WebKit
         let identity = (epoch: displaySnapshot.epoch, revision: displaySnapshot.identityRevision)
         if let previous = accountDisplayIdentity,
           previous.epoch != identity.epoch || previous.revision != identity.revision {
+          if selected != nil { cdn.detach() }
           cancelNextPlayback()
           account = "登录"; accountMID = nil; accountAvatar = nil; accountLevel = nil; unreadMessageCount = 0
           DanmakuShieldSync.shared.configure(service: service, mid: nil)
@@ -1561,22 +1602,23 @@ import WebKit
     }
   }
   private func requestNextPlayback() {
-    guard canPlayNext else { return }
+    // 依次播放 pauses at the end of its last clip instead of moving on.
+    guard canPlayNext, !clipPlayback.isActive else { return }
     cancelNextPlayback()
     if appSettings.bool(.skipNextPrompt) { playNext(); return }
     nextPlaybackDeadline = Date().addingTimeInterval(8)
     nextPlaybackTask = Task { @MainActor [weak self] in
       do { try await Task.sleep(for: .seconds(8)) } catch { return }
       guard let self, !Task.isCancelled, self.nextPlaybackDeadline != nil else { return }
-      self.playNextNow()
+      self.playNext()
     }
   }
   func cancelNextPlayback() {
     nextPlaybackTask?.cancel(); nextPlaybackTask = nil
     if nextPlaybackDeadline != nil { nextPlaybackDeadline = nil }
   }
-  func playNextNow() { cancelNextPlayback(); playNext() }
   private func playbackDidLoad() {
+    if PerformanceOptions.anonymousRequested { return }
     let target = pgcPlayback?.player ?? player
     if let episode = pgcPlayback?.episode, let aid = episode.aid, let cid = episode.cid {
       progressReporter.begin(.init(aid: aid, cid: cid, episode: episode.id, season: episode.seasonID), player: target)
@@ -1587,11 +1629,11 @@ import WebKit
     let author = pgcPlayback?.details?.season.title ?? selected?.author ?? ""
     if !usesUIFixtures {
       if let episode = pgcPlayback?.episode, let web = URL(string: "https://www.bilibili.com/bangumi/play/ep\(episode.id)") {
-        watchActivity.begin(.init(link: "manping://episode/\(episode.id)", web: web, title: title, author: author, cover: episode.cover))
+        watchActivity.begin(.init(link: "manping://episode/\(episode.id)", web: web, title: title, author: author))
       } else if pgcPlayback == nil, let video = selected {
         let id = video.bvid.hasPrefix("BV") ? video.bvid : video.aid.map { "av\($0)" } ?? ""
         if !id.isEmpty, let web = URL(string: "https://www.bilibili.com/video/\(id)") {
-          watchActivity.begin(.init(link: "manping://video/\(id)", web: web, title: title, author: author, cover: video.cover))
+          watchActivity.begin(.init(link: "manping://video/\(id)", web: web, title: title, author: author))
         }
       }
       var previous: (@MainActor @Sendable () -> Void)?
@@ -1679,6 +1721,7 @@ import WebKit
   private func refreshPlaybackWindowContent(displayMode: String? = nil) {
     let host = NSHostingView(rootView: DetachedPlaybackContent(model: self))
     playbackWindow.onUserPlaced = { [weak self] in self?.userPlacedPicture() }
+    playbackWindow.onFullScreen = { [weak self] in self?.setWindowFullScreen($0, detached: true) }
     playbackWindow.present(content: host, mainWindow: (NSApp.delegate as? AppDelegate)?.window,
       hideMain: appSettings.bool(.hideMainOnPlay), displayMode: displayMode) { [weak self] in
         // Closing the standalone window (its close button included) puts the picture back in
@@ -1747,6 +1790,27 @@ import WebKit
       player.seek(min(player.duration, player.time + appSettings.number(.stepForward)))
     }
   }
+  /// The main window is in full screen, or entering it (set before the transition moves the
+  /// frame, so the layout switches first).
+  @Published private(set) var mainWindowFullScreen = false
+  /// The same for the standalone playback window.
+  @Published private(set) var playbackWindowFullScreen = false
+  /// The main window's playback page fills the screen: picture, danmaku and controls only,
+  /// without the sidebar, the toolbar and the right column.
+  var immersiveMainPlayback: Bool { mainWindowFullScreen && showsPlayerInMainWindow }
+  /// The main window shows the playing page itself (not the placeholder of the mini window or
+  /// the standalone window).
+  var showsPlayerInMainWindow: Bool { mainShowsPlayer && !playbackElsewhere }
+  /// Called by the windows' full-screen transitions. The layout changes without animation: the
+  /// transition itself moves the window.
+  func setWindowFullScreen(_ value: Bool, detached: Bool) {
+    guard (detached ? playbackWindowFullScreen : mainWindowFullScreen) != value else { return }
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      if detached { playbackWindowFullScreen = value } else { mainWindowFullScreen = value }
+    }
+  }
   /// Full screen for the window showing the picture. From the mini window the picture first
   /// returns to the main window, which then enters full screen.
   func togglePlayerFullScreen() {
@@ -1766,7 +1830,7 @@ import WebKit
     window.toggleFullScreen(nil)
   }
   /// `persist: false` is used by automatic downgrades so they do not overwrite the user's choice.
-  func changeQuality(_ stream: MediaStream, persist: Bool = true) {
+  func changeQuality(_ stream: MediaStream, persist: Bool = true, recovering: Bool = false) {
     guard let manifest,
       let audio = manifest.audio.max(by: { $0.quality < $1.quality }) else { return }
     selectedStream = stream
@@ -1785,10 +1849,10 @@ import WebKit
     Task { [weak self] in
       guard let self else { return }
       guard let prepared = await self.cdn.prepare(video: stream, audio: audio,
-        avoidP2P: self.playbackPreferences.avoidP2P, allowProbe: false),
+        avoidP2P: self.playbackPreferences.avoidP2P, allowProbe: false, preserveRecovery: recovering),
         self.player === target, self.clipGeneration == generation, self.selectedStream?.id == stream.id else { return }
       target.load(video: prepared.video, audio: prepared.audio, start: time, paused: paused)
-      self.attachCDN(to: target, ticket: prepared.ticket)
+      await self.attachCDN(to: target, ticket: prepared.ticket)
     }
   }
   /// One step down, keeping the codec family when possible.
@@ -1797,15 +1861,32 @@ import WebKit
     let lower = manifest.video.filter { $0.quality < current.quality }.sorted { $0.quality > $1.quality }
     let family = current.codec.prefix(3)
     guard let next = lower.first(where: { $0.codec.hasPrefix(family) }) ?? lower.first else { return false }
-    changeQuality(next, persist: false)
+    changeQuality(next, persist: false, recovering: true)
     return true
   }
   /// Gives the CDN layer the hooks it needs to rebuild URLs or step quality down.
-  func attachCDN(to target: PlayerModel, ticket: Int) {
+  func attachCDN(to target: PlayerModel, ticket: Int) async {
+    let generation = clipGeneration
+    let video = selected
+    let stream = selectedStream
+    let identity = await service.authSnapshot()
+    guard player === target, clipGeneration == generation else { return }
+    let refresh: (() async throws -> (MediaStream, MediaStream?))? = usesUIFixtures ? nil : { [weak self, weak target] in
+      guard let self, let target, self.player === target, let video else { throw CancellationError() }
+      try await self.checkCurrentLoad(generation, expected: identity)
+      let streams = try await self.service.playback(video, expectedIdentity: identity)
+      try await self.checkCurrentLoad(generation, expected: identity)
+      guard self.player === target else { throw CancellationError() }
+      let choice = try PlaybackSelector.select(streams, preferences: self.playbackPreferences,
+        supportsHardware: Self.supportsHardware)
+      let selected = streams.video.first { $0.quality == stream?.quality && $0.codec == stream?.codec } ?? choice.video
+      self.manifest = streams; self.selectedStream = selected
+      return (selected, choice.audio)
+    }
     cdn.attach(player: target, ticket: ticket, reload: { [weak target] video, audio in
       guard let target else { return }
       target.load(video: video, audio: audio, start: target.time, paused: target.paused)
-    }, downgrade: { [weak self] in self?.downgradeQuality() ?? false })
+    }, downgrade: { [weak self] in self?.downgradeQuality() ?? false }, refresh: refresh)
   }
   /// Applies the checked 画面增强 modes to the playing engine, so the menu's checkmarks always
   /// match what is drawn. A choice this engine cannot run (or that no longer exists) is
@@ -1820,7 +1901,10 @@ import WebKit
     }
     // A fresh engine has no shaders; nothing to send when none are chosen.
     guard !runnable.isEmpty || reportingDropped else { return }
-    (pgcPlayback?.player ?? player).set("glsl-shaders", ShaderCatalog.paths(runnable).joined(separator: ":"))
+    let target = pgcPlayback?.player ?? player
+    // Shaders run on the high-quality scalers they always had, also when power saving chose fast.
+    if !runnable.isEmpty { target.prepareForShaders() }
+    target.set("glsl-shaders", ShaderCatalog.paths(runnable).joined(separator: ":"))
   }
   func enqueueDownload() { if selected != nil || pgcPlayback?.episode != nil { showingDownloadOptions = true } }
   func copyDownloadCommand(options: DownloadOptions) {
@@ -2062,6 +2146,7 @@ import WebKit
   }
   func shutdown() {
     browsingBesidePlayback = false
+    clipPlayback.stop(.stopped); aiRuntime?.shutdown()
     progressReporter.flush()
     cancelNextPlayback(); notifications.stop(); scrollAcceleration.stop()
     playbackFeatures.shutdown()
@@ -2071,7 +2156,6 @@ import WebKit
     livePlayback?.shutdown(); livePlayback = nil; liveMediaSubscription = nil
     cancelCuratedPlaylist(); clearPlaybackQueue()
     queueIdentityTask?.cancel(); queueIdentityTask = nil
-    videoCollection.cancel()
     authCallbacks.invalidate()
     accountTask?.cancel()
     loadTask?.cancel()

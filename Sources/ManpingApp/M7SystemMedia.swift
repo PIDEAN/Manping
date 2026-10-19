@@ -13,11 +13,10 @@ import MediaPlayer
   private var artist = ""
   /// A live stream has no seekable timeline: Control Center shows LIVE instead of a progress bar.
   private var live = false
-  func attach(player: PlayerModel, title: String, artist: String, artwork: NSImage? = nil, live: Bool = false,
+  func attach(player: PlayerModel, title: String, artist: String, live: Bool = false,
     previous: (@MainActor @Sendable () -> Void)?, next: (@MainActor @Sendable () -> Void)?) {
     clear()
     self.player = player; self.title = title; self.artist = artist; self.live = live
-    if let artwork { updateArtwork(artwork) }
     let center = MPRemoteCommandCenter.shared()
     install(center.playCommand) { [weak player] in player?.set("pause", "no") }
     install(center.pauseCommand) { [weak player] in player?.set("pause", "yes") }

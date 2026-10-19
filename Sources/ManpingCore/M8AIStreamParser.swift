@@ -5,6 +5,8 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
   case invalidResponse, providerError, truncatedStream, emptyResponse, outputLimit, transport(Int)
   case refused, planUsageLimit, planNotEligible, planUnavailable, planSignInRequired, unsupportedCapability
   case localModelUnavailable, localContextTooLong, localRefused
+  /// The provider reported that the request exceeds the model's context window.
+  case contextTooLong
   public var errorDescription: String? {
     switch self {
     case .missingConfiguration: "请先配置 AI 服务、模型和所需凭据。"
@@ -27,6 +29,7 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
     case .localModelUnavailable: AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
     case .localContextTooLong: "内容超出 Apple 本地模型的上下文长度，请改用其他 AI 服务或缩短问题。"
     case .localRefused: "Apple 本地模型出于安全策略未回答此请求。"
+    case .contextTooLong: "内容超出当前模型的上下文长度，请在 设置 › AI 中填写模型的上下文长度或改用更大的模型。"
     }
   }
 }
@@ -202,6 +205,14 @@ public struct AIStreamParser: Sendable {
   private static func geminiText(_ candidate: [String: Any]) -> String {
     guard let content = candidate["content"] as? [String: Any], let parts = content["parts"] as? [[String: Any]] else { return "" }
     return parts.filter { $0["thought"] as? Bool != true }.compactMap { $0["text"] as? String }.joined()
+  }
+  static let overflowMarkers = ["context_length_exceeded", "maximum context length", "context window", "context length",
+    "prompt is too long", "too many tokens", "input is too long", "exceeds the context", "token limit", "string_above_max_length",
+    "input token count", "reduce the length"]
+  /// Recognises context-overflow errors across providers from a bounded error body.
+  static func isContextOverflow(_ data: Data) -> Bool {
+    let text = String(decoding: data.prefix(65_536), as: UTF8.self).lowercased()
+    return overflowMarkers.contains { text.contains($0) }
   }
   public static func complete(_ data: Data, family: AIProtocolFamily) throws -> String {
     guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw AIChatFailure.invalidResponse }

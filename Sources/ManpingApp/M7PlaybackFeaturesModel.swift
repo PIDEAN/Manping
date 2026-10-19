@@ -13,6 +13,8 @@ import Foundation
   @Published var standardSize = true
   @Published private(set) var sending = false
   @Published private(set) var tracks: [DownloadSubtitleTrack] = []
+  /// Chapters (`view_points`) from the same player-metadata answer the tracks come from; AI shares it.
+  @Published private(set) var viewPoints: [AIViewPoint] = []
   @Published private(set) var selectedTrackID: String?
   @Published private(set) var subtitleLoading = false
   /// The track list for the current media is being read.
@@ -125,8 +127,13 @@ import Foundation
       self.identity = snapshot
       guard let aid = self.aid, let cid = self.cid, aid > 0, cid > 0 else { self.tracksLoading = false; return }
       do {
-        let result = try await service.downloadSubtitleTracks(aid: aid, cid: cid, expectedIdentity: snapshot)
+        // One shared request per media and identity: subtitles here, chapters for AI.
+        let metadata = try await service.playerMetadata(aid: aid, cid: cid, expectedIdentity: snapshot)
         guard !Task.isCancelled, current == self.generation else { return }
+        self.viewPoints = metadata.viewPoints
+        guard let result = metadata.subtitles else {
+          throw BiliError.invalidResponse(metadata.subtitleError ?? "字幕索引格式无效")
+        }
         self.tracks = result; self.tracksLoading = false
         if let trackID, let player, let track = result.first(where: { $0.id == trackID }) {
           self.selectSubtitle(track, player: player)
@@ -157,7 +164,7 @@ import Foundation
     generation &+= 1; metadataTask?.cancel(); sendTask?.cancel(); subtitleTask?.cancel()
     metadataTask = nil; sendTask = nil; subtitleTask = nil
     subtitlePlayer?.clearSubtitle(); subtitlePlayer = nil; clearSubtitleFile()
-    identity = nil; tracks = []; message = nil
+    identity = nil; tracks = []; viewPoints = []; message = nil
     if clearInput { input = "" }
     sending = false; subtitleLoading = false; tracksLoading = false; selectedTrackID = nil
   }

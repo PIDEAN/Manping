@@ -102,18 +102,18 @@ final class CDNTests: XCTestCase {
   }
 
   func testSmartCacheScalesWithBitrateAndStalls() {
-    let calm = SmartCachePolicy.plan(bitsPerSecond: 40_000_000, userForwardMB: 300, userBackMB: 0, userSeconds: 60, recentStalls: 0)
+    let calm = SmartCachePolicy.plan(bitsPerSecond: 40_000_000, userForwardMB: 300, userBackMB: 0, recentStalls: 0)
     XCTAssertEqual(calm.readaheadSeconds, 120)
     XCTAssertGreaterThan(calm.forwardBytes, 300 * 1_048_576, "4K bitrate needs more than the 300 MB floor")
     XCTAssertEqual(calm.pauseWaitSeconds, 1)
-    let rough = SmartCachePolicy.plan(bitsPerSecond: 40_000_000, userForwardMB: 300, userBackMB: 0, userSeconds: 60, recentStalls: 3)
+    let rough = SmartCachePolicy.plan(bitsPerSecond: 40_000_000, userForwardMB: 300, userBackMB: 0, recentStalls: 3)
     XCTAssertEqual(rough.readaheadSeconds, 180)
     XCTAssertEqual(rough.pauseWaitSeconds, 5)
     XCTAssertLessThanOrEqual(rough.forwardBytes, 1536 * 1_048_576)
-    let defaults = SmartCachePolicy.plan(bitsPerSecond: 20_000_000, userForwardMB: 300, userBackMB: 0, userSeconds: 300, recentStalls: 0)
+    let defaults = SmartCachePolicy.plan(bitsPerSecond: 20_000_000, userForwardMB: 300, userBackMB: 0, recentStalls: 0)
     XCTAssertEqual(defaults.readaheadSeconds, 120, "the 300 s default no longer buffers whole 4K episodes")
     XCTAssertLessThan(defaults.forwardBytes, 400 * 1_048_576)
-    let small = SmartCachePolicy.plan(bitsPerSecond: 1_000_000, userForwardMB: 300, userBackMB: 0, userSeconds: 60, recentStalls: 0)
+    let small = SmartCachePolicy.plan(bitsPerSecond: 1_000_000, userForwardMB: 300, userBackMB: 0, recentStalls: 0)
     XCTAssertEqual(small.forwardBytes, 300 * 1_048_576, "the user's cache size is a floor")
   }
 
@@ -233,6 +233,148 @@ final class CDNTests: XCTestCase {
     XCTAssertNil(MediaRelay.parseRange("bytes=-500"))
   }
 
+  func testRelayRetryBudgetReturns502AndReleasesInflight() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0.01 }
+    fetcher.failing = [sample.host!]
+    let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536, retryStartBudget: .milliseconds(550))
+    try await relay.start()
+    defer { relay.stop() }
+    relay.setHosts([try XCTUnwrap(CDNHost(sample.host!))])
+    let local = try XCTUnwrap(relay.register(sample))
+    var request = URLRequest(url: local)
+    request.timeoutInterval = 3
+    let clock = ContinuousClock(), started = clock.now
+    let (data, response) = try await URLSession.shared.data(for: request)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
+    XCTAssertTrue(data.isEmpty)
+    XCTAssertGreaterThanOrEqual(started.duration(to: clock.now), .milliseconds(450))
+    XCTAssertLessThan(started.duration(to: clock.now), .seconds(2), "backoff is truncated to the retry budget")
+    XCTAssertEqual(fetcher.totalRequests, 2, "no third attempt starts after the budget expires")
+    XCTAssertEqual(relay.snapshot().retries, 1)
+    try await assertRelayIdle(relay, fetcher: fetcher)
+    try await Task.sleep(for: .milliseconds(100))
+    XCTAssertEqual(fetcher.totalRequests, 2, "returning 502 leaves no background retries")
+  }
+
+  func testRelayClearsExpiredStatusAfterSuccessfulRetry() async throws {
+    for status in [403, 410] {
+      let relay = MediaRelay(fetcher: ExpiredOnceFetcher(status: status), chunkSize: 65_536)
+      try await relay.start()
+      let local = try XCTUnwrap(relay.register(sample))
+      let request = Task { try await URLSession.shared.data(from: local) }
+      for _ in 0..<50 {
+        if relay.expiredStatus(for: [local]) == status { break }
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      XCTAssertEqual(relay.expiredStatus(for: [local]), status)
+      let (data, response) = try await request.value
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+      XCTAssertEqual(data.count, 32_768)
+      XCTAssertEqual(relay.expiredStatus(for: [local]), 0, "an old expired URL must not poison a recovered stream")
+      relay.stop()
+    }
+  }
+
+  func testRelayVideoSuccessCannotClearExpiredAudioStatus() async throws {
+    for status in [403, 410] {
+      let fetcher = ExpiredAudioFetcher(status: status)
+      let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536)
+      try await relay.start()
+      defer { relay.stop() }
+      let video = try XCTUnwrap(relay.register(sample))
+      let audio = try XCTUnwrap(relay.register(URL(string: "https://example.invalid/audio.m4s")!))
+      let audioRequest = Task { try await URLSession.shared.data(from: audio) }
+      for _ in 0..<100 {
+        if relay.expiredStatus(for: [audio]) == status { break }
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      XCTAssertEqual(relay.expiredStatus(for: [audio]), status)
+      let (videoData, videoResponse) = try await URLSession.shared.data(from: video)
+      XCTAssertEqual((videoResponse as? HTTPURLResponse)?.statusCode, 200)
+      XCTAssertEqual(videoData.count, 32_768)
+      XCTAssertEqual(relay.expiredStatus(for: [video]), 0)
+      XCTAssertEqual(relay.expiredStatus(for: [video, audio]), status,
+        "successful video must not hide the separate expired audio source")
+      await fetcher.recoverAudio()
+      let (audioData, audioResponse) = try await audioRequest.value
+      XCTAssertEqual((audioResponse as? HTTPURLResponse)?.statusCode, 200)
+      XCTAssertEqual(audioData.count, 32_768)
+      XCTAssertEqual(relay.expiredStatus(for: [video, audio]), 0)
+    }
+  }
+
+  func testRelayBudgetSurvivesNewReadsAndReplacementStreams() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0.01 }
+    fetcher.failing = [sample.host!]
+    let budget = RelayRetryBudget(seconds: 0.05)
+    let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536)
+    try await relay.start()
+    defer { relay.stop() }
+    let first = try XCTUnwrap(relay.register(sample, retryBudget: budget))
+    let (_, response) = try await URLSession.shared.data(from: first)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
+    let requests = fetcher.totalRequests
+    XCTAssertTrue(budget.exhausted)
+    let replacement = try XCTUnwrap(relay.register(sample, retryBudget: budget))
+    for url in [first, replacement] {
+      let (_, response) = try await URLSession.shared.data(from: url)
+      XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
+    }
+    XCTAssertEqual(fetcher.totalRequests, requests, "a new read or playurl replacement must not replenish retry budget")
+    try await assertRelayIdle(relay, fetcher: fetcher)
+  }
+
+  func testRelayLetsAnActiveSlowFetchFinishAfterRetryBudget() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0.2 }
+    let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536, retryStartBudget: .zero)
+    try await relay.start()
+    defer { relay.stop() }
+    relay.setHosts([try XCTUnwrap(CDNHost(sample.host!))])
+    let local = try XCTUnwrap(relay.register(sample))
+    let clock = ContinuousClock(), started = clock.now
+    let (data, response) = try await URLSession.shared.data(from: local)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+    XCTAssertEqual(data, FakeFetcher.bytes(0..<32_768))
+    XCTAssertGreaterThan(started.duration(to: clock.now), .milliseconds(150))
+    XCTAssertEqual(fetcher.totalRequests, 1)
+    XCTAssertTrue(fetcher.suppliedTimeouts.allSatisfy { $0 >= 8 }, "the soft budget never shortens the transport timeout")
+    XCTAssertEqual(fetcher.cancelledRequests, 0)
+    try await assertRelayIdle(relay, fetcher: fetcher)
+  }
+
+  func testRelayCancellationDuringBudgetLeavesNoRequests() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 10 }
+    let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536, retryStartBudget: .seconds(5))
+    try await relay.start()
+    defer { relay.stop() }
+    relay.setHosts([try XCTUnwrap(CDNHost(sample.host!))])
+    let local = try XCTUnwrap(relay.register(sample))
+    let reader = Task { try? await URLSession.shared.data(from: local) }
+    for _ in 0..<100 where fetcher.activeRequests == 0 { try await Task.sleep(for: .milliseconds(10)) }
+    XCTAssertEqual(fetcher.activeRequests, 1, "cancel an actual upstream request")
+    relay.unregisterAll()
+    reader.cancel()
+    _ = await reader.value
+    try await assertRelayIdle(relay, fetcher: fetcher)
+    XCTAssertEqual(fetcher.cancelledRequests, 1)
+    let requests = fetcher.totalRequests
+    try await Task.sleep(for: .milliseconds(150))
+    XCTAssertEqual(fetcher.totalRequests, requests, "cancellation cannot start a retry")
+  }
+
+  private func assertRelayIdle(_ relay: MediaRelay, fetcher: FakeFetcher,
+    file: StaticString = #filePath, line: UInt = #line) async throws {
+    for _ in 0..<100 {
+      let snapshot = relay.snapshot()
+      if snapshot.activeConnections == 0, snapshot.hosts.allSatisfy({ $0.inflight == 0 }),
+        fetcher.activeRequests == 0 { return }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertEqual(fetcher.activeRequests, 0, file: file, line: line)
+    XCTAssertEqual(relay.snapshot().activeConnections, 0, file: file, line: line)
+    XCTAssertTrue(relay.snapshot().hosts.allSatisfy { $0.inflight == 0 }, file: file, line: line)
+  }
+
   // MARK: Review regressions
 
   func testRangeLoaderRejectsIgnoredRangesAndCapsTheBody() {
@@ -331,6 +473,95 @@ final class CDNTests: XCTestCase {
   }
 
   // MARK: Proxied routes
+
+  func testManualRelayNeverFallsBackToOtherIssuedOrProxiedHosts() async throws {
+    let direct = FakeFetcher(total: 32_768) { _ in 0 }
+    let proxy = FakeFetcher(total: 32_768) { _ in 0 }
+    direct.failing = [sample.host!]
+    let relay = MediaRelay(fetcher: direct, chunkSize: 65_536, retryStartBudget: .milliseconds(150))
+    try await relay.start()
+    defer { relay.stop() }
+    relay.setManualHost(sample.host)
+    relay.setHosts([])
+    relay.setProxyFetcher(proxy)
+    relay.setProxiedHosts([], issued: true)
+    let foreign = URL(string: "https://overseas.example.invalid/upgcxcode/media.m4s")!
+    let local = try XCTUnwrap(relay.register(foreign, backups: [sample]))
+    let (_, response) = try await URLSession.shared.data(from: local)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
+    XCTAssertGreaterThan(direct.requests(sample.host!), 0)
+    XCTAssertEqual(direct.requests(foreign.host!), 0)
+    XCTAssertEqual(proxy.requests(foreign.host!), 0, "the proxied issued primary is also restricted")
+  }
+
+  func testManualRelayWithNoCompatibleSourceDoesNotFailOpen() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0 }
+    let relay = MediaRelay(fetcher: fetcher, chunkSize: 65_536)
+    try await relay.start()
+    defer { relay.stop() }
+    relay.setManualHost(sample.host)
+    let foreign = URL(string: "https://overseas.example.invalid/upgcxcode/media.m4s")!
+    let local = try XCTUnwrap(relay.register(foreign))
+    let (_, response) = try await URLSession.shared.data(from: local)
+    XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
+    XCTAssertEqual(fetcher.totalRequests, 0)
+  }
+
+  func testRemovingManualRestrictionRestoresStoredUnswappableBackup() async throws {
+    for disableManual in [false, true] {
+      let chunk = 65_536
+      let fetcher = FakeFetcher(total: 32 * chunk) { _ in 0.002 }
+      let relay = MediaRelay(fetcher: fetcher, chunkSize: chunk)
+      try await relay.start()
+      defer { relay.stop() }
+      relay.setManualHost(sample.host)
+      relay.setHosts([try XCTUnwrap(CDNHost(sample.host!))])
+      let overseas = URL(string: "https://overseas.example.invalid/upgcxcode/media.m4s")!
+      let local = try XCTUnwrap(relay.register(sample, backups: [overseas]))
+      var request = URLRequest(url: local)
+      request.setValue("bytes=0-1023", forHTTPHeaderField: "Range")
+      let (_, first) = try await URLSession.shared.data(for: request)
+      XCTAssertEqual((first as? HTTPURLResponse)?.statusCode, 206)
+      XCTAssertEqual(fetcher.requests(overseas.host!), 0)
+      relay.setManualHost(nil)
+      if disableManual { relay.setDisabled([sample.host!]) }
+      else { relay.markUnreachable([sample.host!]) }
+      // Read beyond any first-read prefetch, using the same registered source and retry budget.
+      request.setValue("bytes=1048576-1049599", forHTTPHeaderField: "Range")
+      let (_, second) = try await URLSession.shared.data(for: request)
+      XCTAssertEqual((second as? HTTPURLResponse)?.statusCode, 206)
+      XCTAssertGreaterThan(fetcher.requests(overseas.host!), 0,
+        "unpinning or disabling the pinned node must release the stored issued alternative")
+    }
+  }
+
+  func testCancelledProbeDoesNotLaunchNextTarget() async throws {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0.1 }
+    var prober = CDNProber(fetcher: fetcher)
+    prober.concurrency = 1
+    let targets = ["first.invalid", "second.invalid"].map {
+      CDNProber.Target(key: $0, url: URL(string: "https://\($0)/fixture")!)
+    }
+    let task = Task { await prober.benchmark(targets) }
+    for _ in 0..<100 where fetcher.totalRequests == 0 { try await Task.sleep(for: .milliseconds(1)) }
+    XCTAssertEqual(fetcher.totalRequests, 1)
+    task.cancel()
+    _ = await task.value
+    XCTAssertEqual(fetcher.totalRequests, 1, "no next quick target or sustained request starts after cancellation")
+  }
+
+  func testAlreadyCancelledProbeDoesNotStartAnyRequest() async {
+    let fetcher = FakeFetcher(total: 32_768) { _ in 0 }
+    let prober = CDNProber(fetcher: fetcher)
+    let url = sample
+    let task = Task {
+      try? await Task.sleep(for: .seconds(1))
+      return await prober.benchmark([.init(key: "fixture", url: url)])
+    }
+    task.cancel()
+    _ = await task.value
+    XCTAssertEqual(fetcher.totalRequests, 0)
+  }
 
   func testProxiedRoutesTakeOverWhenEveryDirectNodeIsRefused() async throws {
     let total = 3 * 256 * 1024 + 4321
@@ -497,8 +728,14 @@ private final class FakeFetcher: CDNRangeFetching, @unchecked Sendable {
   var short: Set<String> = []
   private var served: [String: Int] = [:]
   private var calls: [String: Int] = [:]
+  private var active = 0
+  private var cancelled = 0
+  private var timeouts: [TimeInterval] = []
   func requests(_ host: String) -> Int { lock.withLock { calls[host] ?? 0 } }
   var totalRequests: Int { lock.withLock { calls.values.reduce(0, +) } }
+  var activeRequests: Int { lock.withLock { active } }
+  var cancelledRequests: Int { lock.withLock { cancelled } }
+  var suppliedTimeouts: [TimeInterval] { lock.withLock { timeouts } }
   private let lock = NSLock()
   init(total: Int, latency: @escaping @Sendable (String) -> Double) { self.total = total; self.latency = latency }
 
@@ -506,10 +743,12 @@ private final class FakeFetcher: CDNRangeFetching, @unchecked Sendable {
 
   func fetch(_ url: URL, range: ClosedRange<Int>, timeout: TimeInterval) async -> CDNFetchOutcome {
     let host = url.host ?? ""
-    lock.withLock { calls[host, default: 0] += 1 }
+    lock.withLock { calls[host, default: 0] += 1; active += 1; timeouts.append(timeout) }
+    defer { lock.withLock { active -= 1 } }
     let delay = latency(host)
     if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
     if Task.isCancelled {
+      lock.withLock { cancelled += 1 }
       return CDNFetchOutcome(status: 0, data: Data(), ttfbMs: 0, durationMs: 0, totalLength: nil, contentType: nil, error: "已取消")
     }
     let dead = lock.withLock { () -> Bool in
@@ -527,5 +766,35 @@ private final class FakeFetcher: CDNRangeFetching, @unchecked Sendable {
     let data = Self.bytes(range.lowerBound..<(end + 1))
     return CDNFetchOutcome(status: 206, data: data, ttfbMs: max(1, delay * 1000), durationMs: max(1, delay * 1000 + 1),
       totalLength: total, contentType: "video/mp4", error: nil)
+  }
+}
+
+private actor ExpiredAudioFetcher: CDNRangeFetching {
+  let status: Int
+  private var recovered = false
+  init(status: Int) { self.status = status }
+  func recoverAudio() { recovered = true }
+  func fetch(_ url: URL, range: ClosedRange<Int>, timeout: TimeInterval) async -> CDNFetchOutcome {
+    if url.lastPathComponent == "audio.m4s" && !recovered {
+      return CDNFetchOutcome(status: status, data: Data(), ttfbMs: 1, durationMs: 1,
+        totalLength: nil, contentType: nil, error: "expired")
+    }
+    return CDNFetchOutcome(status: 206, data: Data(repeating: 0, count: 32_768), ttfbMs: 1,
+      durationMs: 1, totalLength: 32_768, contentType: "video/mp4", error: nil)
+  }
+}
+
+private actor ExpiredOnceFetcher: CDNRangeFetching {
+  let status: Int
+  var first = true
+  init(status: Int) { self.status = status }
+  func fetch(_ url: URL, range: ClosedRange<Int>, timeout: TimeInterval) async -> CDNFetchOutcome {
+    if first {
+      first = false
+      return CDNFetchOutcome(status: status, data: Data(), ttfbMs: 1, durationMs: 1,
+        totalLength: nil, contentType: nil, error: "expired")
+    }
+    return CDNFetchOutcome(status: 206, data: Data(repeating: 0, count: 32_768), ttfbMs: 1,
+      durationMs: 1, totalLength: 32_768, contentType: "video/mp4", error: nil)
   }
 }

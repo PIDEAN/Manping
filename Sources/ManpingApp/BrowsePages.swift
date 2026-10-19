@@ -6,7 +6,7 @@ struct VideoPartitionPage: View {
   let open: (Video) -> Void
   var refreshToken = 0
   /// A partition's ranking (排行榜), moved here from the old 流行 sidebar.
-  var ranking: ((Int) async throws -> BrowseVideoPage)? = nil
+  let ranking: (Int) async throws -> BrowseVideoPage
 
   @StateObject private var directory = BrowsePartitionDirectory()
   @StateObject private var feed = BrowseFeedModel()
@@ -36,7 +36,7 @@ struct VideoPartitionPage: View {
       VStack(spacing: 0) {
         if let parent {
           header(parent: parent)
-          BrowseVideoResults(feed: feed, open: open)
+          BrowseVideoResults(feed: feed, open: open).equatable()
         } else if directory.isLoading {
           PageStateView(.loading, title: "正在加载分区…")
         } else if let error = directory.error {
@@ -68,8 +68,8 @@ struct VideoPartitionPage: View {
       guard let parent, let requestKey else { return }
       let chosenChild = child
       let chosenOrder = order
-      if showsRanking, let ranking {
-        feed.activate(key: requestKey, refreshToken: refreshToken) { [parent] _ in try await ranking(parent.id) }
+      if showsRanking {
+        feed.activate(key: requestKey, refreshToken: refreshToken) { [parent, ranking] _ in try await ranking(parent.id) }
         return
       }
       feed.activate(key: requestKey, refreshToken: refreshToken) { [service, parent, chosenChild, chosenOrder] cursor in
@@ -103,7 +103,7 @@ struct VideoPartitionPage: View {
               Spacer(minLength: 0)
             }.font(Theme.Font.body).padding(.horizontal, 10).frame(height: Theme.rowHeight)
           }.buttonStyle(
-            SecondaryNavigationStyle(selected: selectedParentID == partition.id)
+            SidebarRowStyle(selected: selectedParentID == partition.id)
           )
         }
         if directory.isLoading {
@@ -127,10 +127,8 @@ struct VideoPartitionPage: View {
       ScrollView(.horizontal) {
         HStack(spacing: 6) {
           sectionButton("精选", childID: nil)
-          if ranking != nil {
-            Button { selectedChildID = nil; showsRanking = true } label: { Text("排行榜") }
-              .buttonStyle(ChipStyle(selected: showsRanking))
-          }
+          Button { selectedChildID = nil; showsRanking = true } label: { Text("排行榜") }
+            .buttonStyle(ChipStyle(selected: showsRanking))
           ForEach(parent.children, id: \.id) { child in
             sectionButton(child.title, childID: child.id)
           }
@@ -178,9 +176,21 @@ private extension PartitionOrder {
   }
 }
 
-struct BrowseVideoResults: View {
+/// Equatable on the feed alone (callers pass `.equatable()`): `open` is always the app model's
+/// `open`, so an unrelated AppModel change that re-renders the page does not re-render the grid
+/// and its visible cards. The feed's own changes still update it through `@ObservedObject`.
+struct BrowseVideoResults: View, Equatable {
   @ObservedObject var feed: BrowseFeedModel
   let open: (Video) -> Void
+  private let feedID: ObjectIdentifier
+
+  init(feed: BrowseFeedModel, open: @escaping (Video) -> Void) {
+    _feed = ObservedObject(wrappedValue: feed)
+    self.open = open
+    feedID = ObjectIdentifier(feed)
+  }
+
+  nonisolated static func == (lhs: Self, rhs: Self) -> Bool { lhs.feedID == rhs.feedID }
 
   var body: some View {
     Group {
@@ -201,7 +211,7 @@ struct BrowseVideoResults: View {
             ForEach(feed.state.items) { video in
               VideoCard(video: video) { open(video) }
             }
-          }
+          }.cardGridContent()
           if let error = feed.state.error {
             VStack(spacing: 10) {
               InlineErrorText(message: "没能加载更多视频：\(error)")
@@ -212,6 +222,7 @@ struct BrowseVideoResults: View {
           }
         }
         .contentMargins(Theme.gridPadding, for: .scrollContent)
+        .cardGrid()
         .performanceScrollProbe(page: PerformanceOptions.scrollPage ?? "")
         .prefetchOnScroll(enabled: feed.state.hasMore && !feed.state.isLoading && feed.state.error == nil) {
           feed.loadNext()

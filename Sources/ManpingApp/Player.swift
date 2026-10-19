@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ManpingCore
 import CMpv
 import OpenGL.GL3
@@ -10,6 +11,9 @@ private final class EngineReference: @unchecked Sendable {
   var chapterGeneration = -2
   var chapterCount = -1
   var chapters: [PlaybackChapter] = []
+  /// Poll ticks (10 Hz) and the load whose source transfer is known; only the poll queue uses them.
+  var tick = 0
+  var gammaGeneration = -2
   init(_ pointer: OpaquePointer) { self.pointer = pointer }
 }
 
@@ -96,6 +100,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
 
 @MainActor final class PlayerModel: ObservableObject {
   let clock = PlaybackClock()
+  /// Every seek asked of this player, sent before it is carried out (片段播放 tells its own apart).
+  let seekRequests = PassthroughSubject<Double, Never>()
   var time: Double {
     get { clock.time }
     set { if clock.time != newValue { clock.time = newValue } }
@@ -107,6 +113,14 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   private(set) var bufferedAhead: Double = 0
   @Published private(set) var eofReached = false
   private var eofArmed = false
+  private(set) var terminalFailure = false
+  private(set) var terminalFailureAt: Double?
+  var presentationExpected: Bool { surface?.presentationExpected ?? false }
+  var onRecoverySeek: (() -> Void)?
+  var presentedFrames: Int {
+    let first = surface?.renderEvidence.split(separator: " ").first ?? ""
+    return first.hasPrefix("frames=") ? Int(first.dropFirst(7)) ?? 0 : 0
+  }
   private let eofGeneration = PlaybackEOFGeneration()
   @Published var paused = false
   /// 仅播放声音: video decoding off for this session (music, podcasts, saving power).
@@ -142,7 +156,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   private let sleepGuard = PlaybackPowerAssertion()
   @Published var volume: Double = 80
   @Published var speed: Double = 1
-  @Published var status = "未加载"
+  var status = "未加载"
   @Published var error: String?
   @Published var hardware = ""
   /// Volume and danmaku visibility chosen during this app session carry over to the next
@@ -155,6 +169,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   var danmakuFontSize: Double = 24
   var danmakuOpacity: Double = 1
   var danmakuSpeed: Double = 1
+  /// 弹幕帧率: `DanmakuFrameRate.display` or `.sixty`.
+  var danmakuFrameRate = DanmakuFrameRate.display
   /// Fraction of the view height scrolling and top danmaku may use (1/4, 1/2 or 1). It is a
   /// player-local preference kept outside the settings catalog.
   var danmakuArea: Double = PlayerModel.storedDanmakuArea {
@@ -194,8 +210,19 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   }
   private let queue = DispatchQueue(label: "io.github.pidean.manping.mpv.commands", qos: .userInitiated)
   private var poll: DispatchSourceTimer?
+  private(set) var mediaIsolationVerified = false
   private(set) var engine: OpaquePointer?
   private var engineSignature = ""
+  private var enginePath = ""
+  /// The built-in mpv profile this engine applied (「自动」 resolved when it was created).
+  private(set) var engineProfile = ""
+  /// The source's transfer (`video-params/gamma`), kept from the last video that reported one.
+  /// `pq` and `hlg` select EDR output.
+  private(set) var videoGamma = ""
+  var hdrSource: Bool { ["pq", "hlg"].contains(videoGamma) }
+  /// `--diagnose` runs: renderer evidence keeps its earlier, power-independent choices.
+  static let diagnosticMode = ProcessInfo.processInfo.arguments.contains("--diagnose")
+    || ProcessInfo.processInfo.arguments.contains("--diagnose-bvid")
   private var closing = false
   private var pending: (video: URL, audio: URL?, start: Double, paused: Bool)?
   private var generation = 0
@@ -210,11 +237,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   var tracksDuration = true
   /// Display reconfigurations (layer or tone-mapping target) since launch; diagnostics only.
   var displayUpdates = 0
-  private var clockUpdated = Date()
   /// Smooth clock for danmaku, fed from the sampling thread (see DanmakuClock).
   nonisolated let danmakuClock = DanmakuClock()
-  /// Media time at `host` (CACurrentMediaTime) for placing danmaku.
-  nonisolated func mediaClock(at host: CFTimeInterval) -> Double? { danmakuClock.media(at: host) }
   var mediaClock: Double { danmakuClock.media(at: CACurrentMediaTime()) ?? time }
   static var libraryPath: String {
     if let override = ProcessInfo.processInfo.environment["MANPING_MPV_LIBRARY"] { return override }
@@ -231,7 +255,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       usesExternalMpv = true
       let external = M7ExternalMpv { [weak self] sample in
         Task { @MainActor [weak self] in
-          guard let self, !self.closing else { return }
+          guard let self, !self.closing, !self.terminalFailure else { return }
           self.time = sample.time
           self.danmakuClock.update(.init(host: CACurrentMediaTime(), media: sample.time,
             playing: !sample.paused, speed: sample.speed))
@@ -239,7 +263,6 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
           if self.paused != sample.paused { self.paused = sample.paused }
           if self.speed != sample.speed && !self.isStale(sample.speed, against: self.userSpeed) { self.speed = sample.speed }
           if self.volume != sample.volume && !self.isStale(sample.volume, against: self.userVolume) { self.volume = sample.volume }
-          self.clockUpdated = Date()
           if self.chapters != sample.chapters { self.chapters = sample.chapters }
           if !sample.eof && !sample.idle && sample.duration > 0 { self.eofArmed = true }
           if sample.eof && self.eofArmed { self.eofReached = true }
@@ -251,33 +274,46 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       }
       self.external = external
       external.start(executable: executable)
+      engineProfile = resolvedProfile()
       applyRuntime(previous: nil)
       return
     }
     var message = [CChar](repeating: 0, count: 2048)
     let customLibrary = runtimeSettings.text(.customLibMpv)
     let path = customLibrary.isEmpty ? Self.libraryPath : customLibrary
-    // A profile switch needs a fresh engine (profiles set different option sets).
-    let signature = path + "\u{0}" + runtimeSettings.text(.mpvProfile)
+    // A profile switch needs a fresh engine (profiles set different option sets). 「自动」 is
+    // resolved here, once per engine, from the power state.
+    let profile = resolvedProfile()
+    let signature = Self.signature(path: path, profile: profile)
+    let isolated = PerformanceOptions.requested
     let reference: EngineReference?
     if let reused = MpvEnginePool.shared.checkout(signature: signature) {
       reference = EngineReference(reused)
     } else {
-      reference = queue.sync { bili_mpv_create(path, &message, message.count).map(EngineReference.init) }
+      reference = queue.sync { bili_mpv_create(path, isolated ? 1 : 0, &message, message.count).map(EngineReference.init) }
       if let handle = reference?.pointer, let ca = Bundle.main.url(forResource: "cacert", withExtension: "pem") {
         queue.sync { _ = bili_mpv_set(handle, "tls-ca-file", ca.path) }
       }
     }
     let handle = reference?.pointer
     guard let handle, let reference else {
+      if isolated { PerformanceRun.log("PERF media_isolation requested=1 verified=0") }
       error = String(cString: message)
       return
     }
+    // Process argv is immutable, so the engine pool cannot cross production/perf modes.
+    let isolationMask = queue.sync { bili_mpv_isolation_mask(handle) }
+    mediaIsolationVerified = isolated && isolationMask == 7
+    if isolated {
+      PerformanceRun.log("PERF media_isolation requested=1 verified=\(mediaIsolationVerified ? 1 : 0) ytdl=\(isolationMask & 1 != 0 ? "no" : "unverified") load_scripts=\(isolationMask & 2 != 0 ? "no" : "unverified") cookies=\(isolationMask & 4 != 0 ? "no" : "unverified")")
+    }
     engine = handle
     engineSignature = signature
-    let diagnosticMode =
-      ProcessInfo.processInfo.arguments.contains("--diagnose")
-      || ProcessInfo.processInfo.arguments.contains("--diagnose-bvid")
+    enginePath = path
+    engineProfile = profile
+    let diagnosticMode = Self.diagnosticMode
+    // The playback report (debug builds) reads the media strings; it samples them once a second.
+    let reportsMedia = diagnosticMode || ProcessInfo.processInfo.arguments.contains("--ui-playback-report") || PerformanceOptions.requested
     let eofGeneration = self.eofGeneration
     let danmakuClock = self.danmakuClock
     let timer = DispatchSource.makeTimerSource(queue: queue)
@@ -318,12 +354,55 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         }
       }
       let chapters = reference.chapters
-      var hardware = [CChar](repeating: 0, count: 128)
-      _ = bili_mpv_string(handle, "hwdec-current", &hardware, hardware.count)
-      let hardwareText = String(cString: hardware)
-      var passes = [CChar](repeating: 0, count: 32768)
-      _ = bili_mpv_passes(handle, &passes, passes.count)
-      let passText = String(cString: passes)
+      var cacheAhead: Double = 0
+      let cacheKnown = bili_mpv_number_checked(handle, "demuxer-cache-duration", &cacheAhead) >= 0
+      // Clock, state, buffer and events above and below run every tick (10 Hz). Decoder name,
+      // frame counters and the source transfer once a second; vo-passes and the media strings
+      // only for diagnostics. `--diagnose` keeps reading everything every tick, as before.
+      reference.tick &+= 1
+      let slow = diagnosticMode || reference.tick % 10 == 1
+      var hardwareText: String?
+      if reportsMedia && slow {
+        var hardware = [CChar](repeating: 0, count: 128)
+        _ = bili_mpv_string(handle, "hwdec-current", &hardware, hardware.count)
+        hardwareText = String(cString: hardware)
+      }
+      // The source transfer picks EDR or SDR output: read it every tick until this load's video
+      // reports one, then once a second. An empty value (no video yet) never replaces a known one.
+      var gamma: String?
+      // The picture's display size (`video-params/dw` × `dh`) is read with the transfer, so the
+      // stage fits the video layer to the real shape soon after the first frame.
+      var displayAspect: Double?
+      if slow || reference.gammaGeneration != sampledGeneration {
+        var width: Double = 0, height: Double = 0
+        if bili_mpv_number_checked(handle, "video-params/dw", &width) >= 0,
+          bili_mpv_number_checked(handle, "video-params/dh", &height) >= 0,
+          width.isFinite, height.isFinite, width >= 16, height >= 16 {
+          displayAspect = width / height
+        }
+        var buffer = [CChar](repeating: 0, count: 64)
+        if bili_mpv_string(handle, "video-params/gamma", &buffer, buffer.count) >= 0, buffer[0] != 0 {
+          gamma = String(cString: buffer)
+          reference.gammaGeneration = sampledGeneration
+        }
+      }
+      var passText: String?
+      var media: [String: String]?
+      if reportsMedia && slow {
+        var passes = [CChar](repeating: 0, count: 32768)
+        _ = bili_mpv_passes(handle, &passes, passes.count)
+        passText = String(cString: passes)
+        let names = [
+          "audio-codec-name", "video-params/pixelformat", "video-params/hw-pixelformat",
+          "video-params/primaries", "video-params/gamma", "video-params/colormatrix",
+        ]
+        media = Dictionary(
+          uniqueKeysWithValues: names.map { name in
+            var buffer = [CChar](repeating: 0, count: 256)
+            _ = bili_mpv_string(handle, name, &buffer, buffer.count)
+            return (name, String(cString: buffer))
+          })
+      }
       var logs: [String] = []
       for _ in 0..<64 {
         var message = [CChar](repeating: 0, count: 2048)
@@ -332,37 +411,58 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         let line = DiagnosticRedactor.sanitize(String(cString: message))
         if !line.hasPrefix("event:") { logs.append(line) }
       }
-      let names = [
-        "audio-codec-name", "video-params/pixelformat", "video-params/hw-pixelformat",
-        "video-params/primaries", "video-params/gamma", "video-params/colormatrix",
-      ]
-      let media = Dictionary(
-        uniqueKeysWithValues: names.map { name in
-          var buffer = [CChar](repeating: 0, count: 256)
-          _ = bili_mpv_string(handle, name, &buffer, buffer.count)
-          return (name, String(cString: buffer))
-        })
       let events = logs
-      let properties = [
-        "frame-drop-count", "decoder-frame-drop-count", "mistimed-frame-count",
-        "demuxer-cache-duration", "demuxer-cache-state/fw-bytes", "video-params/sig-peak",
-        "estimated-vf-fps", "estimated-frame-number", "estimated-frame-count",
-        "display-fps", "vsync-jitter", "video-bitrate",
-      ]
-      var measured = Dictionary(
-        uniqueKeysWithValues: properties.compactMap { name -> (String, Double)? in
+      var metrics: [String: Double]?
+      if reportsMedia && slow {
+        let properties = [
+          "frame-drop-count", "decoder-frame-drop-count", "mistimed-frame-count",
+          "demuxer-cache-duration", "demuxer-cache-state/fw-bytes", "video-params/sig-peak",
+          "estimated-vf-fps", "estimated-frame-number", "estimated-frame-count",
+          "display-fps", "vsync-jitter", "video-bitrate",
+        ]
+        var measured = Dictionary(
+          uniqueKeysWithValues: properties.compactMap { name -> (String, Double)? in
+            var value: Double = 0
+            return bili_mpv_number_checked(handle, name, &value) >= 0 ? (name, value) : nil
+          })
+        if diagnosticMode { measured["residentBytes"] = Double(bili_process_resident_bytes()) }
+        var ao = [CChar](repeating: 0, count: 64)
+        _ = bili_mpv_string(handle, "current-ao", &ao, ao.count)
+        media?["current-ao"] = DiagnosticAudioTuning.outputCategory(String(cString: ao))
+        let count = bili_mpv_number(handle, "track-list/count")
+        var hasAudio = false
+        if count.isFinite, count > 0 {
+          for index in 0..<Int(min(256, count)) {
+            var kind = [CChar](repeating: 0, count: 32)
+            _ = bili_mpv_string(handle, "track-list/\(index)/type", &kind, kind.count)
+            if String(cString: kind) == "audio" { hasAudio = true; break }
+          }
+        }
+        measured["audio-present"] = hasAudio ? 1 : 0
+        if audioKnown { measured["audio-pts"] = audioTime }
+        for name in ["avsync", "total-avsync-change", "audio-out-params/samplerate",
+          "audio-params/channel-count", "audio-out-params/channel-count"] {
           var value: Double = 0
-          return bili_mpv_number_checked(handle, name, &value) >= 0 ? (name, value) : nil
-        })
-      if diagnosticMode { measured["residentBytes"] = Double(bili_process_resident_bytes()) }
-      let metrics = measured
+          if bili_mpv_number_checked(handle, name, &value) >= 0, value.isFinite { measured[name] = value }
+        }
+        metrics = measured
+      }
+      let sampledMetrics = metrics, sampledMedia = media, sampledPasses = passText
+      let sampledHardware = hardwareText, sampledGamma = gamma, sampledAspect = displayAspect
       DispatchQueue.main.async { [weak self] in
-        guard let self, !self.closing else { return }
-        self.mediaEvidence = media
-        self.metrics = metrics
-        if diagnosticMode && self.metricSamples.last?["mediaSecond"] != floor(time) {
-          self.metricSamples.append(metrics.merging(["mediaSecond": floor(time)]) { _, new in new })
-          self.metricSamples = Array(self.metricSamples.suffix(120))
+        guard let self, !self.closing, !self.terminalFailure, self.generation == sampledGeneration else { return }
+        if let sampledMedia { self.mediaEvidence = sampledMedia }
+        if let sampledAspect { self.surface?.sourceAspect = CGFloat(sampledAspect) }
+        if let sampledGamma, self.videoGamma != sampledGamma {
+          self.videoGamma = sampledGamma
+          self.surface?.sourceTransferChanged()
+        }
+        if let metrics = sampledMetrics {
+          self.metrics = metrics
+          if diagnosticMode && self.metricSamples.last?["mediaSecond"] != floor(time) {
+            self.metricSamples.append(metrics.merging(["mediaSecond": floor(time)]) { _, new in new })
+            self.metricSamples = Array(self.metricSamples.suffix(120))
+          }
         }
         if self.generation == sampledGeneration, self.pending == nil {
           if !reachedEnd && !idle && duration > 0 { self.eofArmed = true }
@@ -371,9 +471,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         // Publish only real changes: every @Published write re-renders observing views.
         if timeKnown, self.generation == sampledGeneration, self.pending == nil {
           self.time = time
-          self.clockUpdated = Date()
         }
-        self.passes = passText
+        if let sampledPasses { self.passes = sampledPasses }
         // A live stream's "duration" grows every poll; publishing it re-rendered the page 10×/s.
         if self.tracksDuration, self.duration != duration { self.duration = duration }
         if self.paused != paused {
@@ -388,17 +487,17 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         if volume.isFinite && volume >= 0 && self.volume != volume && !self.isStale(volume, against: self.userVolume) { self.volume = volume }
         if self.chapters != chapters { self.chapters = chapters }
         if self.buffering != waitingForCache { self.buffering = waitingForCache }
-        self.bufferedAhead = metrics["demuxer-cache-duration"] ?? 0
+        self.bufferedAhead = cacheKnown ? cacheAhead : 0
         self.surface?.setPlaybackActive(!paused && !idle)
         self.sleepGuard.update(playing: !paused && !idle && !reachedEnd)
-        if self.hardware != hardwareText { self.hardware = hardwareText }
+        if let sampledHardware, self.hardware != sampledHardware { self.hardware = sampledHardware }
         // An error sampled before the newest loadfile belongs to the previous stream.
         if self.generation == sampledGeneration, self.pending == nil,
           let failure = events.last(where: { $0.hasPrefix("end-file:") && !$0.contains("success") }) {
           let reason = failure.dropFirst("end-file:".count).trimmingCharacters(in: .whitespaces)
-          self.error = "没能加载视频流（\(reason)）。可在 播放器设置 › 网络与节点 中换节点或重新测速后重试。"
+          self.error = "没能加载视频流（\(reason)）。可在 更多 › 网络与节点 中换节点或重新测速后重试。"
         }
-        if !events.isEmpty {
+        if reportsMedia && !events.isEmpty {
           self.shaderEvents.append(
             contentsOf: events.filter {
               $0.localizedCaseInsensitiveContains("shader")
@@ -418,14 +517,19 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     poll = timer
     timer.resume()
     applyRuntime(previous: nil)
+    PerformanceOptions.configureAudio(self)
   }
   func load(video: URL, audio: URL?, start: Double = 0, paused: Bool = false) {
     self.start()
     generation += 1
+    terminalFailure = false
+    terminalFailureAt = nil
     resetPlaybackEnd()
     chapters = []
     danmakuClock.reset()
     liveText.clear()
+    // Until the new file reports its size, the stage uses the shape the page knows.
+    surface?.sourceAspect = nil
     if let external {
       external.load(video: video, audio: audio, start: start, paused: paused)
       // External mpv keeps its own options; carry 仅播放声音 to it on every load as well.
@@ -456,10 +560,43 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         reference.pointer, pending.video.absoluteString,
         pending.audio?.absoluteString, pending.start, pending.paused ? 1 : 0)
       eofGeneration.store(loadGeneration)
-      if result < 0 { DispatchQueue.main.async { self?.error = "mpv loadfile failed: \(result)" } }
+      if result < 0 { DispatchQueue.main.async {
+        guard let self, self.generation == loadGeneration, !self.terminalFailure else { return }
+        self.error = "mpv loadfile failed: \(result)"
+      } }
     }
   }
+  /// Terminal recovery failure: cancel the pending load and stop mpv before showing retry UI.
+  func failPlayback(_ message: String) {
+    generation += 1
+    pending = nil
+    terminalFailure = true
+    terminalFailureAt = ProcessInfo.processInfo.systemUptime
+    buffering = false
+    error = message
+    command(["stop"])
+    surface?.setPlaybackActive(false)
+    sleepGuard.release()
+  }
   func resetPlaybackEnd() { eofReached = false; eofArmed = false }
+  /// Network diagnostics read the engine even after terminal UI publication has stopped.
+  /// Queue ordering puts this read after an already submitted stop command.
+  func diagnosticNetworkEngineSample() async -> (idle: Bool?, time: Double?) {
+    guard PerformanceOptions.requested, PerformanceOptions.playsLocalMedia,
+      let engine, external == nil, !closing else { return (nil, nil) }
+    let sampledGeneration = generation
+    let reference = EngineReference(engine)
+    let sample: (idle: Bool?, time: Double?) = await withCheckedContinuation { continuation in
+      queue.async {
+        let idle = bili_mpv_flag(reference.pointer, "idle-active") == 1
+        var time = 0.0
+        let known = bili_mpv_number_checked(reference.pointer, "time-pos", &time) >= 0 && time.isFinite
+        continuation.resume(returning: (idle, known ? time : nil))
+      }
+    }
+    guard generation == sampledGeneration, !closing else { return (nil, nil) }
+    return sample
+  }
   #if DEBUG
   func simulatePlaybackEnd() {
     guard DebugUIFixtures.enabled else { return }
@@ -501,6 +638,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     danmakuFontSize = settings.number(.danmakuFontSize)
     danmakuOpacity = settings.number(.danmakuOpacity)
     danmakuSpeed = settings.number(.danmakuSpeed)
+    danmakuFrameRate = settings.text(.danmakuFrameRate)
     timeline.setSpeed(danmakuSpeed)
     surface?.refreshDanmakuPreferences()
   }
@@ -531,8 +669,9 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     // Profiles override different option sets; a fresh engine prevents a
     // fast -> high-quality transition from retaining fast-only options.
     if previous == nil {
-      command(["apply-profile", runtimeSettings.text(.mpvProfile)])
+      command(["apply-profile", engineProfile])
     }
+    PerformanceOptions.configurePlaybackTuning(self)
     if previous?.text(.logLevel) != runtimeSettings.text(.logLevel) {
       let level = runtimeSettings.text(.logLevel)
       if let external { external.set("msg-level", "all=" + level) }
@@ -540,6 +679,52 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         let reference = EngineReference(engine)
         queue.async { bili_mpv_log_level(reference.pointer, level) }
       }
+    }
+  }
+  /// The profile for a new engine: 画质配置, or `fast` while saving power with
+  /// 「省电时降低画面处理质量」 on. Diagnostics never count as saving, so recorded evidence is
+  /// reproducible.
+  private func resolvedProfile() -> String {
+    MpvRuntimePlan.profile(runtimeSettings, saving: Self.diagnosticMode ? .normal : PowerState.shared.level)
+  }
+  private static func signature(path: String, profile: String) -> String { path + "\u{0}" + profile }
+  /// Options the built-in `fast` profile sets, for libraries whose `profile-list` cannot be read.
+  private static let fastProfileOptions = [
+    "scale", "dscale", "dither", "correct-downscaling", "linear-downscaling", "sigmoid-upscaling",
+    "hdr-compute-peak", "allow-delayed-peak-detect",
+  ]
+  /// 画面增强 shaders were tuned on high-quality. When power saving gave this engine `fast`,
+  /// put back exactly what a high-quality engine has before shaders run: every option `fast` set
+  /// returns to its default, then `high-quality` is applied — the state a fresh high-quality engine
+  /// starts in. An explicitly chosen 高性能 is left alone. Runs ahead of the shader change on the
+  /// command queue.
+  func prepareForShaders() {
+    guard external == nil, let engine, !closing, engineProfile == "fast",
+      runtimeSettings.text(.mpvProfile) != "fast" else { return }
+    engineProfile = "high-quality"
+    engineSignature = Self.signature(path: enginePath, profile: engineProfile)
+    let reference = EngineReference(engine)
+    let fallback = Self.fastProfileOptions
+    queue.async {
+      let handle = reference.pointer
+      var list = [CChar](repeating: 0, count: 131_072)
+      var keys = fallback
+      if bili_mpv_string(handle, "profile-list", &list, list.count) >= 0,
+        let profiles = (try? JSONSerialization.jsonObject(with: Data(String(cString: list).utf8))) as? [[String: Any]],
+        let fast = profiles.first(where: { $0["name"] as? String == "fast" }),
+        let options = fast["options"] as? [[String: Any]] {
+        keys = options.compactMap { $0["key"] as? String }
+      }
+      for key in keys {
+        var value = [CChar](repeating: 0, count: 1024)
+        guard bili_mpv_string(handle, "option-info/\(key)/default-value", &value, value.count) >= 0 else { continue }
+        _ = bili_mpv_set(handle, key, String(cString: value))
+      }
+      let words: [String] = ["apply-profile", "high-quality"]
+      let copies = words.map { strdup($0) }
+      defer { for copy in copies { free(copy) } }
+      var pointers: [UnsafePointer<CChar>?] = copies.map { UnsafePointer<CChar>($0) } + [nil]
+      _ = pointers.withUnsafeMutableBufferPointer { bili_mpv_command(handle, $0.baseAddress) }
     }
   }
   /// User-initiated speed change: applied to mpv at once, and later poll samples that still
@@ -575,6 +760,9 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   }
   func clearSubtitle() { set("sid", "no") }
   func seek(_ seconds: Double) {
+    resetPlaybackEnd()
+    onRecoverySeek?()
+    seekRequests.send(seconds)
     // A deliberate jump: danmaku follow it (backwards too) instead of waiting.
     danmakuClock.seek(to: seconds, now: CACurrentMediaTime())
     // The frame changes: once the new one is decoded, analyse it if still paused.
@@ -614,11 +802,39 @@ final class VideoSurface: NSView {
   private var appliedPeak = 0.0
   private var appliedPeakAt = Date.distantPast
   private var appliedForHDR = false
-  /// `MANPING_DISPLAY_UPDATES=legacy` re-applies everything on every headroom change (comparison only).
-  private static let legacyDisplayUpdates = ProcessInfo.processInfo.environment["MANPING_DISPLAY_UPDATES"] == "legacy"
   var renderReady = false
   var displayEvidence = ""
   var renderEvidence: String { videoLayer?.statistics() ?? "" }
+  /// Width / height of the picture on a playback stage (DesignSystem.md §11). The surface then
+  /// fills the stage: the video layer is fitted to this shape and centred, the danmaku layer
+  /// covers the whole stage, and the area around the picture stays clear so the stage backdrop
+  /// shows. Nil (the mini window) keeps the video layer at the full bounds on black.
+  var pictureAspect: CGFloat? {
+    didSet {
+      guard pictureAspect != oldValue else { return }
+      layer?.backgroundColor = pictureAspect == nil ? NSColor.black.cgColor : NSColor.clear.cgColor
+      needsLayout = true
+    }
+  }
+  /// The shape mpv reports for the video being shown (`video-params/dw` ÷ `dh`). On a stage it
+  /// wins over `pictureAspect`, which comes from the manifest (or 16:9 for a live room) and may
+  /// not match: mpv would then letterbox inside the video layer, in black instead of the backdrop.
+  var sourceAspect: CGFloat? {
+    didSet {
+      guard sourceAspect != oldValue, pictureAspect != nil else { return }
+      needsLayout = true
+    }
+  }
+  /// The video layer's frame: the largest rectangle of `pictureAspect` that fits, centred on
+  /// whole points (the full bounds without an aspect).
+  static func pictureFrame(in bounds: CGRect, aspect: CGFloat?) -> CGRect {
+    guard let aspect, aspect.isFinite, aspect > 0, bounds.width > 0, bounds.height > 0 else { return bounds }
+    var size = CGSize(width: bounds.width, height: bounds.width / aspect)
+    if size.height > bounds.height { size = CGSize(width: bounds.height * aspect, height: bounds.height) }
+    let x = (bounds.minX + (bounds.width - size.width) / 2).rounded()
+    let y = (bounds.minY + (bounds.height - size.height) / 2).rounded()
+    return CGRect(x: x, y: y, width: size.width.rounded(), height: size.height.rounded())
+  }
   init(model: PlayerModel) {
     self.model = model
     super.init(frame: .zero)
@@ -666,11 +882,17 @@ final class VideoSurface: NSView {
     super.layout()
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    if videoLayer?.frame != bounds {
-      videoLayer?.frame = bounds
+    let picture = Self.pictureFrame(in: bounds, aspect: pictureAspect.map { sourceAspect ?? $0 })
+    if videoLayer?.frame != picture {
+      videoLayer?.frame = picture
       videoLayer?.invalidateFrame()
+      // Draw the new size in this commit, with the layout around it: waiting for the next
+      // render-queue pump left the previous size on screen for a few frames while the window
+      // resized (full-screen transitions).
+      videoLayer?.setNeedsDisplay()
     }
     CATransaction.commit()
+    // The danmaku cover the whole surface (the whole stage), not only the picture.
     metalView.frame = bounds
     updateDisplay()
   }
@@ -689,11 +911,20 @@ final class VideoSurface: NSView {
         arguments.count > $0 + 1 ? Double(arguments[$0 + 1]) : nil
       } ?? Double.greatestFiniteMagnitude
     let current = min(max(1, (rawCurrent * 10).rounded(.down) / 10), max(1, cap))
-    let edr =
-      videoLayer.floating && potential > 1 && !ProcessInfo.processInfo.arguments.contains("--sdr")
+    // EDR only for HDR sources (PQ, HLG; Dolby Vision decodes to PQ). SDR sources render to
+    // BT.709/sRGB exactly as on an SDR screen, shown from an 8-bit layer backing: no EDR
+    // composition, no EDR headroom held for the display. A change of source type reconfigures
+    // the layer once.
+    // `--sdr` (the fixed sRGB golden path) is unchanged, and other `--diagnose` runs keep EDR for
+    // every source as before unless `--edr-hdr-only` asks for the production choice.
+    let forcedSDR = arguments.contains("--sdr")
+    let hdrSource = model.hdrSource
+    let everySourceEDR = PlayerModel.diagnosticMode && !arguments.contains("--edr-hdr-only")
+    let edr = videoLayer.floating && potential > 1 && !forcedSDR && (hdrSource || everySourceEDR)
+    let deep = videoLayer.floating && (edr || hdrSource || forcedSDR || everySourceEDR)
     let scale = window?.backingScaleFactor ?? 1
     let signature =
-      "edr=\(edr) current=\((rawCurrent * 10).rounded() / 10) mappedHeadroom=\(current) potential=\(potential) scale=\(scale)"
+      "edr=\(edr) deep=\(deep) current=\((rawCurrent * 10).rounded() / 10) mappedHeadroom=\(current) potential=\(potential) scale=\(scale)"
     videoLayer.setVisible(
       window != nil && !isHiddenOrHasHiddenAncestor && !(window?.isMiniaturized ?? false))
     if let number = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
@@ -703,31 +934,21 @@ final class VideoSurface: NSView {
     lastDisplay = signature
     displayEvidence = signature
     let peak = edr ? max(1, current) * 203 : 203
-    if Self.legacyDisplayUpdates {
-      model.displayUpdates += 1
-      videoLayer.configureDisplay(edr: edr, scale: scale)
-      model.set("target-prim", edr ? "bt.2020" : "bt.709")
-      model.set("target-trc", edr ? "linear" : "srgb")
-      model.set("target-peak", String(Int(peak)))
-      model.set("tone-mapping", "bt.2390")
-      return
-    }
-    // The layer and target space only change with EDR or scale. Auto-brightness moves the
-    // headroom every second or so; re-applying everything then rebuilt mpv's shaders each time
-    // and dropped bursts of frames at 120 fps.
-    let layerSignature = "edr=\(edr) scale=\(scale)"
+    // The layer and target space only change with EDR, surface depth or scale. Auto-brightness
+    // moves the headroom every second or so; re-applying everything then rebuilt mpv's shaders
+    // each time and dropped bursts of frames at 120 fps.
+    let layerSignature = "edr=\(edr) deep=\(deep) scale=\(scale)"
     let layerChanged = layerSignature != lastLayerSignature
     if layerChanged {
       lastLayerSignature = layerSignature
       model.displayUpdates += 1
-      videoLayer.configureDisplay(edr: edr, scale: scale)
+      videoLayer.configureDisplay(edr: edr, deep: deep, scale: scale)
       // Linear BT.2020 values are relative to SDR white; CA applies display color matching.
       model.set("target-prim", edr ? "bt.2020" : "bt.709")
       model.set("target-trc", edr ? "linear" : "srgb")
       model.set("tone-mapping", "bt.2390")
     }
     // Only HDR sources use the headroom; follow it with hysteresis and at most every 5 s.
-    let hdrSource = ["pq", "hlg"].contains(model.mediaEvidence["video-params/gamma"] ?? "")
     let drift = appliedPeak > 0 ? abs(peak - appliedPeak) / appliedPeak : 1
     let due = Date().timeIntervalSince(appliedPeakAt) >= 5 && drift >= 0.15
     if layerChanged || hdrSource != appliedForHDR || (hdrSource && due) {
@@ -736,7 +957,25 @@ final class VideoSurface: NSView {
       model.set("target-peak", String(Int(peak)))
     }
   }
-  func setPlaybackActive(_ active: Bool) { videoLayer?.setPlaybackActive(active) }
+  private var renderingActive = false
+  var presentationExpected: Bool {
+    PlaybackPresentation.expected(hasWindow: window != nil, hidden: isHiddenOrHasHiddenAncestor,
+      miniaturized: window?.isMiniaturized ?? false,
+      occlusionVisible: window?.occlusionState.contains(.visible) ?? false,
+      renderingActive: renderingActive && renderReady && videoLayer != nil)
+  }
+  /// Only the fixture's own surface is hidden; no window activation or renderer pacing changes.
+  func setDiagnosticPresentationHidden(_ hidden: Bool) {
+    guard PerformanceOptions.requested, PerformanceOptions.playsLocalMedia else { return }
+    isHidden = hidden
+    updateDisplay()
+  }
+  func setPlaybackActive(_ active: Bool) {
+    renderingActive = active
+    videoLayer?.setPlaybackActive(active)
+  }
+  /// The source's transfer became known or changed (SDR ↔ HDR): pick the output right away.
+  func sourceTransferChanged() { updateDisplay() }
   func refreshDanmakuPreferences() { metalView?.refreshPreferences() }
   func danmakuTimelineChanged() { metalView?.timelineChanged() }
   func captureVideoFrame(width: Int, height: Int) async -> CGImage? {
@@ -746,6 +985,7 @@ final class VideoSurface: NSView {
     }
   }
   func stopRendering() {
+    renderingActive = false
     displayTimer?.invalidate()
     displayTimer = nil
     for observer in observers { NotificationCenter.default.removeObserver(observer) }
@@ -785,8 +1025,6 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
   private var displaySource: DispatchSourceTimer?
   /// During playback frames are pumped on the display's vsync (a CVDisplayLink thread), so a
   /// 120 fps stream on a 120 Hz panel is not phase-drifting against a fixed 8 ms poll.
-  /// `MANPING_RENDER_PACING=timer` restores the old poll for comparison.
-  static let pacesWithDisplay = ProcessInfo.processInfo.environment["MANPING_RENDER_PACING"] != "timer"
   private var link: CVDisplayLink?
   private var linkDisplay: CGDirectDisplayID = CGMainDisplayID()
   /// Guards only `pumpQueued`. The display link callback must never take `gate`: stopping the
@@ -796,7 +1034,6 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
   private var force = true
   private var visible = true
   private var playbackActive = false
-  private var pollMilliseconds = 250
   init(engine: OpaquePointer) throws {
     var chosen: CGLPixelFormatObj?
     var count: GLint = 0
@@ -925,23 +1162,20 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
   }
   /// mpv's target is linear BT.2020 (EDR) rather than sRGB; captures convert accordingly.
   private var edrOutput = false
-  func configureDisplay(edr: Bool, scale: CGFloat) {
+  /// The layer's backing store: half floats for EDR, HDR sources and diagnostics; 8-bit RGBA for
+  /// SDR output. mpv still renders into the context's own framebuffer either way.
+  func configureDisplay(edr: Bool, deep: Bool, scale: CGFloat) {
+    let deep = floating && deep
     gate.lock(); edrOutput = edr; gate.unlock()
     invalidateFrame()
+    contentsFormat = deep ? .RGBA16Float : .RGBA8Uint
     colorspace = CGColorSpace(name: edr ? CGColorSpace.extendedLinearITUR_2020 : CGColorSpace.sRGB)
     wantsExtendedDynamicRangeContent = edr
     contentsScale = scale
   }
   private func updatePacing() {
     let active = visible && playbackActive && engine != nil
-    if Self.pacesWithDisplay { updateLink(running: active) }
-    // With the display link pumping frames the timer only keeps the idle 250 ms redraw check.
-    let interval = active && !Self.pacesWithDisplay ? 8 : 250
-    guard interval != pollMilliseconds else { return }
-    pollMilliseconds = interval
-    displaySource?.schedule(
-      deadline: .now(), repeating: .milliseconds(interval),
-      leeway: .milliseconds(interval == 8 ? 1 : 10))
+    updateLink(running: active)
   }
   func setVisible(_ value: Bool) {
     gate.lock()
@@ -983,6 +1217,8 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     guard let engine, visible else { return }
     CGLSetCurrentContext(context)
     force = false
+    // The framebuffer Core Animation hands us follows the pixel format (half floats when
+    // `floating`), whatever the layer's contentsFormat; tell mpv what it really draws into.
     _ = bili_mpv_render(engine, floating ? 1 : 0)
     super.draw(inCGLContext: ctx, pixelFormat: pf, forLayerTime: t, displayTime: ts)
     bili_mpv_report_swap(engine)
@@ -1043,7 +1279,7 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     guard let engine else { return "stopped" }
     var result = [CChar](repeating: 0, count: 512)
     bili_mpv_render_stats(engine, &result, result.count)
-    return String(cString: result) + " pollMilliseconds=\(pollMilliseconds)"
+    return String(cString: result) + " pollMilliseconds=250"
   }
   func stop() {
     isAsynchronous = false
@@ -1065,8 +1301,17 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
 }
 struct PlayerSurface: NSViewRepresentable {
   let model: PlayerModel
-  func makeNSView(context: Context) -> VideoSurface { VideoSurface(model: model) }
-  func updateNSView(_ view: VideoSurface, context: Context) {}
+  /// On a playback stage: the picture's width / height (see `VideoSurface.pictureAspect`).
+  /// Changing it moves the video layer; the surface is never rebuilt.
+  var pictureAspect: CGFloat? = nil
+  func makeNSView(context: Context) -> VideoSurface {
+    let view = VideoSurface(model: model)
+    view.pictureAspect = pictureAspect
+    return view
+  }
+  func updateNSView(_ view: VideoSurface, context: Context) {
+    if view.pictureAspect != pictureAspect { view.pictureAspect = pictureAspect }
+  }
   static func dismantleNSView(_ view: VideoSurface, coordinator: ()) {
     view.stopRendering()
   }

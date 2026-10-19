@@ -84,14 +84,6 @@ import SwiftUI
 
 struct ProxySettingsCard: View {
   @ObservedObject var model: ProxySettingsModel
-  /// Inside the settings window's 网络 › 代理 section: no card, no disclosure, always open.
-  var embedded = false
-  #if DEBUG
-  /// `--ui-page settings:proxy` opens the card for screenshot checks.
-  @State private var expanded = ProcessInfo.processInfo.arguments.contains("settings:proxy")
-  #else
-  @State private var expanded = false
-  #endif
   @Environment(\.colorScheme) private var scheme
 
   private static let labelWidth: CGFloat = 96
@@ -100,33 +92,16 @@ struct ProxySettingsCard: View {
   ]
 
   var body: some View {
-    if embedded {
-      VStack(alignment: .leading, spacing: 14) {
-        HStack(spacing: 12) {
-          VStack(alignment: .leading, spacing: 2) {
-            Text("代理")
-            Text(Self.summary).font(Theme.Font.caption).foregroundStyle(.secondary)
-          }.frame(maxWidth: .infinity, alignment: .leading)
-          statusPill
-        }
-        form
-      }.padding(.vertical, 4)
-    } else {
-      VStack(spacing: 0) {
-        Button { withAnimation(.snappy(duration: 0.25)) { expanded.toggle() } } label: {
-          HStack(spacing: 14) {
-            SettingIcon(symbol: "network.badge.shield.half.filled")
-            VStack(alignment: .leading, spacing: 2) {
-              Text("代理").font(Theme.Font.headline)
-              Text(Self.summary).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            statusPill
-            DisclosureChevron(expanded: expanded)
-          }.padding(.horizontal, 16).frame(minHeight: 60).contentShape(Rectangle())
-        }.buttonStyle(.plain)
-        if expanded { form }
-      }.cardSurface(scheme)
-    }
+    VStack(alignment: .leading, spacing: 14) {
+      HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 2) {
+          Text("代理")
+          Text(Self.summary).font(Theme.Font.caption).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+        statusPill
+      }
+      form
+    }.padding(.vertical, 4)
   }
   private static let summary = "在海外观看大陆版权内容；网络较差时也可经代理加速视频。"
 
@@ -144,7 +119,6 @@ struct ProxySettingsCard: View {
   }
 
   private var form: some View {
-    // Indented to line up with the title text next to the icon (16 inset + 30 icon + 14 gap).
     VStack(alignment: .leading, spacing: 14) {
       row("类型") {
         SegmentedTabs(options: Self.kindOptions, selection: $model.kind)
@@ -200,7 +174,7 @@ struct ProxySettingsCard: View {
       }
       if let proxied = model.proxied { results(proxied) }
       if let failure = model.failure { InlineErrorText(message: failure) }
-    }.padding(.leading, embedded ? 0 : 60).padding(.trailing, embedded ? 0 : 16).padding(.bottom, embedded ? 0 : 16).padding(.top, 4)
+    }.padding(.top, 4)
   }
 
   /// Proxy exit and direct exit side by side; the proxy card turns green when it exits in mainland China.

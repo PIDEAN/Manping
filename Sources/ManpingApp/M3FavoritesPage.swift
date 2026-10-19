@@ -7,7 +7,6 @@ struct M3FavoritesPage: View {
   @AppStorage("m3FavoriteSidebarWidth") private var storedWidth = 240.0
   @AppStorage("m3FavoriteSidebarHidden") private var sidebarHidden = false
   @State private var pendingAction: CollectionActionsModel.PendingAction?
-  @State private var showsStatus = false
   @State private var playbackError: String?
   @Environment(\.colorScheme) private var scheme
   private var sidebarWidth: CGFloat { min(420, max(180, CGFloat(storedWidth))) }
@@ -62,8 +61,8 @@ struct M3FavoritesPage: View {
         if let intent = model.pgcFavoriteIntent { Task { await collection.select(intent.cinema ? .cinema : .anime) } }
       }
       .onChange(of: collection.actionContextGeneration) { _, _ in pendingAction = nil }
-      .onChange(of: collection.identityVersion) { _, _ in pendingAction = nil; showsStatus = false; playbackError = nil }
-      .onDisappear { pendingAction = nil; showsStatus = false; collection.stop() }
+      .onChange(of: collection.identityVersion) { _, _ in pendingAction = nil; playbackError = nil }
+      .onDisappear { pendingAction = nil; collection.stop() }
   }
   private var sidebar: some View {
     VStack(spacing: 0) {
@@ -107,11 +106,11 @@ struct M3FavoritesPage: View {
       }
       if collection.isPGC { statusPicker }
       if collection.canRemove {
-        M3CollectionButton(title: collection.isSelecting ? "退出多选" : "多选", icon: "checkmark.square", selected: collection.isSelecting) {
+        M3CollectionButton(title: collection.isSelecting ? "退出多选" : "多选", icon: "checkmark.square", selected: collection.isSelecting, toolbar: true) {
           collection.toggleSelectionMode()
         }.disabled(collection.entries.isEmpty || collection.isMutating)
         if collection.isSelecting {
-          M3CollectionButton(title: "移除所选", icon: "trash", destructive: true) {
+          M3CollectionButton(title: "移除所选", icon: "trash", destructive: true, toolbar: true) {
             pendingAction = collection.prepareRemoval(collection.removableSelected)
           }
             .disabled(collection.removableSelected.isEmpty || collection.isLoading || collection.isMutating)
@@ -125,7 +124,7 @@ struct M3FavoritesPage: View {
           set: { if $0 { Task { await collection.selectStatus(value) } } }))
       }
     } label: { MenuLabel(title: statusTitle(collection.status)) }
-      .appMenuStyle().disabled(collection.isMutating || collection.loadedIdentity == nil)
+      .appMenuStyle(toolbar: true).disabled(collection.isMutating || collection.loadedIdentity == nil)
   }
   private func sectionRow(title: String, icon: String, section: CollectionActionsModel.Section) -> some View {
     Button { Task { await collection.select(section) } } label: {
@@ -140,7 +139,6 @@ struct M3FavoritesPage: View {
   private func folderRow(_ folder: LibraryFolder) -> some View {
     Button { Task { await collection.select(.folder(folder.id)) } } label: {
       HStack(spacing: 8) {
-        Image(systemName: folder.isSeason ? "rectangle.stack" : "folder").font(.system(size: 13)).frame(width: 18)
         Text(folder.title).font(Theme.Font.body).lineLimit(1)
         Spacer(minLength: 0)
         Text(String(folder.count)).font(Theme.Font.caption2.monospacedDigit()).foregroundStyle(Theme.tertiaryText(scheme))

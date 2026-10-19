@@ -41,8 +41,9 @@ struct M8AIProviderDraft {
   @Published var chatGPTWelcome = false
   static let manageUsageURL = URL(string: "https://chatgpt.com/settings/usage")!
   private static let welcomeShownKey = "Manping.chatGPTPlanWelcomeShown"
+  /// Presets, materials and saved conversations shown above the service cards.
+  weak var runtime: AIRuntime?
   init(store: AIConfigurationStore) { self.store = store }
-  var chatGPTAvailable: Bool { store.chatGPT != nil }
   func loadChatGPT() {
     guard let auth = store.chatGPT else { return }
     Task { [weak self] in

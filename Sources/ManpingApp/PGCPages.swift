@@ -45,7 +45,7 @@ private struct PGCDiscoveryPage: View {
       .pageToolbar(title: cinema ? "影视" : "番剧", subtitle: title, refreshing: browse.isLoading,
         refresh: { Task { await browse.refresh() } }) {
         Button(action: onFavorites) { Label(cinema ? "我的追剧" : "我的追番", systemImage: "bookmark") }
-          .buttonStyle(AppButtonStyle(size: .small))
+          .toolbarActionStyle()
       }
       .onAppear { applyDiagnosticSelection() }
       .task(id: key) { if timeline { await browse.loadTimeline() } else { await browse.loadIndex(category) } }
@@ -108,7 +108,7 @@ private struct PGCDiscoveryPage: View {
         Text(title).font(Theme.Font.body)
         Spacer()
       }.padding(.horizontal, 10).frame(height: Theme.rowHeight)
-    }.buttonStyle(SecondaryNavigationStyle(selected: selected))
+    }.buttonStyle(SidebarRowStyle(selected: selected))
   }
   private var filterBar: some View {
     ScrollView(.horizontal) {
@@ -132,15 +132,18 @@ private struct PGCDiscoveryPage: View {
       } else {
         ScrollView {
           LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 20)], spacing: 24) {
-            ForEach(browse.seasons) { season in PGCSeasonCard(season: season) { onOpen(season.selection) } }
-          }.padding(Theme.gridPadding)
+            ForEach(browse.seasons) { season in
+              PosterCard(cover: season.cover, title: season.title, subtitle: season.subtitle,
+                badge: season.badge, score: season.score) { onOpen(season.selection) }
+            }
+          }.cardGridContent().padding(Theme.gridPadding)
           if let error = browse.error {
             InlineErrorText(message: error).padding(12)
             Button("重试") { Task { await browse.loadNext() } }.buttonStyle(AppButtonStyle(size: .small))
           } else if browse.isLoading || browse.hasMore {
             LoadMoreFooter(isLoading: browse.isLoading, autoLoad: false) { Task { await browse.loadNext() } }
           }
-        }.prefetchOnScroll(enabled: !timeline && browse.hasMore && !browse.isLoading && browse.error == nil) { Task { await browse.loadNext() } }
+        }.cardGrid().prefetchOnScroll(enabled: !timeline && browse.hasMore && !browse.isLoading && browse.error == nil) { Task { await browse.loadNext() } }
       }
     }
   }
@@ -160,31 +163,36 @@ private struct PGCIndexFilterRow: View {
     }.appMenuStyle().accessibilityLabel(filter.title)
   }
 }
-struct PGCSeasonCard: View {
-  let season: PGCSeason
-  let open: () -> Void
+/// The one portrait cover card: a borderless 3:4 poster with the title and a detail line under it
+/// (番剧时间线, 番剧索引, 收藏 › 我的追番 / 我的追剧). The grid cell sets the width.
+struct PosterCard: View {
+  let cover: URL?
+  let title: String
+  let subtitle: String
+  var badge: String? = nil
+  var score: Double? = nil
+  let action: () -> Void
   @Environment(\.colorScheme) private var scheme
   var body: some View {
-    Button(action: open) {
-      // A borderless 3:4 poster card; the grid cell sets the width.
+    Button(action: action) {
       VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
         Color.clear.aspectRatio(3 / 4, contentMode: .fit).frame(maxWidth: .infinity)
-          .overlay { CachedImage(url: season.cover).allowsHitTesting(false) }
+          .overlay { CachedImage(url: cover).allowsHitTesting(false) }
           .overlay(alignment: .topLeading) {
-            if let badge = season.badge, !badge.isEmpty { RecommendBadge(text: badge).padding(8) }
+            if let badge, !badge.isEmpty { RecommendBadge(text: badge).padding(8) }
           }
           .overlay(alignment: .bottomTrailing) {
-            if let score = season.score { ScoreBadge(score: score).padding(8) }
+            if let score { ScoreBadge(score: score).padding(8) }
           }
           .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
         VStack(alignment: .leading, spacing: 4) {
-          Text(season.title).font(Theme.Font.headline).foregroundStyle(Theme.text(scheme))
+          Text(title).font(Theme.Font.headline).foregroundStyle(Theme.text(scheme))
             .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-          Text(season.subtitle.isEmpty ? " " : season.subtitle).font(Theme.Font.caption)
+          Text(subtitle.isEmpty ? " " : subtitle).font(Theme.Font.caption)
             .foregroundStyle(Theme.tertiaryText(scheme)).lineLimit(1)
         }
       }.contentShape(Rectangle()).cardHover()
-    }.buttonStyle(CardPressStyle()).accessibilityLabel("播放 \(season.title)")
+    }.buttonStyle(CardPressStyle()).accessibilityLabel("播放 \(title)")
   }
 }

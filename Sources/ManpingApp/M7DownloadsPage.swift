@@ -48,7 +48,7 @@ struct M7DownloadsPage: View {
             Text(stateName(record.state))
             if let options = record.options {
               Text("·"); Text(options.content.title)
-              if options.content == .video { Text("· \(qualityName(options.quality)) · \(codecName(options.codec))") }
+              if options.content == .video { Text("· \(qualityName(options.quality)) · \(options.codec.title)") }
             }
           }.font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme))
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -105,7 +105,10 @@ struct M7DownloadsPage: View {
   private func qualityName(_ quality: Int) -> String {
     [127: "8K", 126: "杜比视界", 125: "HDR", 120: "4K", 116: "1080P 60 帧", 112: "1080P 高码率", 80: "1080P", 74: "720P 60 帧", 64: "720P", 32: "480P", 16: "360P"][quality] ?? "画质 \(quality)"
   }
-  private func codecName(_ codec: DownloadCodec) -> String {
-    switch codec { case .avc: "H.264"; case .hevc: "HEVC"; case .av1: "AV1" }
+}
+
+extension DownloadCodec {
+  var title: String {
+    switch self { case .avc: "H.264"; case .hevc: "HEVC"; case .av1: "AV1" }
   }
 }

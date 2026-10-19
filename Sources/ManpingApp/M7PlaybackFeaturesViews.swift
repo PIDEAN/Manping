@@ -73,11 +73,14 @@ struct PlaybackDanmakuInput: View {
   }
 }
 
+/// Chapter list that follows the playhead without re-rendering its parent.
 struct PlaybackChapterList: View {
+  @ObservedObject var clock: PlaybackClock
   let chapters: [PlaybackChapter]
-  let time: Double
+  var override: Double? = nil
   let seek: (Double) -> Void
   @Environment(\.colorScheme) private var scheme
+  private var time: Double { override ?? clock.time }
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       Text("章节").font(Theme.Font.headline)
@@ -177,6 +180,8 @@ struct PlaybackTimeline: View {
   /// Danmaku density (0…1 per bucket); the curve is drawn only when there is one (≥ 20 comments).
   var density: [Double] = []
   var chapters: [PlaybackChapter] = []
+  /// Times cited by the AI answer on screen: amber ticks; a click next to one lands exactly on it.
+  var markers: [Double] = []
   /// Seconds buffered ahead of the playhead, read on each clock tick.
   var bufferedAhead: () -> Double = { 0 }
   /// Scrubbing started (true) or ended (false); the page keeps the controls up meanwhile.
@@ -221,6 +226,12 @@ struct PlaybackTimeline: View {
           Rectangle().fill(.white.opacity(0.9)).frame(width: 2, height: 8)
             .offset(x: trackWidth * mark - 1)
         }
+        ForEach(markerFractions, id: \.self) { mark in
+          RoundedRectangle(cornerRadius: 1.5).fill(Theme.highlight).frame(width: 3, height: 10)
+            .shadow(color: Theme.highlight.opacity(0.9), radius: 4)
+            .offset(x: trackWidth * mark - 1.5)
+            .allowsHitTesting(false).accessibilityHidden(true)
+        }
         if enabled {
           Circle().fill(.white).frame(width: 14, height: 14)
             .background(Circle().fill(Theme.accent.opacity(0.55)).frame(width: 22, height: 22))
@@ -239,7 +250,10 @@ struct PlaybackTimeline: View {
         }
         .onEnded { value in
           guard enabled else { return }
-          let target = clamp(value.location.x / trackWidth)
+          var target = clamp(value.location.x / trackWidth)
+          // A click (not a drag) within 6 pt of an AI mark jumps exactly to the cited time.
+          if abs(value.translation.width) < 3, let mark = markerFractions.min(by: { abs($0 - target) < abs($1 - target) }),
+            abs(mark - target) * trackWidth <= 6 { target = mark }
           scrub = nil; landed = target; landedAt = Date()
           scrubbing(false)
           seek(target * total)
@@ -252,6 +266,9 @@ struct PlaybackTimeline: View {
       }
     }
     .overlay(alignment: .topLeading) { hoverPreview }
+    #if DEBUG
+    .modifier(DemoSeekHover(fraction: $hoverFraction))
+    #endif
     .accessibilityElement()
     .accessibilityLabel("播放进度")
     .accessibilityValue(Self.format(time) + " / " + Self.format(duration))
@@ -267,6 +284,10 @@ struct PlaybackTimeline: View {
     if let scrub { return scrub }
     if let landed, Date().timeIntervalSince(landedAt) < 1, abs(landed * total - time) > 1 { return landed }
     return clamp(time / total)
+  }
+
+  private var markerFractions: [Double] {
+    markers.filter { $0.isFinite && $0 >= 0 && $0 <= total }.map { $0 / total }
   }
 
   private var chapterMarks: [Double] {
@@ -333,15 +354,6 @@ struct PlaybackProgressBar: View {
       StreakFill(progress: value.isFinite ? value : 0)
     }.frame(height: 3).allowsHitTesting(false).accessibilityHidden(true)
   }
-}
-
-/// Chapter list that follows the playhead without re-rendering its parent.
-struct LivePlaybackChapters: View {
-  @ObservedObject var clock: PlaybackClock
-  let chapters: [PlaybackChapter]
-  var override: Double? = nil
-  let seek: (Double) -> Void
-  var body: some View { PlaybackChapterList(chapters: chapters, time: override ?? clock.time, seek: seek) }
 }
 
 /// One preview frame cropped from its sprite sheet; sheets come from the shared image cache.

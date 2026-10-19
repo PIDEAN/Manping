@@ -12,21 +12,20 @@ struct M5LiveCard: View {
   /// Always plays in the app, whatever the browser setting says. Falls back to `play`.
   var watch: ((Int64) -> Void)?
   let openUser: (Int64) -> Void
-  @ObservedObject private var pins = PinnedLiveStore.shared
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
       Button { openRoom() } label: {
-        GeometryReader { geometry in
-          CachedImage(url: room.cover).frame(width: geometry.size.width, height: geometry.size.height)
-            .overlay(alignment: .topLeading) { LiveBadge(status: .live).padding(8) }
-            .overlay(alignment: .bottomLeading) {
-              if !room.subtitle.isEmpty { MediaBadge(text: room.subtitle).lineLimit(1).padding(8) }
-            }
-            .overlay(alignment: .bottomTrailing) {
-              if let viewers = room.viewers { MediaBadge(text: Self.viewerText(viewers), systemImage: "person.fill").padding(8).help("观看人数") }
-            }
-        }.aspectRatio(16 / 9, contentMode: .fit)
+        // A 16:9 box sized by the grid cell, like VideoCard; no GeometryReader per card.
+        Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+          .overlay { CachedImage(url: room.cover) }
+          .overlay(alignment: .topLeading) { LiveBadge(status: .live).padding(8) }
+          .overlay(alignment: .bottomLeading) {
+            if !room.subtitle.isEmpty { MediaBadge(text: room.subtitle).lineLimit(1).padding(8) }
+          }
+          .overlay(alignment: .bottomTrailing) {
+            if let viewers = room.viewers { MediaBadge(text: Self.viewerText(viewers), systemImage: "person.fill").padding(8).help("观看人数") }
+          }
           .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
       }.buttonStyle(.plain).accessibilityLabel("打开直播间：\(room.title)")
       HStack(alignment: .top, spacing: 10) {

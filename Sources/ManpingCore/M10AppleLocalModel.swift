@@ -2,8 +2,9 @@ import Foundation
 import FoundationModels
 
 /// Apple's on-device foundation model (Apple Intelligence): free, offline, no account or key.
-/// Its context window is small, so long prompts keep their head (instructions and metadata)
-/// and their tail (the question) and drop the middle of the subtitle / comment material.
+/// Its context window is small. Prompts are never silently cut: callers plan with
+/// `requestBudget` (the SDK's own context size) and send long material through segmented
+/// summaries; a prompt that still does not fit fails with `localContextTooLong`.
 public enum AppleLocalModel {
   /// nil when the model can answer now; otherwise why not, for the settings card.
   public static var unavailableReason: String? {
@@ -17,25 +18,36 @@ public enum AppleLocalModel {
   }
   public static var isAvailable: Bool { unavailableReason == nil }
 
-  /// Characters of prompt kept; the model shares about 4K tokens between prompt and answer.
-  static let promptBudget = 2_600
-
-  static func fitted(_ prompt: String) -> String {
-    guard prompt.count > promptBudget else { return prompt }
-    let head = prompt.prefix(promptBudget * 3 / 4)
-    let tail = prompt.suffix(promptBudget / 4)
-    return head + "\n……（内容过长，中间部分已省略）……\n" + tail
+  static let defaultInstructions = "你是哔哩哔哩内容助手。请用简体中文回答，条理清晰，不编造视频中没有的内容。"
+  /// The on-device budget: the SDK's context size, a quarter of it reserved for the answer.
+  public static func requestBudget() -> AIRequestBudget {
+    let context = SystemLanguageModel.default.contextSize
+    return AIRequestBudget(contextTokens: context, maxOutputTokens: max(512, context / 4), known: true)
+  }
+  /// Instructions and one prompt for a conversation, every message kept in full.
+  static func prompt(for conversation: AIConversationRequest) -> (instructions: String, prompt: String) {
+    let instructions = conversation.system.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? defaultInstructions
+    let prompt: String
+    if conversation.messages.count == 1, let only = conversation.messages.first { prompt = only.text }
+    else {
+      prompt = conversation.messages.map { ($0.role == .user ? "用户：" : "助手：") + $0.text }.joined(separator: "\n\n")
+    }
+    return (instructions, prompt)
   }
 
   /// Streams text deltas of one answer.
-  static func stream(prompt: String) -> AsyncThrowingStream<String, Error> {
+  static func stream(_ conversation: AIConversationRequest) -> AsyncThrowingStream<String, Error> {
+    let parts = prompt(for: conversation)
+    return stream(instructions: parts.instructions, prompt: parts.prompt)
+  }
+  static func stream(instructions: String, prompt: String) -> AsyncThrowingStream<String, Error> {
     AsyncThrowingStream { continuation in
       let task = Task {
         do {
           guard isAvailable else { throw AIChatFailure.localModelUnavailable }
-          let session = LanguageModelSession(instructions: "你是哔哩哔哩内容助手。请用简体中文回答，条理清晰，不编造视频中没有的内容。")
+          let session = LanguageModelSession(instructions: instructions)
           var sent = ""
-          for try await snapshot in session.streamResponse(to: fitted(prompt)) {
+          for try await snapshot in session.streamResponse(to: prompt) {
             try Task.checkCancellation()
             let text = snapshot.content
             if text.hasPrefix(sent) {
@@ -44,6 +56,7 @@ public enum AppleLocalModel {
             }
             sent = text
           }
+          guard !sent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw AIChatFailure.emptyResponse }
           continuation.finish()
         } catch is CancellationError {
           continuation.finish(throwing: CancellationError())

@@ -1,5 +1,4 @@
 import AppKit
-import ImageIO
 import SwiftUI
 import VisionKit
 
@@ -40,21 +39,12 @@ import VisionKit
       try? await Task.sleep(for: .milliseconds(previous == nil ? 600 : 200))
       guard !Task.isCancelled, let player, player.paused, player.liveTextEnabled else { return }
       let image = await player.captureFrame()
-      #if DEBUG
-      if let path = ProcessInfo.processInfo.environment["MANPING_LIVETEXT_FRAME"], let image,
-        let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL, "public.png" as CFString, 1, nil) {
-        CGImageDestinationAddImage(destination, image, nil); CGImageDestinationFinalize(destination)
-      }
-      #endif
       guard let image, !Task.isCancelled else { return }
       guard let result = try? await Self.analyzer.analyze(image, orientation: .up,
         configuration: ImageAnalyzer.Configuration([.text, .machineReadableCode])),
         !Task.isCancelled, let self, player.paused, player.liveTextEnabled else { return }
       self.frameSize = CGSize(width: image.width, height: image.height)
       self.analysis = result
-      #if DEBUG
-      FileHandle.standardError.write(Data("live-text frame=\(image.width)x\(image.height) text=\(result.transcript.prefix(80).replacingOccurrences(of: "\n", with: " / "))\n".utf8))
-      #endif
     }
   }
 }

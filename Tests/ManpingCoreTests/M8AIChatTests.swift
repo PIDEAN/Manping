@@ -48,7 +48,7 @@ final class M8AIChatTests: XCTestCase {
     for provider in AIProvider.sourceProviders {
       let configuration = AIProviderConfiguration(endpoint: provider.defaultEndpoint ?? "https://fixture.example.invalid")
       let request = try AIChatRequestPlanner.request(provider: provider, configuration: configuration,
-        secrets: secrets, model: "fixture-model", prompt: "标题与字幕 fixture", bearerToken: "fixture-bearer")
+        secrets: secrets, model: "fixture-model", conversation: AIConversationRequest(system: nil, messages: [.user("标题与字幕 fixture")]), bearerToken: "fixture-bearer")
       XCTAssertEqual(request.httpMethod, "POST")
       let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any])
       if provider == .gemini {
@@ -65,9 +65,9 @@ final class M8AIChatTests: XCTestCase {
   func testAzureFamiliesHaveDistinctRouteVersionAndAuthentication() throws {
     let configuration = AIProviderConfiguration(endpoint: "https://fixture.example.invalid", apiVersion: "fixture-version")
     let openAI = try AIChatRequestPlanner.request(provider: .azureOpenAI, configuration: configuration, secrets: secrets,
-      model: "deploy name", prompt: "fixture")
+      model: "deploy name", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")]))
     let inference = try AIChatRequestPlanner.request(provider: .azureAI, configuration: configuration, secrets: secrets,
-      model: "fixture-model", prompt: "fixture")
+      model: "fixture-model", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")]))
     XCTAssertEqual(openAI.url?.path, "/openai/deployments/deploy name/chat/completions")
     XCTAssertEqual(inference.url?.path, "/chat/completions")
     XCTAssertEqual(inference.value(forHTTPHeaderField: "api-key"), "fixture-key")
@@ -76,12 +76,12 @@ final class M8AIChatTests: XCTestCase {
   }
   func testGeminiAndAnthropicHaveNativeBodiesAndKeyHeaders() throws {
     let gemini = try AIChatRequestPlanner.request(provider: .gemini, configuration: .init(), secrets: secrets,
-      model: "gemini-fixture", prompt: "fixture", options: .init(maxTokens: 128))
+      model: "gemini-fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")]), options: .init(maxTokens: 128))
     XCTAssertEqual(gemini.url?.path, "/v1beta/models/gemini-fixture:streamGenerateContent")
     XCTAssertFalse(gemini.url!.absoluteString.contains("fixture-key"))
     XCTAssertEqual(gemini.value(forHTTPHeaderField: "x-goog-api-key"), "fixture-key")
     let anthropic = try AIChatRequestPlanner.request(provider: .anthropic, configuration: .init(), secrets: secrets,
-      model: "claude-fixture", prompt: "fixture")
+      model: "claude-fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")]))
     XCTAssertEqual(anthropic.url?.path, "/v1/messages")
     XCTAssertEqual(anthropic.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
     let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(anthropic.httpBody)) as? [String: Any])
@@ -91,19 +91,19 @@ final class M8AIChatTests: XCTestCase {
   }
   func testCodestralUsesSeparateKeyAndEndpoint() throws {
     let request = try AIChatRequestPlanner.request(provider: .mistral, configuration: .init(useCodestral: true),
-      secrets: secrets, model: "codestral-fixture", prompt: "fixture")
+      secrets: secrets, model: "codestral-fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")]))
     XCTAssertEqual(request.url?.host, "codestral.mistral.ai")
     XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-codestral")
     XCTAssertThrowsError(try AIChatRequestPlanner.request(provider: .mistral, configuration: .init(useCodestral: true),
-      secrets: .init(key: "fixture-key"), model: "fixture", prompt: "fixture"))
+      secrets: .init(key: "fixture-key"), model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
   }
   func testEndpointAndHeaderInjectionAreRejectedBeforeTransport() throws {
     for endpoint in ["http://remote.example.invalid", "https://key:secret@example.invalid", "https://example.invalid?key=value"] {
       XCTAssertThrowsError(try AIChatRequestPlanner.request(provider: .openAI, configuration: .init(endpoint: endpoint),
-        secrets: secrets, model: "fixture", prompt: "fixture"))
+        secrets: secrets, model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
     }
     XCTAssertThrowsError(try AIChatRequestPlanner.request(provider: .openAI, configuration: .init(),
-      secrets: .init(key: "fixture\r\nAuthorization: injected"), model: "fixture", prompt: "fixture"))
+      secrets: .init(key: "fixture\r\nAuthorization: injected"), model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
   }
   func testSSEMultilineCRLFAndSplitUTF8() throws {
     var parser = AIStreamParser(family: .openAI)
@@ -151,7 +151,7 @@ final class M8AIChatTests: XCTestCase {
   func testClientInjectedTransportEmitsIncrementalText() async throws {
     let transport = AIChatFixtureTransport([(200, Self.openAIStream)])
     let client = AIChatClient(transport: transport)
-    let text = try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: secrets, model: "fixture", prompt: "fixture"))
+    let text = try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: secrets, model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
     XCTAssertEqual(text, "你好")
     let requests = await transport.requests
     XCTAssertEqual(requests.count, 1)
@@ -160,7 +160,7 @@ final class M8AIChatTests: XCTestCase {
     let transport = AIChatFixtureTransport([(200, Data("{\"token\":\"fixture-bearer\"}".utf8)), (200, Self.openAIStream)])
     let client = AIChatClient(transport: transport)
     let text = try await Self.collect(client.response(provider: .ernie, configuration: .init(), secrets: secrets,
-      model: "fixture", prompt: "fixture"))
+      model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
     XCTAssertEqual(text, "你好")
     let requests = await transport.requests
     XCTAssertEqual(requests.count, 2)
@@ -177,14 +177,14 @@ final class M8AIChatTests: XCTestCase {
     let client = AIChatClient(transport: transport)
     do {
       _ = try await Self.collect(client.response(provider: .ernie, configuration: .init(), secrets: secrets,
-        model: "", prompt: "fixture"))
+        model: "", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
       XCTFail("Invalid model reached IAM")
     } catch { XCTAssertEqual(error as? AIChatFailure, .missingConfiguration) }
     let override = AIChatClient(transport: transport,
       ernieAuthorizationEndpoint: URL(string: "https://untrusted.example.invalid/token")!)
     do {
       _ = try await Self.collect(override.response(provider: .ernie, configuration: .init(), secrets: secrets,
-        model: "fixture-model", prompt: "fixture"))
+        model: "fixture-model", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
       XCTFail("Credentials reached a remote IAM override")
     } catch { XCTAssertEqual(error as? AIChatFailure, .invalidEndpoint) }
     let requests = await transport.requests
@@ -194,7 +194,7 @@ final class M8AIChatTests: XCTestCase {
     for (status, expected) in [(401, AIChatFailure.unauthorized), (403, .unauthorized), (429, .rateLimited), (500, .httpStatus(500))] {
       let client = AIChatClient(transport: AIChatFixtureTransport([(status, Data("fixture-key server detail".utf8))]))
       do {
-        _ = try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: secrets, model: "fixture", prompt: "fixture"))
+        _ = try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: secrets, model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
         XCTFail("HTTP failure accepted")
       } catch {
         XCTAssertEqual(error as? AIChatFailure, expected)
@@ -207,7 +207,7 @@ final class M8AIChatTests: XCTestCase {
     let client = AIChatClient(transport: AIHangingTransport(probe: probe))
     let credentials = secrets
     let task = Task {
-      try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: credentials, model: "fixture", prompt: "fixture"))
+      try await Self.collect(client.response(provider: .openAI, configuration: .init(), secrets: credentials, model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
     }
     try await Task.sleep(for: .milliseconds(30))
     task.cancel()
@@ -222,12 +222,12 @@ final class M8AIChatTests: XCTestCase {
       (.anthropic, "anthropic"), (.gemini, "gemini"), (.ollama, "ollama")] {
       let configuration = AIProviderConfiguration(endpoint: server.endpoint(path))
       let text = try await Self.collect(client.response(provider: provider, configuration: configuration, secrets: secrets,
-        model: "fixture-model", prompt: "fixture"))
+        model: "fixture-model", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
       XCTAssertEqual(text, "你好")
     }
     do {
       _ = try await Self.collect(client.response(provider: .openAI, configuration: .init(endpoint: server.endpoint("redirect")),
-        secrets: secrets, model: "fixture", prompt: "fixture"))
+        secrets: secrets, model: "fixture", conversation: AIConversationRequest(system: nil, messages: [.user("fixture")])))
       XCTFail("Redirect followed")
     } catch { XCTAssertEqual(error as? AIChatFailure, .httpStatus(302)) }
     let records = try server.requests()

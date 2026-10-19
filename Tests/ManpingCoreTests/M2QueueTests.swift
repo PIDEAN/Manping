@@ -16,7 +16,7 @@ final class M2QueueTests: XCTestCase {
     XCTAssertEqual(queue.select(id: "av1")?.aid, 1)
     XCTAssertNil(queue.select(id: "av999")); XCTAssertEqual(queue.position, 1)
   }
-  func testInvalidReplacementPreservesCurrentQueueAndEOFGeneration() throws {
+  func testInvalidReplacementPreservesCurrentQueue() throws {
     var queue = VideoPlaybackQueue()
     try queue.replace(videos)
     let original = queue
@@ -26,22 +26,15 @@ final class M2QueueTests: XCTestCase {
     XCTAssertEqual(queue, original)
     XCTAssertThrowsError(try queue.replace([Video(bvid: "BV1fixture01", title: "A", aid: -1)]))
     XCTAssertEqual(queue, original)
-    let eof = queue.generation
-    XCTAssertEqual(queue.next(afterEOF: eof)?.aid, 2)
-    XCTAssertNil(queue.next(afterEOF: eof), "Duplicate EOF must not skip another item")
-    try queue.replace(videos)
-    XCTAssertNil(queue.next(afterEOF: eof), "Previous playlist callbacks are stale")
-    XCTAssertEqual(queue.position, 1)
   }
-  func testBoundQueueClearsOnlyOnIdentityChangeAndRejectsLateEOF() throws {
+  func testBoundQueueClearsOnlyOnIdentityChange() throws {
     var queue = VideoPlaybackQueue()
     let snapshot = AuthSnapshot(epoch: 1, identityRevision: 2, state: .needsLogin, token: nil)
     try queue.replace(videos, identity: PlaybackQueueIdentity(snapshot))
-    let eof = queue.generation
     XCTAssertFalse(queue.invalidate(epoch: 1, revision: 2), "Initial current-identity event preserves queue")
     XCTAssertTrue(queue.invalidate(epoch: 1, revision: 3))
     XCTAssertEqual(queue.count, 0)
-    XCTAssertNil(queue.next(afterEOF: eof))
+    XCTAssertNil(queue.next())
     XCTAssertNil(queue.identity)
     XCTAssertFalse(queue.invalidate(epoch: 2, revision: 4))
   }

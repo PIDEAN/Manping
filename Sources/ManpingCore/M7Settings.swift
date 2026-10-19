@@ -17,6 +17,7 @@ public enum MacSettingKey: String, CaseIterable, Sendable {
   case liveText = "Manping.liveText"
   case volume = "Manping.defaultVolume", danmakuEnabled = "Manping.danmakuEnabled", danmakuFontSize = "Manping.danmakuFontSize"
   case danmakuOpacity = "Manping.danmakuOpacity", danmakuSpeed = "Manping.danmakuSpeed", screenshotFormat = "Manping.screenshotFormat"
+  case danmakuFrameRate = "Manping.danmakuFrameRate"
   case hideMainOnPlay = "Manping.hideMainOnPlay", integratedPlayer = "Manping.integratedPlayer", decode = "Manping.decode"
   case displayMode = "Manping.displayMode", skipNextPrompt = "Manping.skipNextPrompt", autoNextRelated = "Manping.autoNextRelated"
   case endWithPlaylist = "Manping.endWithPlaylist", liveWebPlayer = "Manping.liveWebPlayer"
@@ -36,6 +37,8 @@ public enum MacSettingKey: String, CaseIterable, Sendable {
   case liveNotifications = "Manping.liveNotifications", dockBadge = "Manping.dockBadge", menuBarItem = "Manping.menuBarItem"
   case cdnAuto = "Manping.cdnAuto", cdnMultiSource = "Manping.cdnMultiSource", cdnStallRecovery = "Manping.cdnStallRecovery"
   case cdnRefresh = "Manping.cdnRefresh", smartCache = "Manping.smartCache", adaptiveQuality = "Manping.adaptiveQuality"
+  case powerSavingMode = "Manping.powerSavingMode", powerSavingDanmaku60 = "Manping.powerSavingDanmaku60"
+  case powerSavingStrong = "Manping.powerSavingStrong", powerSavingLowerQuality = "Manping.powerSavingLowerQuality"
 }
 public enum MacSettingValue: Sendable, Equatable { case bool(Bool), number(Double), text(String) }
 public enum MacSettingControl: Sendable {
@@ -57,12 +60,10 @@ public struct MacSettingDescriptor: Identifiable, Sendable {
   public let detail: String
   public let control: MacSettingControl
   public let defaultValue: MacSettingValue
-  /// Fixed platform constraints cannot be overridden by an application capability declaration.
-  public let unavailableReason: String?
   init(_ key: MacSettingKey, _ group: MacSettingGroup, _ section: String, _ title: String, _ detail: String = "",
-    _ control: MacSettingControl, _ defaultValue: MacSettingValue, unavailable: String? = nil) {
+    _ control: MacSettingControl, _ defaultValue: MacSettingValue) {
     self.key = key; self.group = group; self.section = section; self.title = title; self.detail = detail
-    self.control = control; self.defaultValue = defaultValue; unavailableReason = unavailable
+    self.control = control; self.defaultValue = defaultValue
   }
 }
 /// 「打开视频时」: one choice in the settings window, stored in the two original keys
@@ -128,6 +129,10 @@ public enum MacSettingsCatalog {
     .init(.speed, .playback, "进度与倍速", "默认倍速", "开启「记住倍速」后生效。", .number(0.25...4, step: 0.25), .number(1)),
     .init(.bottomProgress, .playback, "进度与倍速", "控件隐藏时显示细进度条", "播放控件隐藏后，画面底边保留一条进度。", .toggle, .bool(true)),
     .init(.volume, .playback, "进度与倍速", "默认音量", "新打开的视频从这个音量开始。", .number(0...100, step: 5), .number(80)),
+    .init(.powerSavingMode, .playback, "省电", "省电模式", "只调整弹幕和画面处理，不影响解码、加载与缓冲。", options([(PowerSavingMode.auto.rawValue, "自动（用电池或机身发热时）"), (PowerSavingMode.always.rawValue, "始终"), (PowerSavingMode.off.rawValue, "关闭")]), .text(PowerSavingMode.auto.rawValue)),
+    .init(.powerSavingDanmaku60, .playback, "省电", "省电时弹幕最高 60 帧", "120 Hz 屏幕上肉眼差别很小，GPU 占用约减半。", .toggle, .bool(true)),
+    .init(.powerSavingStrong, .playback, "省电", "低电量模式或严重发热时进一步省电", "同屏弹幕最多 40 行，播放舞台的背景改为纯色。", .toggle, .bool(true)),
+    .init(.powerSavingLowerQuality, .playback, "省电", "省电时降低画面处理质量", "改用 mpv 的 fast 配置：缩放和去色带更简单，画面略软，GPU 占用更低。下一个视频起生效。", .toggle, .bool(false)),
     .init(.skipNextPrompt, .playback, "连续播放", "直接播放下一个", "不显示 8 秒倒计时提示。", .toggle, .bool(false)),
     .init(.autoNextRelated, .playback, "连续播放", "列表播完后播放相关推荐", "当前列表结束后继续播放推荐视频。", .toggle, .bool(false)),
     .init(.endWithPlaylist, .playback, "连续播放", "列表播完后停止", "不进入列表之外的推荐视频。", .toggle, .bool(true)),
@@ -141,6 +146,7 @@ public enum MacSettingsCatalog {
     .init(.danmakuFontSize, .danmaku, "外观", "字号", "", .number(12...48, step: 1), .number(24)),
     .init(.danmakuOpacity, .danmaku, "外观", "不透明度", "只改变文字，描边保持清晰。", .number(0.2...1, step: 0.05), .number(0.9)),
     .init(.danmakuSpeed, .danmaku, "外观", "速度", "数值越大，弹幕越快划过画面。", .number(0.5...2, step: 0.1), .number(1)),
+    .init(.danmakuFrameRate, .danmaku, "外观", "弹幕帧率", "「60 帧」更省电。省电时的上限见 设置 › 播放 › 省电。", options([(DanmakuFrameRate.display, "跟随屏幕"), (DanmakuFrameRate.sixty, "60 帧")]), .text(DanmakuFrameRate.display)),
     .init(.danmakuEnabled, .danmaku, "默认显示", "打开视频时显示弹幕", "播放时随时可以用 ⇧⌘D 切换。", .toggle, .bool(true)),
     // 网络
     .init(.cdnAuto, .network, "节点优选", "自动选择最快的节点", "播放前测速候选节点并选用最快的一个，结果按网络记住。", .toggle, .bool(true)),
@@ -173,7 +179,7 @@ public enum MacSettingsCatalog {
     .init(.liveText, .privacy, "画面文字", "暂停时识别画面文字", "暂停后可直接选中画面中的文字拷贝、查询或翻译，识别在本机完成。", .toggle, .bool(true)),
     // 高级
     .init(.decode, .advanced, "播放引擎 mpv", "解码方式", "「自动」在可用时使用硬件解码（VideoToolbox）。", options([("auto-safe", "自动"), ("videotoolbox", "硬件解码（VideoToolbox）"), ("no", "软件解码")]), .text("auto-safe")),
-    .init(.mpvProfile, .advanced, "播放引擎 mpv", "画质配置", "使用 mpv 内置的 high-quality 或 fast 配置，重新打开视频后生效。", options([("high-quality", "高质量"), ("fast", "高性能")]), .text("high-quality")),
+    .init(.mpvProfile, .advanced, "播放引擎 mpv", "画质配置", "使用 mpv 内置的 high-quality 或 fast 配置。重新打开视频后生效。", options([("high-quality", "高质量"), ("fast", "高性能")]), .text("high-quality")),
     .init(.preciseSeek, .advanced, "播放引擎 mpv", "精确跳转", "对应 mpv 的 hr-seek：开启后拖动进度会落在准确的画面上，但稍慢。", options([("default", "默认"), ("yes", "开启"), ("no", "关闭")]), .text("default")),
     .init(.audioChannels, .advanced, "播放引擎 mpv", "声道", "把输出限制为所选声道布局（mpv audio-channels）。", options([("auto", "自动"), ("stereo", "立体声"), ("5.1", "5.1"), ("7.1", "7.1")]), .text("auto")),
     .init(.audioExclusive, .advanced, "播放引擎 mpv", "独占音频输出", "请求 CoreAudio 独占输出（mpv audio-exclusive），是否支持取决于音频设备。", .toggle, .bool(false)),
@@ -212,7 +218,7 @@ public struct MacSettings: Sendable, Equatable {
   @discardableResult public mutating func set(_ key: MacSettingKey, _ value: MacSettingValue,
     capabilities: Set<MacSettingKey>) -> Bool {
     let descriptor = MacSettingsCatalog.descriptor(key)
-    guard capabilities.contains(key), descriptor.unavailableReason == nil,
+    guard capabilities.contains(key),
       let normalized = Self.normalize(value, descriptor: descriptor) else { return false }
     values[key] = normalized; return true
   }

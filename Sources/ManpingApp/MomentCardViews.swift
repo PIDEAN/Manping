@@ -139,9 +139,8 @@ private enum MomentMedia {
 private struct MomentContent: View {
   let content: RPCDynamicContent
   @ObservedObject var model: AppModel
-  var depth = 0
   @Environment(\.colorScheme) private var scheme
-  var body: some View { rendered(content, depth: depth) }
+  var body: some View { rendered(content, depth: 0) }
   // Type erasure bounds recursive forwards without recursively expanding the SwiftUI body type.
   private func rendered(_ content: RPCDynamicContent, depth: Int) -> AnyView {
     guard depth <= 8 else { return AnyView(Text("转发层级过多")) }

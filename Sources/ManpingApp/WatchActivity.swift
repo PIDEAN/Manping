@@ -17,7 +17,6 @@ import UniformTypeIdentifiers
     let web: URL
     let title: String
     let author: String
-    let cover: URL?
   }
 
   /// Both Handoff and the Spotlight index follow the one setting, so turning it off keeps the
@@ -45,7 +44,6 @@ import UniformTypeIdentifiers
     let attributes = CSSearchableItemAttributeSet(contentType: .movie)
     attributes.title = item.title
     attributes.contentDescription = item.author.isEmpty ? "满屏 · 看过" : "\(item.author) · 看过"
-    attributes.thumbnailURL = nil
     attributes.contentURL = item.web
     let entry = CSSearchableItem(uniqueIdentifier: item.link, domainIdentifier: Self.domain, attributeSet: attributes)
     entry.expirationDate = Date().addingTimeInterval(90 * 24 * 3600)

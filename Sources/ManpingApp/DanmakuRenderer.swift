@@ -84,13 +84,14 @@ struct DanmakuScene: Sendable {
   var area: Double
   var lineLimit: Int
   /// Points kept clear above the bottom edge (the player control panel).
-  var bottomInset: Float = 120
+  var bottomInset: Float
   /// View size in points and its backing scale.
   var size: CGSize
   var scale: CGFloat
-  /// Highest refresh rate of the current screen, and whether to save power.
+  /// Highest refresh rate of the current screen.
   var maximumFPS: Int
-  var constrained: Bool
+  /// At most this many frames a second (弹幕帧率 or power saving), or nil for the screen's maximum.
+  var frameCap: Int?
   var version: Int
 }
 
@@ -100,7 +101,11 @@ struct DanmakuScene: Sendable {
 /// time and places every line there, so motion is uniform at whatever rate the display runs
 /// (60 Hz, 120 Hz ProMotion, 144 Hz…) and independent of the video's own frame rate (24, 25,
 /// 30, 50, 60…). The main thread only publishes scene values: SwiftUI work can no longer delay or
-/// drop danmaku frames. While paused, hidden or disabled the link idles at 10 Hz.
+/// drop danmaku frames. While paused, hidden or disabled the link idles at 10 Hz, and so it does
+/// during playback while no line is on screen or due within `wakeLead`. With nothing on screen
+/// and an empty frame already presented, frames are neither cleared nor presented: the
+/// transparent overlay stops changing, so the window server need not recomposite it every refresh.
+/// Clock, lanes and placement are the same either way.
 final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendable {
   private struct Shared {
     var scene: DanmakuScene?
@@ -123,7 +128,12 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
   private var drawnVersion = -1
   private var drawnClock: Double = -.infinity
   private var drawnEnabled = false
-  private var idle = true
+  /// The frame last presented had no line on it (true before the first present: nothing shows).
+  private var drawnEmpty = true
+  /// Host seconds of warning the link needs to be back at full rate before a line enters: one
+  /// 10 Hz period for the rate change to land, plus margin.
+  private let wakeLead = 0.35
+  private var idleSkips = 0
   private var appliedRange: CAFrameRateRange?
   private var captured = false
   private var buffers: [MTLBuffer?] = [nil, nil, nil]
@@ -224,8 +234,26 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     let playing = clock.isRunning
     let media = clock.media(at: target) ?? drawnClock
     let enabled = scene.enabled && media.isFinite
-    adaptRate(active: enabled && playing, scene: scene)
+    // Lines on screen now; otherwise whether one enters before the link could speed up again.
+    let onScreen = enabled && scene.timeline.hasVisible(at: media, speed: scene.speed)
+    var entering = false
+    if enabled, playing, !onScreen, let ahead = clock.media(at: target + wakeLead), ahead > media {
+      entering = scene.timeline.hasVisible(at: ahead, speed: scene.speed)
+    }
+    adaptRate(active: enabled && playing && (onScreen || entering), scene: scene)
     DanmakuMotionProbe.record(host: target, clock: media, speed: 1, playing: enabled && playing)
+    // Nothing to show and the last presented frame is already empty: no clear, no present.
+    // Glyphs for lines about to enter are still rendered ahead on the workshop.
+    if !onScreen, drawnEmpty {
+      if enabled { prefetch(scene: scene, media: media, raster: prepareRaster(scene)) }
+      drawnVersion = scene.version; drawnClock = media; drawnEnabled = enabled
+      if playing {
+        idleSkips += 1
+        let skips = idleSkips
+        statistics.withLock { $0["idleSkips"] = skips }
+      }
+      return
+    }
     // Nothing moved and nothing changed: keep the last frame on screen.
     // Lines waiting for workshop glyphs keep the frame live until they can be drawn.
     if scene.version == drawnVersion, enabled == drawnEnabled, !enabled || media == drawnClock, !pendingGlyphs { return }
@@ -242,17 +270,25 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     drawnVersion = scene.version; drawnClock = media; drawnEnabled = enabled
   }
 
-  /// Full display rate while lines move; 10 Hz while paused, hidden or disabled.
+  /// Full display rate (or the cap) while lines move or are about to enter; 10 Hz otherwise.
   private func adaptRate(active: Bool, scene: DanmakuScene) {
     let top = Float(max(30, scene.maximumFPS))
     let range: CAFrameRateRange
     if !active { range = CAFrameRateRange(minimum: 10, maximum: 10, preferred: 10) }
-    else if scene.constrained { range = CAFrameRateRange(minimum: 30, maximum: min(60, top), preferred: min(60, top)) }
+    else if let cap = scene.frameCap {
+      let ceiling = min(Float(max(30, cap)), top)
+      range = CAFrameRateRange(minimum: 30, maximum: ceiling, preferred: ceiling)
+    }
     else { range = CAFrameRateRange(minimum: 60, maximum: top, preferred: top) }
     guard appliedRange.map({ $0.minimum != range.minimum || $0.maximum != range.maximum || $0.preferred != range.preferred }) ?? true
     else { return }
     appliedRange = range
     link?.preferredFrameRateRange = range
+    let hz = Int(range.preferred ?? range.maximum)
+    statistics.withLock { stats in
+      stats["linkHz"] = hz
+      stats["linkRateChanges", default: 0] += 1
+    }
   }
 
   /// Drops every atlas generation when the pixel font size or the scale changes. Frames already
@@ -447,9 +483,13 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       state.peakInFlightPages = max(state.peakInFlightPages, state.pages.count)
     }
 
-    let width = Float(scene.size.width)
-    let height = Float(scene.size.height)
     let scale = Float(raster.scale)
+    // The drawable's own size, in points: while the window resizes (a full-screen transition)
+    // the main thread may already have resized the layer for a scene published a moment later.
+    // Placing lines in the drawable that is actually presented keeps glyphs 1:1 with pixels and
+    // the lane area following the new height, never scaled.
+    let width = Float(drawable.texture.width) / scale
+    let height = Float(drawable.texture.height) / scale
     let fontSize = Float(scene.fontSize)
     let laneHeight = fontSize * 1.35
     // Device pixels to points: glyphs map 1:1 onto the drawable.
@@ -467,7 +507,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     let uvSize = Float(raster.cell) / Float(atlasSize)
 
     // Pass 1: place lines and count glyphs per atlas page.
-    struct Placed { let layout: LineLayout; let x: Float; let y: Float; let color: SIMD4<Float> }
+    struct Placed { let layout: LineLayout; let x: Float; let y: Float; let color: SIMD4<Float>; let time: Double }
     var placed: [Placed] = []
     placed.reserveCapacity(visible.count)
     var perPage: [Int: Int] = [:]
@@ -490,7 +530,8 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       let rgb = item.comment.color
       // Premultiplied in the shader: opacity scales fill, outline and shadow together.
       let color = SIMD4<Float>(Float((rgb >> 16) & 255) / 255, Float((rgb >> 8) & 255) / 255, Float(rgb & 255) / 255, alpha)
-      placed.append(Placed(layout: layout, x: x, y: snap(laneTop + baselineInLane - baselineInCell), color: color))
+      placed.append(Placed(layout: layout, x: x, y: snap(laneTop + baselineInLane - baselineInCell), color: color,
+        time: item.comment.time))
       for glyph in layout.glyphs { perPage[glyph.page, default: 0] += 1 }
     }
     // Pass 2: write the quads straight into this frame's buffer, grouped by page.
@@ -578,7 +619,10 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       completion.signal()
     }
     // Without vertices this frame would be blank: keep the previous one and try again next frame.
-    if missingBuffer { pendingGlyphs = true } else { command.present(drawable) }
+    if missingBuffer { pendingGlyphs = true } else {
+      command.present(drawable); drawnEmpty = placed.isEmpty
+      noteEntries(placed.map(\.time), media: media)
+    }
     command.commit()
     submits += 1
     let snapshot: [String: Int] = [
@@ -586,9 +630,29 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       "cachedPages": cache.cachedPageCount, "activePages": cache.activePageCount,
       "peakFramePages": peakFramePages, "peakResidentPages": peakResidentPages, "peakHistoryPages": peakHistoryPages,
       "frameGlyphs": lastGlyphCount, "vertexGlyphs": lastVertexGlyphCount, "historyPageLimit": cache.historyPages,
+      "entries": entries, "lateEntries": lateEntries, "entryLateMaxMicros": entryLateMaxMicros,
     ]
     statistics.withLock { $0.merge(snapshot) { _, new in new } }
     return true
+  }
+
+  /// Evidence that idling never costs an entry: how long after its start time each line was
+  /// first presented. More than two frames at the current rate counts as a late entry. Lines
+  /// already running when the first lines are drawn (danmaku loaded after playback started) are
+  /// not entries.
+  private var newestEntry = -Double.infinity
+  private var entries = 0, lateEntries = 0, entryLateMaxMicros = 0
+  private func noteEntries(_ times: [Double], media: Double) {
+    if media < newestEntry { newestEntry = media }  // a seek backwards
+    guard clock.isRunning, newestEntry > -.infinity else { newestEntry = max(newestEntry, times.max() ?? newestEntry); return }
+    let frame = 1 / Double(appliedRange?.preferred ?? appliedRange?.maximum ?? 60)
+    for time in times where time > newestEntry {
+      entries += 1
+      let late = media - time
+      entryLateMaxMicros = max(entryLateMaxMicros, Int(late * 1_000_000))
+      if late > 2 * frame { lateEntries += 1 }
+    }
+    newestEntry = max(newestEntry, times.max() ?? newestEntry)
   }
 }
 
@@ -637,6 +701,11 @@ final class DanmakuView: NSView {
     metalLayer.framebufferOnly = !ProcessInfo.processInfo.arguments.contains("--glyph-probe")
     metalLayer.presentsWithTransaction = false
     wantsLayer = true
+    // Until the next frame is drawn at a new size, the last one stays at its own pixel size,
+    // pinned to the top edge where the lanes start: danmaku never look stretched or squeezed
+    // while the window resizes. (AppKit derives the backing layer's gravity from this; the
+    // default stretched the last frame to the new bounds.)
+    layerContentsPlacement = .topLeft
     let report: @Sendable (String) -> Void = { [weak model] message in
       DispatchQueue.main.async { MainActor.assumeIsolated { model?.error = message } }
     }
@@ -648,7 +717,8 @@ final class DanmakuView: NSView {
       // @Published emits before storing the value; read it on the next main turn.
       DispatchQueue.main.async { MainActor.assumeIsolated { self?.publish() } }
     })
-    observations.append(PowerState.shared.$constrained.dropFirst().sink { [weak self] _ in
+    // The effective level and the 省电 switches both change the line limit and frame cap.
+    observations.append(PowerState.shared.objectWillChange.sink { [weak self] _ in
       DispatchQueue.main.async { MainActor.assumeIsolated { self?.publish() } }
     })
     publish()
@@ -695,7 +765,7 @@ final class DanmakuView: NSView {
       lineLimit: min(PowerState.shared.danmakuLineLimit, fit?.lineLimit ?? .max),
       bottomInset: fit?.bottomInset ?? DanmakuFit.regularBottomInset, size: bounds.size,
       scale: window?.backingScaleFactor ?? 2, maximumFPS: window?.screen?.maximumFramesPerSecond ?? 60,
-      constrained: PowerState.shared.constrained, version: version))
+      frameCap: PowerState.shared.danmakuFrameCap(setting: model.danmakuFrameRate), version: version))
   }
   func stop() {
     stopped = true

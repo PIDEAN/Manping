@@ -129,10 +129,9 @@ public struct RPCDynamicProfile: Identifiable, Codable, Sendable, Equatable {
   public let avatar: URL?
   public let hasUnread: Bool
   public let isLive: Bool
-  public let liveURL: URL?
-  public init(id: Int64, name: String, avatar: URL?, hasUnread: Bool, isLive: Bool, liveURL: URL?) {
+  public init(id: Int64, name: String, avatar: URL?, hasUnread: Bool, isLive: Bool) {
     self.id = id; self.name = name; self.avatar = avatar; self.hasUnread = hasUnread
-    self.isLive = isLive; self.liveURL = liveURL
+    self.isLive = isLive
   }
 }
 public struct RPCDynamicPage: Codable, Sendable, Equatable {

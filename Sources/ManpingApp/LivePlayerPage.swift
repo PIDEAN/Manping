@@ -9,8 +9,10 @@ struct LivePlayerPage: View {
   @ObservedObject private var player: PlayerModel
   @StateObject private var chrome = PlayerChromeState()
   @State private var danmakuSettingsShown = false
-  @State private var pictureWidth: CGFloat = 900
+  @State private var stageWidth: CGFloat = 900
   @AppStorage(PlayerPreferences.sidebarHiddenKey) private var sidebarHidden = false
+  /// Full screen: the picture fills the window; the right column's own setting is kept.
+  @Environment(\.immersivePlayback) private var immersive
   @State private var volumeShown = false
   @State private var tab: Tab = .chat
   @Environment(\.colorScheme) private var scheme
@@ -23,27 +25,23 @@ struct LivePlayerPage: View {
   private enum Tab: String { case chat = "弹幕", info = "主播" }
 
   var body: some View {
-    GeometryReader { geometry in
-      HStack(spacing: 0) {
-        media.frame(maxWidth: .infinity, maxHeight: .infinity)
-        if !sidebarHidden {
-          Hairline(axis: .vertical)
-          sidePanel.frame(width: min(372, geometry.size.width * 0.4))
-            .transition(.move(edge: .trailing).combined(with: .opacity))
-        }
-      }
+    PlayerPageLayout(showsPanel: !sidebarHidden, immersive: immersive) {
+      media
+    } panel: {
+      sidePanel
     }
     // The one toolbar above the page (the main window's, or the standalone window's).
     // A room that never loaded has no known state; the error card speaks for it.
     .pageToolbar(title: live.room?.title ?? "直播间", subtitle: audienceSubtitle,
       leading: chatUnavailable ? nil : AnyView(LiveBadge(status: displayStatus))) {
-      if let url = webURL {
-        Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "safari") }
-          .buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true)).help("在浏览器中打开")
-          .accessibilityLabel("在浏览器中打开")
-        ToolbarShareButton(url: url)
+      ToolbarIconGroup {
+        if let url = webURL {
+          Button { NSWorkspace.shared.open(url) } label: { ToolbarGroupIcon("safari") }
+            .help("在浏览器中打开").accessibilityLabel("在浏览器中打开")
+          ToolbarShareButton(url: url)
+        }
+        PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden, windowToggle: false)
       }
-      PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden, windowToggle: false)
     }
   }
 
@@ -71,7 +69,13 @@ struct LivePlayerPage: View {
   private var controlsShown: Bool { chrome.visible || controlsPinned }
 
   private var media: some View {
-    PlayerSurface(model: player).frame(maxWidth: .infinity, maxHeight: .infinity).background(.black)
+    // A live room's stream does not say its size up front: the stage assumes 16:9.
+    // The surface fills the stage: the video is fitted to the picture inside it, the danmaku cover
+    // the whole stage.
+    PlayerSurface(model: player, pictureAspect: stagePictureAspect(nil))
+      // Nothing to show yet (loading, ended, failed): the empty surface would be a black box on the stage.
+      .opacity(live.stream == nil || live.ended || (live.error != nil && player.duration <= 0) ? 0 : 1)
+      .playerStageBackdrop(cover: live.room?.cover)
       .overlay { statusOverlay }
       .overlay(alignment: .topLeading) {
         if let message = live.reconnecting {
@@ -83,10 +87,11 @@ struct LivePlayerPage: View {
       }
       .overlay(alignment: .bottom) { controls.playerChromeFade(controlsShown) }
       .animation(.easeOut(duration: 0.2), value: live.reconnecting)
-      .reportsPictureWidth($pictureWidth)
+      .reportsStageWidth($stageWidth)
       .tracksPlayerChrome(chrome, pinned: controlsPinned)
       .onChange(of: player.volume) { _, _ in chrome.activity() }
       .onChange(of: player.commentsEnabled) { _, _ in chrome.activity() }
+      .playerStageShape(immersive: immersive)
   }
 
   @ViewBuilder private var statusOverlay: some View {
@@ -117,9 +122,16 @@ struct LivePlayerPage: View {
   }
 
   private var controls: some View {
-    let layout = PlayerPanelLayout(pictureWidth: pictureWidth)
+    let layout = PlayerPanelLayout(stageWidth: stageWidth)
     return PlayerControlPanel(chrome: chrome) {
-      HStack(spacing: 6) {
+      PlayerBarRow(model: model, player: player, layout: layout, page: barPage,
+        danmakuShown: $danmakuSettingsShown, networkShown: .constant(false), volumeShown: $volumeShown,
+        composeShown: .constant(false),
+        extraMenu: {
+          AnyView(Group {
+            if let url = webURL { Button("在浏览器中打开") { NSWorkspace.shared.open(url) } }
+          })
+        }) {
         PlayerPlayButton(paused: player.paused) { player.togglePause() }
           .disabled(live.stream == nil || live.ended)
         Button { live.refresh() } label: { Image(systemName: "arrow.clockwise") }
@@ -128,27 +140,32 @@ struct LivePlayerPage: View {
         if layout.showsTime, live.room != nil {
           LiveElapsedLabel(status: displayStatus, startedAt: live.room?.startedAt).padding(.leading, 6)
         }
-        Spacer(minLength: 6)
-        if layout.showsSpeed, let stream = live.stream {
-          LiveRoutePill(codec: stream.codecName, line: live.currentLineNumber, host: live.currentLineHost)
-        }
-        if layout.showsQuality { qualityMenu }
-        PlayerVolumeButton(player: player, maximum: model.appSettings.number(.maxVolume), shown: $volumeShown)
-        PlayerSettingsMenu(player: player, settings: model.settingsModel,
-          danmakuShown: $danmakuSettingsShown, networkShown: .constant(false),
-          openDanmakuSettings: { model.openSettings(.danmaku) }) {
-          Button("弹幕设置…") { danmakuSettingsShown = true }
-          if !layout.showsQuality {
-            Menu("画质") { qualityItems }
-          }
-          Divider()
-          Button("截取画面") { model.takePlayerScreenshot() }.disabled(!model.canTakeScreenshot)
-          if let url = webURL { Button("在浏览器中打开") { NSWorkspace.shared.open(url) } }
-          Button(model.playbackDetached ? "回到主窗口" : "在独立窗口播放") { model.togglePlaybackWindow() }
-        }
-        PlayerWindowButtons(model: model, player: player)
       }
     }
+  }
+
+  /// Live rooms skip speed, subtitles, shaders, audio-only and downloads; 画质 is the room's own
+  /// and 网络与节点 shows the current route (codec and line).
+  private var barPage: PlayerBarPage {
+    PlayerBarPage(supported: PlayerBarPage.liveSupported, slots: [
+      .quality: .init(control: { AnyView(qualityMenu) }, menu: {
+        AnyView(Menu { qualityItems } label: {
+          Label(live.currentQuality.map { "画质 · \($0.title)" } ?? "画质", systemImage: PlayerBarItem.quality.symbol)
+        }.disabled((live.playback?.available ?? []).isEmpty))
+      }),
+      .network: .init(control: {
+        AnyView(Group {
+          if let stream = live.stream {
+            LiveRoutePill(codec: stream.codecName, line: live.currentLineNumber, host: live.currentLineHost)
+          }
+        })
+      }, menu: {
+        AnyView(Button { live.refresh() } label: {
+          Label(live.stream.map { LiveRoutePill.title(codec: $0.codecName, line: live.currentLineNumber) + " · 重新连接" } ?? "重新连接",
+            systemImage: PlayerBarItem.network.symbol)
+        })
+      }),
+    ], widths: [.network: 112])
   }
 
   @ViewBuilder private var qualityItems: some View {
@@ -207,8 +224,8 @@ struct LivePlayerPage: View {
             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
         }
         VStack(alignment: .leading, spacing: 4) {
-          (Text("房间号 ") + Text(String(room.roomID)).bold()).textSelection(.enabled)
-          if room.shortID > 0 { (Text("短号 ") + Text(String(room.shortID)).bold()).textSelection(.enabled) }
+          Text("房间号 \(Text(String(room.roomID)).bold())").textSelection(.enabled)
+          if room.shortID > 0 { Text("短号 \(Text(String(room.shortID)).bold())").textSelection(.enabled) }
         }.font(Theme.Font.caption2.monospacedDigit()).foregroundStyle(Theme.tertiaryText(scheme))
       } else if let error = live.error {
         InlineErrorText(message: error)
@@ -303,7 +320,8 @@ private struct LiveRoutePill: View {
       .fixedSize()
       .help("线路：" + (host ?? "未知"))
   }
-  private var title: String {
+  private var title: String { Self.title(codec: codec, line: line) }
+  static func title(codec: String, line: Int?) -> String {
     let name = PlayerCodec.name(codec.lowercased())
     return line.map { "线路 \($0) · \(name)" } ?? "线路 · \(name)"
   }
@@ -395,6 +413,12 @@ struct LiveChatList: View {
         }
       }
       .animation(.easeOut(duration: 0.16), value: atBottom)
+      #if DEBUG
+      // README demo: the reader scrolls up a dozen lines.
+      .modifier(DemoChatScroll {
+        if let line = chat.lines.dropLast(12).last { withAnimation(.easeOut(duration: 0.35)) { position.scrollTo(id: line.id, anchor: .bottom) } }
+      })
+      #endif
   }
 
   @ViewBuilder private func lineView(_ line: LiveChatModel.Line) -> some View {

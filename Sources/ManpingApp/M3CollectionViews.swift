@@ -2,24 +2,24 @@ import AppKit
 import ManpingCore
 import SwiftUI
 
-// Shared only by the two collection pages. Geometry follows the upstream
-// 56pt headers, 16pt body inset, VideoLayout and FavoriteSeasonCardStyle.
+// Shared by the collection pages and the live page's retry/refresh buttons.
 struct M3CollectionButton: View {
   let title: String
   let icon: String
   var destructive = false
   var selected = false
-  var iconOnly = false
+  /// A toolbar action: the 36 pt glass capsule, icon in the text colour (see `toolbarActionStyle`).
+  var toolbar = false
   let action: () -> Void
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     Button(action: action) {
       HStack(spacing: 6) {
         Image(systemName: icon).font(.system(size: 12, weight: .medium))
-          .foregroundStyle(destructive ? Theme.danger(scheme) : selected ? Theme.accentText(scheme) : Theme.accentText(scheme))
-        if !iconOnly { Text(title) }
+          .foregroundStyle(destructive ? Theme.danger(scheme) : selected ? Theme.accentText(scheme) : toolbar ? Theme.text(scheme) : Theme.accentText(scheme))
+        Text(title)
       }
-    }.buttonStyle(AppButtonStyle(role: destructive ? .destructive : .secondary, size: .small, iconOnly: iconOnly))
+    }.buttonStyle(AppButtonStyle(role: destructive ? .destructive : .secondary, size: toolbar ? .toolbar : .small))
       .overlay { if selected { Capsule().strokeBorder(Theme.accent.opacity(0.7), lineWidth: 1) } }
       .help(title).accessibilityLabel(title)
   }
@@ -33,7 +33,7 @@ struct M3PlayAllButton: View {
   var body: some View {
     let loading = collection.playAllProgress
     M3CollectionButton(title: loading.map { "正在读取列表（\($0)）…" } ?? "全部播放",
-      icon: loading == nil ? "play" : "hourglass", action: action)
+      icon: loading == nil ? "play" : "hourglass", toolbar: true, action: action)
       .disabled(loading != nil || collection.loadedVideos.isEmpty || collection.isMutating)
   }
 }
@@ -82,6 +82,32 @@ struct M3CollectionConfirmation: View {
   }
 }
 
+/// The remove button on a card's corner: it appears while the pointer is over the card (in selection
+/// mode the card shows its checkmark instead). The hover state lives here, per card, so moving the
+/// pointer never re-renders the grid.
+private struct HoverRemoveButton: ViewModifier {
+  let enabled: Bool
+  let help: String
+  let disabled: Bool
+  let remove: () -> Void
+  @State private var hovering = false
+  func body(content: Content) -> some View {
+    content
+      .overlay(alignment: .topTrailing) {
+        if enabled && hovering {
+          Button(action: remove) { Image(systemName: "trash") }
+            .buttonStyle(ArtworkIconButtonStyle())
+            .help(help).accessibilityLabel(help).disabled(disabled).padding(8)
+            .transition(.opacity)
+        }
+      }
+      // Follows the card's own lift, so the grid keeps one hover region for all its cards.
+      .onPreferenceChange(CardHoveredPreference.self) { value in
+        withAnimation(.easeOut(duration: 0.12)) { hovering = value }
+      }
+  }
+}
+
 struct M3CollectionResults: View {
   @ObservedObject var collection: CollectionActionsModel
   @ObservedObject var model: AppModel
@@ -124,7 +150,7 @@ struct M3CollectionResults: View {
                 }
               }
             }
-          }.padding(Theme.gridPadding)
+          }.cardGridContent().padding(Theme.gridPadding)
           if let error = collection.error {
             VStack(spacing: 10) {
               InlineErrorText(message: error)
@@ -133,7 +159,7 @@ struct M3CollectionResults: View {
           } else if collection.hasMore {
             LoadMoreFooter(isLoading: collection.isLoading, autoLoad: false) { Task { await collection.loadNext() } }
           }
-        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).cardGrid()
       }
       if collection.isMutating {
         HStack(spacing: 12) {
@@ -151,22 +177,8 @@ struct M3CollectionResults: View {
         if case .video(let video) = entry.destination {
           videoCard(video, entry: entry)
         } else {
-          Button { activate(entry) } label: {
-            GeometryReader { geometry in
-              ZStack(alignment: .bottomLeading) {
-                CachedImage(url: entry.cover).frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                LinearGradient(colors: [.clear, .black.opacity(0.82)], startPoint: .center, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: 8) {
-                  Text(entry.title).font(Theme.Font.headline).foregroundStyle(.white).lineLimit(1)
-                  if !entry.subtitle.isEmpty {
-                    Text(entry.subtitle).font(Theme.Font.caption).foregroundStyle(.white).lineLimit(1)
-                      .padding(.horizontal, 6).frame(height: 18).background(.black.opacity(0.4), in: RoundedRectangle(cornerRadius: Theme.Radius.xs, style: .continuous))
-                  }
-                }.padding(.horizontal, 12).padding(.vertical, 8)
-              }
-            }.aspectRatio(148 / 280, contentMode: .fit).frame(minHeight: 280)
-              .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous)).cardHover()
-          }.buttonStyle(CardPressStyle())
+          // The same poster card as the 番剧 timeline: title and detail line under the cover.
+          PosterCard(cover: entry.cover, title: entry.title, subtitle: entry.subtitle) { activate(entry) }
         }
         if collection.isSelecting && collection.removable(entry) {
           Button { collection.toggle(entry) } label: {
@@ -175,14 +187,10 @@ struct M3CollectionResults: View {
               .background(Circle().fill(.black.opacity(0.45)).padding(2))
           }.buttonStyle(.plain).padding(10).disabled(collection.isMutating).accessibilityLabel("选择 \(entry.title)")
         }
-      }.overlay(alignment: .topTrailing) {
-        if collection.removable(entry) && !collection.isSelecting {
-          Button { remove(entry) } label: { Image(systemName: "trash") }
-            .buttonStyle(ArtworkIconButtonStyle(destructive: true))
-            .help(collection.isPGC ? "取消追番 / 追剧" : "移除").accessibilityLabel(collection.isPGC ? "取消追番 / 追剧" : "移除")
-            .disabled(collection.isMutating || collection.isLoading || collection.isLoadingFolders).padding(8)
-        }
-      }
+      }.modifier(HoverRemoveButton(
+        enabled: collection.removable(entry) && !collection.isSelecting,
+        help: collection.isPGC ? "取消追番 / 追剧" : "移除",
+        disabled: collection.isMutating || collection.isLoading || collection.isLoadingFolders) { remove(entry) })
     }.opacity(collection.isSelecting && !collection.selectedIDs.contains(entry.id) ? 0.82 : 1)
   }
   private func videoCard(_ video: Video, entry: LibraryEntry) -> some View {
@@ -199,11 +207,6 @@ struct M3CollectionResults: View {
   private func activate(_ entry: LibraryEntry) {
     if collection.isSelecting { collection.toggle(entry); return }
     guard !collection.isMutating else { return }
-    switch entry.destination {
-    case .video(let video): model.open(video)
-    case .web(let url): model.openLibraryURL(url)
-    case .user(let mid): model.openOverlay(.userSpace(mid))
-    case .unavailable: break
-    }
+    model.open(entry)
   }
 }

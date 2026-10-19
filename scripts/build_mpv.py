@@ -15,6 +15,7 @@ PATCHES = {
     'mpv-coreaudio-device-change.patch': '769b218df220738cc1cf9f81cf696c16518c5dfe56a5ef028e33b22536e0e924',
     'mpv-0.41.0-deduplicate-quad-coordinates.patch': '106dd6766887aead29b8cb5e10cec44702d29cf841d5d371c1b82618be9e16c6',
     'mpv-0.41.0-renderer-compatibility.patch': '15f1c7022e15099c22b228e99b95588d21201a32343f3d0cf641baa538ee7d19',
+    'mpv-0.41.0-coreaudio-channel-layout.patch': '1c2716062b210322a5af4ac8e0824d58b1250c2331ce8da07d53515fe1bd2bb5',
 }
 
 def run(*args, **kwargs):

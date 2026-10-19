@@ -1,0 +1,7 @@
+--- a/audio/out/ao_coreaudio.c
++++ b/audio/out/ao_coreaudio.c
+@@ -325,2 +325,2 @@
+-                               kAudioOutputUnitProperty_ChannelMap,
+-                               kAudioUnitScope_Global, 0, layout, layout_size);
++                               kAudioUnitProperty_AudioChannelLayout,
++                               kAudioUnitScope_Input, 0, layout, layout_size);

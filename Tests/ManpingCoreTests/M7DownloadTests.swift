@@ -238,10 +238,6 @@ final class M7DownloadTests: XCTestCase {
     XCTAssertTrue(command.contains("a'\"'\"'b $(touch unsafe)"))
     XCTAssertFalse(command.contains("--cookie")); XCTAssertFalse(command.contains("-token"))
     XCTAssertThrowsError(try BBDownCommand.build(source: "https://www.bilibili.com/video/BVfixture?access_key=fixture-only", options: options))
-    let comments = [DanmakuComment(time: 1.25, mode: 5, color: 0x00ff00, text: "中文 < & > ' \"\u{1}")]
-    let decoded = try DanmakuParser.parse(DownloadExport.danmakuXML(comments))
-    XCTAssertEqual(decoded.first?.text, "中文 < & > ' \"")
-    XCTAssertEqual(decoded.first?.time, 1.25)
     let cues = try DownloadExport.parseSubtitleJSON(Data(#"{"body":[{"from":1.25,"to":2.5,"content":"中文"}]}"#.utf8))
     XCTAssertTrue(String(decoding: DownloadExport.subtitleSRT(cues), as: UTF8.self).contains("00:00:01,250 --> 00:00:02,500\n中文"))
   }

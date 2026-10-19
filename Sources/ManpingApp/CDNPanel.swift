@@ -1,13 +1,13 @@
 import ManpingCore
 import SwiftUI
 
-/// Dot on the player settings button while playback runs short of buffer; the button's menu
+/// Dot on the player’s More button while playback runs short of buffer; the button's menu
 /// opens the panel (「网络与节点…」). It is the only control-panel view observing the CDN
 /// controller, so relay statistics refresh without re-rendering the player page.
 struct CDNHealthDot: View {
   @ObservedObject var cdn: CDNController
   var body: some View {
-    let health = CDNHealth(bufferAhead: cdn.bufferAhead, stalls: cdn.stalls)
+    let health = CDNHealth(bufferAhead: cdn.bufferAhead)
     if cdn.activeHost != nil, health != .smooth {
       Circle().fill(health.color(.dark)).frame(width: 6, height: 6)
         .accessibilityLabel("播放状态：\(health.title)")
@@ -19,9 +19,7 @@ struct CDNHealthDot: View {
 enum CDNHealth {
   case smooth, tight, stalled
 
-  init(bufferAhead: Double, stalls: Int) {
-    // Stall count is accepted so callers pass the full picture, but the thresholds stay buffer-based:
-    // a stall that has already recovered must not keep the pill red.
+  init(bufferAhead: Double) {
     if bufferAhead <= 0.5 { self = .stalled }
     else { self = bufferAhead < 8 ? .tight : .smooth }
   }
@@ -91,7 +89,7 @@ struct CDNPanel: View {
     }
   }
 
-  private var health: CDNHealth { CDNHealth(bufferAhead: cdn.bufferAhead, stalls: cdn.stalls) }
+  private var health: CDNHealth { CDNHealth(bufferAhead: cdn.bufferAhead) }
   private var proxyConfigured: Bool { cdn.proxyStatus != "未配置" }
 
   var body: some View {

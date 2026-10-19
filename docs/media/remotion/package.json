@@ -1,0 +1,21 @@
+{
+  "name": "manping-readme-media",
+  "private": true,
+  "type": "module",
+  "description": "Remotion compositions for the README animations (recordings come from ../.out, see ../README.md).",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "node render.mjs",
+    "compile": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.529",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.529"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}

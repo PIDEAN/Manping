@@ -23,7 +23,7 @@ struct LibraryResults: View {
               ForEach(library.users) { user in
                 LibraryUserCard(user: user) { model.openOverlay(.userSpace(user.id)) }
               }
-            }
+            }.cardGridContent()
           } else if library.entries.allSatisfy({ if case .user = $0.destination { return true }; return false }) {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 16)], spacing: 16) {
               ForEach(library.entries) { entry in
@@ -32,16 +32,16 @@ struct LibraryResults: View {
                     signature: entry.subtitle)) { model.openOverlay(.userSpace(mid)) }
                 }
               }
-            }
+            }.cardGridContent()
           } else {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: Theme.gridMinimum), spacing: Theme.gridSpacing)], spacing: Theme.gridSpacing) {
               ForEach(library.entries) { entry in
                 if case .video(let video) = entry.destination {
                   VideoCard(video: video) { model.open(video) }
                     .help(entry.subtitle)
-                } else { LibraryEntryCard(entry: entry) { open(entry) } }
+                } else { LibraryEntryCard(entry: entry) { model.open(entry) } }
               }
-            }
+            }.cardGridContent()
           }
           if let error = library.error {
             PageStateView(.error, title: "没能加载更多", message: error, actionTitle: "重试") {
@@ -50,17 +50,9 @@ struct LibraryResults: View {
           } else if library.hasMore {
             LoadMoreFooter(isLoading: library.isLoading) { Task { await library.loadNext() } }
           }
-        }.performanceScrollProbe(page: "search").padding(Theme.gridPadding)
+        }.cardGrid().performanceScrollProbe(page: "search").padding(Theme.gridPadding)
       }
     }.foregroundStyle(Theme.text(scheme))
-  }
-  private func open(_ entry: LibraryEntry) {
-    switch entry.destination {
-    case .video(let video): model.open(video)
-    case .user(let mid): model.openOverlay(.userSpace(mid))
-    case .web(let url): model.openLibraryURL(url)
-    case .unavailable: break
-    }
   }
 }
 

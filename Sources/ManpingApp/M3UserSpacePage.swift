@@ -73,26 +73,28 @@ struct M3UserSpacePage: View {
     }
   }
   @ViewBuilder private var headerControls: some View {
-    Button { showingProfile.toggle() } label: { Image(systemName: "person.text.rectangle") }
-      .buttonStyle(AppButtonStyle(size: .small, iconOnly: true)).help("UP 主资料")
-      .popover(isPresented: $showingProfile, arrowEdge: .bottom) {
-        M3UserProfileFlyout(user: profile, mid: mid, isSignedInAccount: model.accountMID == mid) { route in
-          showingProfile = false
-          model.openOverlay(route)
-        }.padding(16).frame(width: 352)
-      }
-    if submitted.isEmpty {
-      Button { showingSearch.toggle(); tab = "投稿" } label: {
-        Image(systemName: "magnifyingglass")
-      }.buttonStyle(AppButtonStyle(size: .small, iconOnly: true)).help("搜索投稿")
-    } else {
-      Button(action: exitSearch) { Label("退出搜索", systemImage: "xmark") }.buttonStyle(AppButtonStyle(size: .small))
+    if !submitted.isEmpty {
+      Button(action: exitSearch) { Label("退出搜索", systemImage: "xmark") }.toolbarActionStyle()
     }
-    Button { if let profile { pins.toggle(profile) } } label: {
-      Image(systemName: pins.contains(mid) ? "pin.fill" : "pin")
-        .foregroundStyle(pins.contains(mid) ? Theme.accentText(scheme) : Theme.text(scheme))
-    }.buttonStyle(AppButtonStyle(size: .small, iconOnly: true))
-      .disabled(profile == nil).help(pins.contains(mid) ? "从账号菜单取消固定" : "固定到账号菜单")
+    ToolbarIconGroup {
+      Button { showingProfile.toggle() } label: { ToolbarGroupIcon("person.text.rectangle") }
+        .help("UP 主资料").accessibilityLabel("UP 主资料")
+        .popover(isPresented: $showingProfile, arrowEdge: .bottom) {
+          M3UserProfileFlyout(user: profile, mid: mid, isSignedInAccount: model.accountMID == mid) { route in
+            showingProfile = false
+            model.openOverlay(route)
+          }.padding(16).frame(width: 352)
+        }
+      if submitted.isEmpty {
+        Button { showingSearch.toggle(); tab = "投稿" } label: { ToolbarGroupIcon("magnifyingglass") }
+          .help("搜索投稿").accessibilityLabel("搜索投稿")
+      }
+      Button { if let profile { pins.toggle(profile) } } label: {
+        ToolbarGroupIcon(pins.contains(mid) ? "pin.fill" : "pin")
+          .foregroundStyle(pins.contains(mid) ? Theme.accentText(scheme) : Theme.text(scheme))
+      }.disabled(profile == nil).help(pins.contains(mid) ? "从账号菜单取消固定" : "固定到账号菜单")
+        .accessibilityLabel(pins.contains(mid) ? "取消固定" : "固定")
+    }
     M3UserFollowButton(mid: mid, relations: relations, model: model)
   }
   private func submit() {

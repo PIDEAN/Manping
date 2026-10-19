@@ -33,8 +33,6 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
   case appleLocal = "apple_local"
   /// The 22 providers registered by the fixed upstream UI, in source order.
   public static var sourceProviders: [AIProvider] { allCases.filter { $0 != .chatGPTPlan && $0 != .appleLocal } }
-  public var isOnDevice: Bool { self == .appleLocal }
-  public var usesOAuth: Bool { self == .chatGPTPlan }
   public var title: String {
     switch self {
     case .openAI: "OpenAI"
@@ -94,7 +92,9 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
   public var supportsEndpoint: Bool { [.openAI, .azureOpenAI, .azureAI, .anthropic, .gemini, .ollama].contains(self) }
   public var requiresCustomModels: Bool { predefinedModels.isEmpty }
   /// Exact AgentKernel 0.0.8-preview5 GetPredefinedModels; these are source-parity choices, not a live catalogue.
-  public var predefinedModels: [AIModel] {
+  /// Predefined models carry their known context and output limits.
+  public var predefinedModels: [AIModel] { basePredefinedModels.map(\.withKnownCapacity) }
+  private var basePredefinedModels: [AIModel] {
     switch self {
     case .openAI:
       [
@@ -300,16 +300,43 @@ public struct AIModel: Codable, Equatable, Sendable, Identifiable {
   public var name: String
   public var toolSupport: Bool
   public var visionSupport: Bool
-  public init(id: String, name: String, toolSupport: Bool = false, visionSupport: Bool = false) {
+  /// Context window in tokens; nil means unknown (planned at 32K, shrunk on overflow). Editable for custom models.
+  public var contextTokens: Int?
+  /// The model's own output limit in tokens; nil means unknown.
+  public var maxOutputTokens: Int?
+  public init(id: String, name: String, toolSupport: Bool = false, visionSupport: Bool = false,
+    contextTokens: Int? = nil, maxOutputTokens: Int? = nil) {
     self.id = id; self.name = name; self.toolSupport = toolSupport; self.visionSupport = visionSupport
+    self.contextTokens = contextTokens; self.maxOutputTokens = maxOutputTokens
   }
-  enum CodingKeys: String, CodingKey { case id, name, toolSupport = "tool_support", visionSupport = "vision_support" }
+  enum CodingKeys: String, CodingKey {
+    case id, name, toolSupport = "tool_support", visionSupport = "vision_support"
+    case contextTokens = "mac_context_tokens", maxOutputTokens = "mac_max_output_tokens"
+  }
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decode(String.self, forKey: .id)
     name = try container.decodeIfPresent(String.self, forKey: .name) ?? id
     toolSupport = try container.decodeIfPresent(Bool.self, forKey: .toolSupport) ?? false
     visionSupport = try container.decodeIfPresent(Bool.self, forKey: .visionSupport) ?? false
+    contextTokens = try container.decodeIfPresent(Int.self, forKey: .contextTokens).flatMap { $0 > 0 ? $0 : nil }
+    maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens).flatMap { $0 > 0 ? $0 : nil }
+  }
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(id, forKey: .id); try container.encode(name, forKey: .name)
+    try container.encode(toolSupport, forKey: .toolSupport); try container.encode(visionSupport, forKey: .visionSupport)
+    try container.encodeIfPresent(contextTokens, forKey: .contextTokens)
+    try container.encodeIfPresent(maxOutputTokens, forKey: .maxOutputTokens)
+  }
+  /// This model with the known capacity filled in where none was configured.
+  public var withKnownCapacity: AIModel {
+    var model = self
+    if let entry = AIModelCapacity.table[id] {
+      model.contextTokens = model.contextTokens ?? entry.context
+      model.maxOutputTokens = model.maxOutputTokens ?? entry.output
+    }
+    return model
   }
 }
 
@@ -636,6 +663,9 @@ public actor AIConfigurationStore {
         throw AIConfigurationError.invalidConfiguration
       }
       if result.models[index].name.isEmpty { result.models[index].name = model.id }
+      // Capacity is optional; an implausible value is a configuration error, not a silent clamp.
+      if let context = model.contextTokens, !(1_024...20_000_000).contains(context) { throw AIConfigurationError.invalidConfiguration }
+      if let output = model.maxOutputTokens, !(1...2_000_000).contains(output) { throw AIConfigurationError.invalidConfiguration }
     }
     for value in [result.organization, result.apiVersion].compactMap({ $0 }) {
       guard value.utf8.count <= 512, !value.contains("\0"), !value.contains("\n"), !value.contains("\r") else {

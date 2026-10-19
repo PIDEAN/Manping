@@ -1,13 +1,11 @@
 import SwiftUI
 
-// Shared page scaffolding. Every page header, sidebar header and paging footer goes
-// through these so heights, insets and type match across the app.
+// Shared page scaffolding and controls keep heights, insets and type consistent across the app.
 
 /// The 52pt header above a page's content: optional symbol, title, trailing controls.
 struct PageHeader<Controls: View>: View {
   let title: String
   var symbol: String? = nil
-  var subtitle: String? = nil
   @ViewBuilder var controls: () -> Controls
   @Environment(\.colorScheme) private var scheme
   var body: some View {
@@ -16,18 +14,11 @@ struct PageHeader<Controls: View>: View {
         Image(systemName: symbol).font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.accentText(scheme))
       }
       Text(title).font(Theme.Font.section).lineLimit(1)
-      if let subtitle { Text(subtitle).font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)).lineLimit(1) }
       Spacer(minLength: 12)
       controls()
     }.foregroundStyle(Theme.text(scheme)).padding(.horizontal, Theme.gridPadding)
       .frame(height: Theme.pageHeaderHeight)
       .overlay(alignment: .bottom) { Hairline() }
-  }
-}
-
-extension PageHeader where Controls == EmptyView {
-  init(title: String, symbol: String? = nil, subtitle: String? = nil) {
-    self.init(title: title, symbol: symbol, subtitle: subtitle) { EmptyView() }
   }
 }
 
@@ -96,25 +87,6 @@ struct PageFilterBar<Content: View>: View {
       .padding(.horizontal, Theme.gridPadding).frame(height: 44)
       .overlay(alignment: .bottom) { Hairline() }
   }
-}
-
-/// The title row at the top of a secondary sidebar, level with the page header.
-struct SidebarHeader<Controls: View>: View {
-  let title: String
-  @ViewBuilder var controls: () -> Controls
-  @Environment(\.colorScheme) private var scheme
-  var body: some View {
-    HStack(spacing: 6) {
-      Text(title).font(Theme.Font.section).lineLimit(1)
-      Spacer(minLength: 0)
-      controls()
-    }.foregroundStyle(Theme.text(scheme)).padding(.leading, 20).padding(.trailing, 12)
-      .frame(height: Theme.pageHeaderHeight)
-  }
-}
-
-extension SidebarHeader where Controls == EmptyView {
-  init(title: String) { self.init(title: title) { EmptyView() } }
 }
 
 /// A small grouping label inside a sidebar list.
@@ -218,27 +190,25 @@ struct MenuLabel: View {
 
 extension View {
   /// Applies the app's pull-down menu look; pair with `MenuLabel`.
-  func appMenuStyle() -> some View {
-    menuStyle(.button).buttonStyle(AppButtonStyle(size: .small)).menuIndicator(.hidden).fixedSize()
+  func appMenuStyle(toolbar: Bool = false) -> some View {
+    menuStyle(.button).buttonStyle(AppButtonStyle(size: toolbar ? .toolbar : .small)).menuIndicator(.hidden).fixedSize()
   }
 }
 
 /// Small round buttons that sit on artwork (remove, select): dark translucent disc, white glyph.
 struct ArtworkIconButtonStyle: ButtonStyle {
-  var destructive = false
   func makeBody(configuration: Configuration) -> some View {
-    ArtworkIconBody(configuration: configuration, destructive: destructive)
+    ArtworkIconBody(configuration: configuration)
   }
 }
 
 private struct ArtworkIconBody: View {
   let configuration: ButtonStyleConfiguration
-  let destructive: Bool
   @State private var hovering = false
   var body: some View {
     configuration.label.font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
       .frame(width: 28, height: 28)
-      .background(Circle().fill(hovering && destructive ? Theme.danger(.dark) : .black.opacity(configuration.isPressed ? 0.75 : 0.58)))
+      .background(Circle().fill(hovering ? Theme.danger(.dark) : .black.opacity(configuration.isPressed ? 0.75 : 0.58)))
       .contentShape(Circle())
       .onHover { value in withAnimation(Theme.hoverAnimation) { hovering = value } }
   }
@@ -248,11 +218,52 @@ private struct ArtworkIconBody: View {
 struct SidebarToggleButton: View {
   @Binding var hidden: Bool
   var body: some View {
-    Button { withAnimation(.snappy(duration: 0.25)) { hidden.toggle() } } label: {
-      Image(systemName: "sidebar.left")
-    }.buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true))
+    Button { withAnimation(.snappy(duration: 0.25)) { hidden.toggle() } } label: { ToolbarIcon("sidebar.left") }
+      .toolbarIconStyle()
       .help(hidden ? "显示侧栏" : "隐藏侧栏").accessibilityLabel(hidden ? "显示侧栏" : "隐藏侧栏")
   }
+}
+
+// MARK: - Toolbar actions
+//
+// Every control a page puts in the toolbar (`.pageToolbar(accessory:)`) is drawn with these, so the
+// toolbar reads as one set: a text action is a 36 pt glass capsule, a lone icon action a 36 pt
+// glass circle (like 刷新), and neighbouring icon actions share one capsule, 32 pt per cell.
+
+/// The glyph of an icon-only toolbar action.
+struct ToolbarIcon: View {
+  let symbol: String
+  init(_ symbol: String) { self.symbol = symbol }
+  var body: some View { Image(systemName: symbol).font(.system(size: 14, weight: .medium)) }
+}
+
+extension View {
+  /// A toolbar action with a title (and usually an icon): a 36 pt glass capsule.
+  func toolbarActionStyle(_ role: AppButtonStyle.Role = .secondary) -> some View {
+    buttonStyle(AppButtonStyle(role: role, size: .toolbar))
+  }
+  /// A lone icon-only toolbar action: a 36 pt glass circle. Give it a `ToolbarIcon` label and `.help`.
+  func toolbarIconStyle() -> some View {
+    buttonStyle(AppButtonStyle(role: .secondary, size: .toolbar, iconOnly: true))
+  }
+}
+
+/// Neighbouring icon-only toolbar actions in one glass capsule, like 返回 / 前进. Each cell is a
+/// `ToolbarGroupIcon` inside a `Button` / `ShareLink` that carries its own `.help`.
+struct ToolbarIconGroup<Content: View>: View {
+  @ViewBuilder var content: () -> Content
+  var body: some View {
+    HStack(spacing: 0) { content() }
+      .buttonStyle(ChromeButtonStyle(capsule: true))
+      .padding(2).glassEffect(.regular.interactive(), in: Capsule())
+  }
+}
+
+/// The glyph of one cell in a `ToolbarIconGroup`: 32 pt square.
+struct ToolbarGroupIcon: View {
+  let symbol: String
+  init(_ symbol: String) { self.symbol = symbol }
+  var body: some View { ToolbarIcon(symbol).frame(width: Theme.controlHeight, height: Theme.controlHeight) }
 }
 
 /// Wrapping row of chips (search suggestions, tags).

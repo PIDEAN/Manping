@@ -36,13 +36,12 @@ public struct LibraryUser: Identifiable, Equatable, Sendable {
   public let likes: Int
   public let level: Int
   public let isVIP: Bool
-  public let vipLabel: String
   public init(id: Int64, name: String, avatar: URL? = nil, signature: String = "",
               followers: Int = 0, following: Int = 0, videos: Int = 0,
-              likes: Int = 0, level: Int = 0, isVIP: Bool = false, vipLabel: String = "") {
+              likes: Int = 0, level: Int = 0, isVIP: Bool = false) {
     self.id = id; self.name = name; self.avatar = avatar; self.signature = signature
     self.followers = followers; self.following = following; self.videos = videos
-    self.likes = likes; self.level = level; self.isVIP = isVIP; self.vipLabel = vipLabel
+    self.likes = likes; self.level = level; self.isVIP = isVIP
   }
 }
 public struct LibraryGroup: Identifiable, Equatable, Sendable {
@@ -326,7 +325,7 @@ extension BiliService {
       followers: JSONValue.int(item["fans"]), following: JSONValue.int(item["follow"] ?? item["attention"]),
       videos: JSONValue.int(item["archive_count"] ?? item["videos"]),
       likes: JSONValue.int(item["like_num"]), level: JSONValue.int(level["current_level"]),
-      isVIP: JSONValue.int(vip["status"]) >= 1, vipLabel: vip["sign"] as? String ?? "")
+      isVIP: JSONValue.int(vip["status"]) >= 1)
   }
   static func libraryVideo(_ item: [String: Any]) throws -> Video {
     var normalized = item

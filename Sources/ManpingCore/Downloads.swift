@@ -330,11 +330,6 @@ private final class MergeProcess: @unchecked Sendable {
   }
 }
 public enum DownloadWorker {
-  public static func transfer(request: URLRequest, to destination: URL,
-                              progress: @escaping @Sendable (Double) -> Void = { _ in }) async throws -> URL {
-    guard !FileManager.default.fileExists(atPath: destination.path) else { throw DownloadFailure.outputExists }
-    return try await resumeTransfer(request: request, to: destination, progress: progress)
-  }
   /// Caller obtains a fresh signed URL for every attempt. Existing bytes require a validator.
   /// identity must describe media IDs/actual quality/codec/bandwidth, never a URL or credential.
   /// A new identity (including an unbound legacy sidecar) discards only this internal partial.

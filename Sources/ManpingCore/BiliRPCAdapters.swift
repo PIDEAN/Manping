@@ -151,8 +151,7 @@ enum BiliRPCAdapter {
       items: try items.map { try dynamic($0) }, historyOffset: offset,
       updateBaseline: baseline, hasMore: hasMore,
       users: users.filter { $0.uid > 0 }.map { RPCDynamicProfile(id: $0.uid, name: $0.name,
-        avatar: url($0.face), hasUnread: $0.hasUpdate_p, isLive: $0.liveState == .liveLive,
-        liveURL: url($0.uri)) })
+        avatar: url($0.face), hasUnread: $0.hasUpdate_p, isLive: $0.liveState == .liveLive) })
   }
   static func history(_ reply: Bilibili_App_Interfaces_V1_CursorV2Reply) throws -> RPCHistoryPage {
     try bounded(reply.items.count)

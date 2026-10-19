@@ -10,7 +10,7 @@ struct AIProviderLogo: View {
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     if provider == .appleLocal {
-      Image(systemName: "apple.logo").font(.system(size: size * 0.8)).frame(width: size, height: size)
+      Image(systemName: "apple.logo").font(.system(size: size * (20.0 / 28.0))).frame(width: size, height: size)
         .accessibilityLabel(provider.title)
     } else if let image = AIProviderLogoCache.image(provider, dark: scheme == .dark) {
       Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)

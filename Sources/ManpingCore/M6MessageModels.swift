@@ -102,12 +102,11 @@ public struct ConversationMessage: Identifiable, Sendable {
 public struct ConversationPage: Sendable {
   public let messages: [ConversationMessage]
   public let minimumSequence: Int64
-  public let maximumSequence: Int64
   public let hasMore: Bool
   public static func parse(_ value: [String: Any]) throws -> Self {
     guard let raw = value["messages"] as? [[String: Any]] else {
       if value["messages"] == nil || value["messages"] is NSNull {
-        return Self(messages: [], minimumSequence: 0, maximumSequence: 0, hasMore: false)
+        return Self(messages: [], minimumSequence: 0, hasMore: false)
       }
       throw BiliError.invalidResponse("Invalid conversation list")
     }
@@ -127,7 +126,7 @@ public struct ConversationPage: Sendable {
       return message
     }
     return Self(messages: parsed, minimumSequence: messageInteger(value["min_seqno"]),
-      maximumSequence: messageInteger(value["max_seqno"]), hasMore: messageInteger(value["has_more"]) == 1 && !parsed.isEmpty)
+      hasMore: messageInteger(value["has_more"]) == 1 && !parsed.isEmpty)
   }
 }
 public struct ChatSession: Identifiable, Sendable {

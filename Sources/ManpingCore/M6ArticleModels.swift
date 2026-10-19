@@ -95,15 +95,13 @@ public struct ArticleDetail: Equatable, Sendable {
   public let isLiked: Bool
   public let isFavorited: Bool
   public let isFollowing: Bool
-  public let contributedCoins: Int
   public let interactionStateAvailable: Bool
   public let metadataWarning: String?
   public init(article: ArticleSummary, blocks: [ArticleBodyBlock], tags: [String] = [],
-    isLiked: Bool = false, isFavorited: Bool = false, isFollowing: Bool = false, contributedCoins: Int = 0,
+    isLiked: Bool = false, isFavorited: Bool = false, isFollowing: Bool = false,
     interactionStateAvailable: Bool = true, metadataWarning: String? = nil) {
     self.article = article; self.blocks = blocks; self.tags = tags
     self.isLiked = isLiked; self.isFavorited = isFavorited; self.isFollowing = isFollowing
-    self.contributedCoins = contributedCoins
     self.interactionStateAvailable = interactionStateAvailable; self.metadataWarning = metadataWarning
   }
 }

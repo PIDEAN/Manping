@@ -57,9 +57,11 @@ extension BiliService {
   public func downloadSubtitleTracks(aid: Int64, cid: Int64, expectedIdentity: AuthSnapshot) async throws -> [DownloadSubtitleTrack] {
     guard aid > 0, cid > 0 else { throw BiliError.invalidResponse("读取字幕需要有效的视频与分集标识") }
     try checkRESTIdentity(expectedIdentity)
-    let object = try await subtitleMetadataObject(aid: aid, cid: cid, expectedIdentity: expectedIdentity)
+    // Shared with AI (chapters) through the per-identity player metadata cache.
+    let metadata = try await playerMetadata(aid: aid, cid: cid, expectedIdentity: expectedIdentity)
     try checkRESTIdentity(expectedIdentity)
-    return try DownloadSubtitleTrack.parse(object)
+    guard let tracks = metadata.subtitles else { throw BiliError.invalidResponse(metadata.subtitleError ?? "字幕索引格式无效") }
+    return tracks
   }
   public func downloadSubtitleCues(track: DownloadSubtitleTrack, expectedIdentity: AuthSnapshot) async throws -> [DownloadSubtitleCue] {
     try checkRESTIdentity(expectedIdentity)

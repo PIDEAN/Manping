@@ -34,7 +34,7 @@ final class LiveTests: XCTestCase {
     let playback = try LivePlayback.parse(["room_id": 1, "live_status": 0, "playurl_info": NSNull()])
     XCTAssertEqual(playback.status, .offline)
     XCTAssertTrue(playback.streams.isEmpty)
-    XCTAssertNil(LiveStreamSelector.select(playback, preferHEVC: false))
+    XCTAssertNil(LiveStreamSelector.ranked(playback, preferHEVC: false).first)
   }
 
   func testSelectorPrefersQualityThenCodecThenFLVAndPutsPeerHostsLast() throws {
@@ -44,25 +44,25 @@ final class LiveTests: XCTestCase {
         ("hevc", 10000, [10000], ["hevc.bilivideo.com"])]),
       stream("http_hls", "ts", [("avc", 20000, [20000], ["low.bilivideo.com"])]),
     ]))
-    let avc = try XCTUnwrap(LiveStreamSelector.select(playback, preferHEVC: false))
+    let avc = try XCTUnwrap(LiveStreamSelector.ranked(playback, preferHEVC: false).first)
     XCTAssertEqual(avc.currentQuality, 20000, "a higher delivered quality wins over the format")
     let without4K = LivePlayback(roomID: 1, status: .live, qualities: playback.qualities,
       streams: playback.streams.filter { $0.currentQuality == 10000 })
-    let flv = try XCTUnwrap(LiveStreamSelector.select(without4K, preferHEVC: false))
+    let flv = try XCTUnwrap(LiveStreamSelector.ranked(without4K, preferHEVC: false).first)
     XCTAssertEqual([flv.formatName, flv.codecName], ["flv", "avc"])
     XCTAssertEqual(flv.urls.map { $0.host }, ["d1--ov-gotcha05.bilivideo.com", "cn-x-mcdn.bilivideo.cn"], "PCDN lines last")
-    let hevc = try XCTUnwrap(LiveStreamSelector.select(without4K, preferHEVC: true))
+    let hevc = try XCTUnwrap(LiveStreamSelector.ranked(without4K, preferHEVC: true).first)
     XCTAssertEqual(hevc.codecName, "hevc")
     let mixed = try LivePlayback.parse(playInfo([
       stream("http_stream", "flv", [("hevc", 250, [10000, 400, 250], ["hevc.bilivideo.com"]),
         ("avc", 150, [10000, 400, 250, 150], ["avc.bilivideo.com"])]),
     ]))
-    XCTAssertEqual(LiveStreamSelector.select(mixed, preferHEVC: true, requested: 150)?.currentQuality, 150,
+    XCTAssertEqual(LiveStreamSelector.ranked(mixed, preferHEVC: true, requested: 150).first?.currentQuality, 150,
       "a requested quality only one codec offers beats the preferred codec")
-    XCTAssertEqual(LiveStreamSelector.select(mixed, preferHEVC: true, requested: 400)?.currentQuality, 250,
+    XCTAssertEqual(LiveStreamSelector.ranked(mixed, preferHEVC: true, requested: 400).first?.currentQuality, 250,
       "otherwise the closest quality below the request")
     let onlyAV1 = LivePlayback(roomID: 1, status: .live, qualities: [], streams: without4K.streams.filter { $0.codecName == "av1" })
-    XCTAssertEqual(LiveStreamSelector.select(onlyAV1, preferHEVC: false)?.codecName, "av1", "AV1 only when nothing else exists")
+    XCTAssertEqual(LiveStreamSelector.ranked(onlyAV1, preferHEVC: false).first?.codecName, "av1", "AV1 only when nothing else exists")
   }
 
   func testFastestLineSkipsDeadEdgesAndFallsBackToTheNextFormat() async throws {
@@ -116,7 +116,7 @@ final class LiveTests: XCTestCase {
     var reply = Data(Self.bigEndian(UInt32(888)))
     reply = LiveChatPacket.encode(.heartbeatReply, body: reply, version: 1)
     let auth = LiveChatPacket.encode(.authReply, body: Data(#"{"code":0}"#.utf8))
-    let events = LiveChatPacket.events(auth + compressed + reply)
+    let events = LiveChatPacket.decode(auth + compressed + reply).events
     XCTAssertEqual(events, [
       .connected,
       .danmaku(user: "观众甲", text: "好耶", color: 16_772_431),
@@ -128,9 +128,9 @@ final class LiveTests: XCTestCase {
 
   func testTruncatedFramesAreIgnored() {
     let packet = LiveChatPacket.encode(.message, body: Data(#"{"cmd":"LIVE"}"#.utf8))
-    XCTAssertEqual(LiveChatPacket.events(packet), [.liveStarted])
-    XCTAssertTrue(LiveChatPacket.events(packet.prefix(20)).isEmpty)
-    XCTAssertTrue(LiveChatPacket.events(Data([0, 0, 0, 5])).isEmpty)
+    XCTAssertEqual(LiveChatPacket.decode(packet).events, [.liveStarted])
+    XCTAssertTrue(LiveChatPacket.decode(packet.prefix(20)).events.isEmpty)
+    XCTAssertTrue(LiveChatPacket.decode(Data([0, 0, 0, 5])).events.isEmpty)
   }
 
   func testCommandSuffixesAndGiftsParse() {
@@ -178,7 +178,7 @@ final class LiveTests: XCTestCase {
 
   func testRejectedChatAuthIsNotAConnection() {
     let accepted = LiveChatPacket.encode(.authReply, body: Data(#"{"code":0}"#.utf8))
-    XCTAssertEqual(LiveChatPacket.events(accepted), [.connected])
+    XCTAssertEqual(LiveChatPacket.decode(accepted).events, [.connected])
     XCTAssertFalse(LiveChatPacket.decode(accepted).authRejected)
     for body in [#"{"code":-101}"#, #"{"code":"1"}"#, "not json", "{}"] {
       let reply = LiveChatPacket.encode(.authReply, body: Data(body.utf8))

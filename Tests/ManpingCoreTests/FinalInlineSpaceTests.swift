@@ -22,7 +22,7 @@ final class FinalInlineSpaceTests: XCTestCase {
       "level_info": ["current_level": 6], "vip": ["status": 2, "sign": "年度大会员"]])
     XCTAssertEqual(user.followers, 1000); XCTAssertEqual(user.following, 23)
     XCTAssertEqual(user.likes, 45678); XCTAssertEqual(user.videos, 8)
-    XCTAssertEqual(user.level, 6); XCTAssertTrue(user.isVIP); XCTAssertEqual(user.vipLabel, "年度大会员")
+    XCTAssertEqual(user.level, 6); XCTAssertTrue(user.isVIP)
     let sparse = try BiliService.libraryUser(["mid": 123, "name": "Sparse"])
     XCTAssertEqual(sparse.likes, 0); XCTAssertEqual(sparse.level, 0); XCTAssertFalse(sparse.isVIP)
   }

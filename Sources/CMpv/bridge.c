@@ -34,6 +34,7 @@ struct bili_mpv {
     atomic_bool dirty;
     atomic_int target_peak;
     int diagnostics, sample_frame, sample_target_peak, capture_done;
+    int isolation_mask;
     int shader_links, shader_link_failures, max_active_attributes;
     int width, height;
     unsigned long frames, background_frames;
@@ -66,7 +67,7 @@ static void *gl_proc(void *ctx, const char *name) {
     if(e->diagnostics && strcmp(name,"glLinkProgram")==0) return (void *)diagnostic_link_program;
     return dlsym(RTLD_DEFAULT, name);
 }
-bili_mpv *bili_mpv_create(const char *path, char *error, size_t capacity) {
+bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t capacity) {
     bili_mpv *e = calloc(1, sizeof(*e));
     e->diagnostics = getenv("MANPING_RENDER_DIAGNOSTICS") != NULL;
     e->library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -89,15 +90,40 @@ bili_mpv *bili_mpv_create(const char *path, char *error, size_t capacity) {
         int status=e->set_option_string(e->handle,options[i][0],options[i][1]);
         if(status<0) { snprintf(error,capacity,"%s: %s",options[i][0],e->error_string(status)); bili_mpv_destroy(e);return NULL; }
     }
+    // mpv_create's embedding contract plus config=no above disables config files;
+    // config-dir is only needed when config loading is explicitly re-enabled (client.h).
+    const char *isolated_options[] = {"ytdl", "load-scripts", "cookies"};
+    if (isolated) {
+        for (size_t i = 0; i < 3; i++) {
+            if (e->set_option_string(e->handle, isolated_options[i], "no") < 0) {
+                snprintf(error, capacity, "Media isolation option configuration failed");
+                bili_mpv_destroy(e); return NULL;
+            }
+        }
+    }
     // App clipboard actions use NSPasteboard. The unused native backend in
     // mpv 0.41 retains a Clipboard object per instance. Older custom libraries
     // may not expose this option, so keep this optional for compatibility.
     (void)e->set_option_string(e->handle,"clipboard-backends","");
     int status=e->initialize(e->handle);
     if(status<0) { snprintf(error,capacity,"%s",e->error_string(status));bili_mpv_destroy(e);return NULL; }
+    if (isolated) {
+        const char *properties[] = {"options/ytdl", "options/load-scripts", "options/cookies"};
+        for (size_t i = 0; i < 3; i++) {
+            char *value = e->get_property_string(e->handle, properties[i]);
+            int disabled = value && strcmp(value, "no") == 0;
+            if (value) e->free(value);
+            if (!disabled) {
+                snprintf(error, capacity, "Media isolation option verification failed");
+                bili_mpv_destroy(e); return NULL;
+            }
+            e->isolation_mask |= 1 << i;
+        }
+    }
     e->request_log_messages(e->handle,"warn");
     return e;
 }
+int bili_mpv_isolation_mask(bili_mpv *e) { return e ? e->isolation_mask : 0; }
 int bili_mpv_render_create(bili_mpv *e) {
     if(!e) return MPV_ERROR_INVALID_PARAMETER;
     mpv_opengl_init_params gl = {gl_proc, e};

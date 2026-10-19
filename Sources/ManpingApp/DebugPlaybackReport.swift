@@ -76,6 +76,22 @@ import Foundation
     case "cdn-probe": model.cdn.reprobe()
     case "speed": if let value = parts.dropFirst().first.flatMap(Double.init) { model.player.setSpeed(value) }
     case "next": model.playNext()
+    // Full-screen transitions: toggle the window showing the picture, or move it to the
+    // standalone window. `danmaku-sample` fills every lane with scrolling, top and bottom lines
+    // from the current position, so captured frames show the danmaku size during transitions.
+    case "fullscreen":
+      // As the menu item: the player when something plays, otherwise the main window.
+      if model.hasPlayback { model.togglePlayerFullScreen() }
+      else { (NSApp.delegate as? AppDelegate)?.window?.toggleFullScreen(nil) }
+    case "detach": model.togglePlaybackWindow()
+    case "danmaku-sample":
+      let start = model.player.time
+      model.player.commentsEnabled = true
+      model.player.timeline = DanmakuTimeline(comments: (0..<600).map { index in
+        let mode = index % 10 == 0 ? 5 : index % 10 == 5 ? 4 : 1
+        return DanmakuComment(time: start + Double(index) * 0.12, mode: mode,
+          color: [0xffffff, 0xfee440, 0x7bdff2][index % 3], text: "全屏转场弹幕样本 \(index) · 字号应保持一致")
+      })
     // Live rooms.
     case "cdn-stall": model.cdn.debugSimulateStall()
     case "proxy-media": if let mode = parts.dropFirst().first.flatMap(MediaRoute.init(rawValue:)) { model.setProxyMediaRoute(mode) }

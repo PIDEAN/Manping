@@ -59,7 +59,7 @@ struct M5LivePage: View {
           }
           ForEach(discovery.partitions) { partition in
             sidebarRow(title: partition.title == "推荐" ? "推荐分区" : partition.title,
-              icon: "square.grid.2x2", selected: discovery.mainID == partition.id) {
+              icon: nil, selected: discovery.mainID == partition.id) {
                 Task { await discovery.selectMain(partition.id) }
               }
           }
@@ -106,8 +106,8 @@ struct M5LivePage: View {
       SidebarToggleButton(hidden: $sidebarHidden)
       if discovery.isRecommendation && !discovery.following.isEmpty {
         Button { showsFollowing.toggle() } label: {
-          Label("关注的直播间", systemImage: "dot.radiowaves.left.and.right").foregroundStyle(Theme.accentText(scheme))
-        }.buttonStyle(AppButtonStyle(role: .plain, size: .small)).popover(isPresented: $showsFollowing, arrowEdge: .bottom) {
+          Label("关注的直播间", systemImage: "dot.radiowaves.left.and.right")
+        }.toolbarActionStyle().popover(isPresented: $showsFollowing, arrowEdge: .bottom) {
           ScrollView {
             VStack(spacing: 2) { ForEach(discovery.following) { room in M5FollowLiveRow(room: room, play: { showsFollowing = false; model.openLiveRoom($0) },
               watch: { showsFollowing = false; model.openLive($0) }) } }.padding(6)
@@ -136,7 +136,7 @@ struct M5LivePage: View {
                   if room.id == discovery.rooms.last?.id, discovery.error == nil { Task { await discovery.loadNext() } }
                 }
             }
-          }.padding(Theme.gridPadding)
+          }.cardGridContent().padding(Theme.gridPadding)
           if let error = discovery.error {
             VStack(spacing: 10) {
               InlineErrorText(message: error)
@@ -145,14 +145,15 @@ struct M5LivePage: View {
           } else if discovery.hasMore {
             LoadMoreFooter(isLoading: discovery.isLoading, autoLoad: false) { Task { await discovery.loadNext() } }
           }
-        }
+        }.cardGrid()
       }
     }
   }
-  private func sidebarRow(title: String, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+  /// A row of the partition list: only the fixed entry (推荐直播) has an icon, the data rows do not.
+  private func sidebarRow(title: String, icon: String?, selected: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
       HStack(spacing: 8) {
-        Image(systemName: icon).font(.system(size: 13)).frame(width: 18)
+        if let icon { Image(systemName: icon).font(.system(size: 13)).frame(width: 18) }
         Text(title).font(Theme.Font.body).lineLimit(1)
         Spacer(minLength: 0)
       }.padding(.horizontal, 10).frame(height: Theme.rowHeight)

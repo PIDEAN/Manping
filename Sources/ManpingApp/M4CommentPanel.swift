@@ -140,7 +140,7 @@ struct M4EmbeddedComments: View {
       } else {
         CommentSectionHeader(total: total, sort: Binding(
           get: { comments.sort }, set: { value in Task { await comments.setSort(value) } }),
-          sortDisabled: comments.busy) { EmptyView() }.padding(.bottom, 4)
+          sortDisabled: comments.busy).padding(.bottom, 4)
       }
       if target == nil {
         Text("正在获取评论编号…").foregroundStyle(Theme.tertiaryText(scheme)).padding(.vertical, 12)

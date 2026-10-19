@@ -70,7 +70,7 @@ struct M7DownloadOptionsSheet: View {
             if qualities.isEmpty { unavailable("当前没有可用的视频流") }
             HStack(spacing: 6) {
               ForEach(DownloadCodec.allCases, id: \.self) { value in
-                choice(codecTitle(value), selected: codec == value) { codec = value }
+                choice(value.title, selected: codec == value) { codec = value }
               }
             }
           }
@@ -150,9 +150,6 @@ struct M7DownloadOptionsSheet: View {
   }
   private func unavailable(_ message: String) -> some View {
     Text(message).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-  }
-  private func codecTitle(_ value: DownloadCodec) -> String {
-    switch value { case .avc: "H.264"; case .hevc: "HEVC"; case .av1: "AV1" }
   }
   private func initialize() {
     guard !initialized else { return }; initialized = true

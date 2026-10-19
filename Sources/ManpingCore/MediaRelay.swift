@@ -64,12 +64,16 @@ public final class MediaRelay: @unchecked Sendable {
     let token: String
     let template: URL?
     let issued: [URL]
+    let retryBudget: RelayRetryBudget
+    var expiredStatus = 0
     var totalLength: Int?
     var contentType = "video/mp4"
     var inflight: [Int: Task<Data, Error>] = [:]
     /// Set under the relay lock when the stream is dropped; no new chunk task starts after it.
     var cancelled = false
-    init(token: String, template: URL?, issued: [URL]) { self.token = token; self.template = template; self.issued = issued }
+    init(token: String, template: URL?, issued: [URL], retryBudget: RelayRetryBudget) {
+      self.token = token; self.template = template; self.issued = issued; self.retryBudget = retryBudget
+    }
   }
 
   private struct HostState {
@@ -85,12 +89,15 @@ public final class MediaRelay: @unchecked Sendable {
   public let chunkSize: Int
   private let fetcher: CDNRangeFetching
   private let cacheLimit: Int
+  /// A soft budget for starting retries, not a deadline for an already active transfer.
+  private let retryStartBudget: Duration
   private let queue = DispatchQueue(label: "io.github.pidean.manping.media-relay")
   private let lock = NSLock()
   private var listener: NWListener?
   private var port: UInt16 = 0
   private var sources: [String: Source] = [:]
   private var activeHosts: [CDNHost] = []
+  private var manualHost: String?
   /// Nodes fetched through the proxy, next to the direct pool.
   private var proxiedHosts: [CDNHost] = []
   /// Fetch each stream's issued primary URL through the proxy even without proxied nodes: an
@@ -109,8 +116,10 @@ public final class MediaRelay: @unchecked Sendable {
 
   /// mpv keeps its own demuxer cache of everything the relay delivers, so the relay only needs
   /// room for the prefetch window (at most 8 chunks) plus a little slack for short seeks.
-  public init(fetcher: CDNRangeFetching, chunkSize: Int = 1 << 20, cacheLimit: Int = 48 << 20) {
+  public init(fetcher: CDNRangeFetching, chunkSize: Int = 1 << 20, cacheLimit: Int = 48 << 20,
+    retryStartBudget: Duration = .seconds(45)) {
     self.fetcher = fetcher; self.chunkSize = chunkSize; self.cacheLimit = cacheLimit
+    self.retryStartBudget = max(.zero, retryStartBudget)
   }
 
   deinit { listener?.cancel() }
@@ -155,15 +164,23 @@ public final class MediaRelay: @unchecked Sendable {
   /// Registers one media stream (its primary URL and the playurl backups) and returns the
   /// loopback URL mpv should open. Issued URLs stay usable as origins even when they are not
   /// host-swappable (for example an overseas Akamai backup).
-  public func register(_ primary: URL, backups: [URL] = []) -> URL? {
+  public func register(_ primary: URL, backups: [URL] = [], retryBudget: RelayRetryBudget? = nil) -> URL? {
     let token = Self.token()
     let issued = [primary] + backups.filter { $0 != primary }
     let template = issued.first(where: CDNCatalog.isSwappable)
     let ext = primary.pathExtension.isEmpty ? "m4s" : primary.pathExtension
     return lock.withLock { () -> URL? in
       guard listener != nil, port > 0 else { return nil }
-      sources[token] = Source(token: token, template: template, issued: issued)
+      sources[token] = Source(token: token, template: template, issued: issued, retryBudget: retryBudget ?? RelayRetryBudget(seconds: Double(retryStartBudget.components.seconds) + Double(retryStartBudget.components.attoseconds) / 1e18))
       return URL(string: "http://127.0.0.1:\(port)/r/\(token)/stream.\(ext)")
+    }
+  }
+
+  /// Safe scalar health signal; never exposes signed origin URLs or credentials.
+  public func expiredStatus(for urls: [URL]) -> Int {
+    lock.withLock {
+      urls.compactMap { $0.pathComponents.count >= 3 ? sources[$0.pathComponents[2]]?.expiredStatus : nil }
+        .first(where: { $0 != 0 }) ?? 0
     }
   }
 
@@ -214,7 +231,16 @@ public final class MediaRelay: @unchecked Sendable {
     }
   }
 
-  public var hosts: [CDNHost] { lock.withLock { activeHosts } }
+  /// A manual node is a strict origin boundary, including issued and proxied fallbacks.
+  public func setManualHost(_ host: String?) {
+    lock.withLock { manualHost = host?.lowercased() }
+  }
+
+  /// Call with the relay lock held. Rechecked at scheduling and immediately before launch.
+  private func permits(_ origin: Origin) -> Bool {
+    manualHost == nil || Self.hostName(ofKey: origin.key) == manualHost
+  }
+
 
   /// The proxied transport (nil turns every proxied route off). Replaced when the proxy changes.
   public func setProxyFetcher(_ fetcher: CDNRangeFetching?) {
@@ -243,8 +269,8 @@ public final class MediaRelay: @unchecked Sendable {
       }
     }
   }
-  public var proxiedPool: [CDNHost] { lock.withLock { proxiedHosts } }
-  public var proxiesIssuedPrimary: Bool { lock.withLock { proxiesIssued } }
+  var proxiedPool: [CDNHost] { lock.withLock { proxiedHosts } }
+  var proxiesIssuedPrimary: Bool { lock.withLock { proxiesIssued } }
 
   /// Nodes the user turned off. They are skipped for issued URLs too, unless nothing else is left.
   public func setDisabled(_ keys: Set<String>) {
@@ -469,6 +495,7 @@ public final class MediaRelay: @unchecked Sendable {
           list.append(.issued(primary, proxied: true))
         }
       }
+      list = list.filter { permits($0) }
       let allowed = list.filter { !disabledKeys.contains(MediaRelay.hostName(ofKey: $0.key)) }
       return allowed.isEmpty ? list : allowed
     }
@@ -484,13 +511,14 @@ public final class MediaRelay: @unchecked Sendable {
   /// Best-scoring origin not excluded and not cooling down. Picking also reserves an in-flight
   /// slot under the same lock, so prefetches started together spread across nodes instead of
   /// all choosing the same one.
-  private func pick(_ origins: [Origin], excluding: Set<String>, reserve: Bool = true, now: Date = Date()) -> Origin? {
+  private func pick(_ origins: [Origin], excluding: Set<String>) -> Origin? {
     lock.withLock {
-      let open = origins.filter { !excluding.contains($0.key) }
+      let now = Date()
+      let open = origins.filter { permits($0) && !excluding.contains($0.key) }
       let warm = open.filter { (hostStates[$0.key]?.coolUntil ?? .distantPast) <= now }
       let pool = warm.isEmpty ? open : warm
       guard let chosen = pool.max(by: { lhs, rhs in score(lhs) < score(rhs) }) else { return nil }
-      if reserve { hostStates[chosen.key, default: HostState(bytesPerSecond: 2_000_000)].inflight += 1 }
+      hostStates[chosen.key, default: HostState(bytesPerSecond: 2_000_000)].inflight += 1
       return chosen
     }
   }
@@ -506,10 +534,13 @@ public final class MediaRelay: @unchecked Sendable {
 
   private func download(_ source: Source, index: Int) async throws -> Data {
     let range = range(for: source, index: index)
-    let origins = origins(for: source)
+    let clock = ContinuousClock()
     var excluded = Set<String>()
-    for attempt in 0..<10 {
+    var attempt = 0
+    while !source.retryBudget.exhausted {
       try Task.checkCancellation()
+      let origins = origins(for: source)
+      let attemptStart = ProcessInfo.processInfo.systemUptime
       guard let primary = pick(origins, excluding: excluded) ?? pick(origins, excluding: []) else { break }
       if attempt > 0 { lock.withLock { retries += 1 } }
       let outcome = await hedgedFetch(source: source, range: range, primary: primary, origins: origins, excluded: excluded)
@@ -520,16 +551,25 @@ public final class MediaRelay: @unchecked Sendable {
       }
       if let (data, total, type) = outcome.success {
         lock.withLock {
+          source.expiredStatus = 0
           if source.totalLength == nil { source.totalLength = total }
           if let type, type.hasPrefix("video") || type.hasPrefix("audio") { source.contentType = type }
         }
         return data
       }
+      source.retryBudget.recordFailure(from: attemptStart, to: ProcessInfo.processInfo.systemUptime)
       excluded.formUnion(outcome.failed)
       if excluded.count >= origins.count {
         excluded.removeAll()
-        try await Task.sleep(nanoseconds: UInt64(min(4, 0.4 * Double(attempt + 1)) * 1_000_000_000))
+        // Successful slow requests are never timed out by the retry-start budget.
+        let remaining = source.retryBudget.remaining
+        guard remaining > 0 else { break }
+        let backoff = min(remaining, min(4, 0.4 * Double(attempt + 1)))
+        let backoffStart = ProcessInfo.processInfo.systemUptime
+        try await clock.sleep(for: .seconds(backoff))
+        source.retryBudget.recordFailure(from: backoffStart, to: ProcessInfo.processInfo.systemUptime)
       }
+      attempt += 1
     }
     throw RelayError.allOriginsFailed
   }
@@ -555,14 +595,23 @@ public final class MediaRelay: @unchecked Sendable {
     await withTaskGroup(of: Attempt.self) { group in
       // `pick` already reserved the in-flight slot; `record` releases it.
       func launch(_ origin: Origin) {
-        let transport: CDNRangeFetching? = origin.proxied ? lock.withLock { proxyFetcher } : fetcher
+        let transport: CDNRangeFetching? = lock.withLock {
+          guard permits(origin) else { return nil }
+          return origin.proxied ? proxyFetcher : fetcher
+        }
         guard let url = url(for: origin, source: source), let transport else {
           lock.withLock {
             if var state = hostStates[origin.key] { state.inflight = max(0, state.inflight - 1); hostStates[origin.key] = state }
           }
           return
         }
-        group.addTask { .done(origin.key, await transport.fetch(url, range: range, timeout: timeout)) }
+        group.addTask {
+          guard !Task.isCancelled, self.lock.withLock({ self.permits(origin) }) else {
+            return .done(origin.key, CDNFetchOutcome(status: 0, data: Data(), ttfbMs: 0,
+              durationMs: 0, totalLength: nil, contentType: nil, error: "已取消"))
+          }
+          return .done(origin.key, await transport.fetch(url, range: range, timeout: timeout))
+        }
       }
       launch(primary)
       group.addTask {
@@ -582,6 +631,7 @@ public final class MediaRelay: @unchecked Sendable {
         case .done(let key, let result):
           running -= 1
           record(key, result: result, expectedBytes: range.count)
+          if [403, 410].contains(result.status) { lock.withLock { source.expiredStatus = result.status } }
           if outcome.success != nil || outcome.unsatisfiable != nil { continue }
           if result.status == 416 {
             outcome.unsatisfiable = .some(result.totalLength)

@@ -9,7 +9,12 @@ import AppKit
   private var onClose: (@MainActor () -> Void)?
   /// The window's own full-screen button moved the picture; a pending open placement must yield.
   var onUserPlaced: (@MainActor () -> Void)?
+  /// The window enters (true) or leaves (false) full screen; its page turns immersive.
+  var onFullScreen: (@MainActor (Bool) -> Void)?
   private var closing = false
+  /// This window only shows the player, so its full screen is always immersive.
+  private lazy var fullScreen = PlayerFullScreenTransition(showsPlayer: { true },
+    setFullScreen: { [weak self] in self?.onFullScreen?($0) })
   /// Shows `content` in the window. `displayMode` (default, fullscreen or compact) is applied
   /// when the caller opens something there; nil keeps the window's current state.
   func present(content: NSView, mainWindow: NSWindow?, hideMain: Bool, displayMode: String?,
@@ -65,12 +70,34 @@ import AppKit
     window.contentView = nil
     window.close()
     self.window = nil
+    fullScreen.reset()
     if showMain || restoreMain { mainWindow?.makeKeyAndOrderFront(nil) }
     restoreMain = false
     closing = false
     callback?()
   }
   func windowWillClose(_ notification: Notification) { close(showMain: true) }
-  func windowWillEnterFullScreen(_ notification: Notification) { onUserPlaced?() }
-  func windowWillExitFullScreen(_ notification: Notification) { onUserPlaced?() }
+  func windowWillEnterFullScreen(_ notification: Notification) {
+    onUserPlaced?()
+    if let window { fullScreen.willEnter(window) }
+  }
+  func windowWillExitFullScreen(_ notification: Notification) {
+    onUserPlaced?()
+    fullScreen.willExit()
+  }
+  func customWindowsToEnterFullScreen(for window: NSWindow) -> [NSWindow]? { fullScreen.customWindowsToEnter(window) }
+  func window(_ window: NSWindow, startCustomAnimationToEnterFullScreenWithDuration duration: TimeInterval) {
+    fullScreen.startEntering(window, duration: duration)
+  }
+  func customWindowsToExitFullScreen(for window: NSWindow) -> [NSWindow]? { fullScreen.customWindowsToExit(window) }
+  func window(_ window: NSWindow, startCustomAnimationToExitFullScreenWithDuration duration: TimeInterval) {
+    fullScreen.startExiting(window, duration: duration)
+  }
+  func window(_ window: NSWindow, willUseFullScreenContentSize proposedSize: NSSize) -> NSSize {
+    fullScreen.fullScreenContentSize(proposed: proposedSize)
+  }
+  func windowDidEnterFullScreen(_ notification: Notification) { fullScreen.didEnter() }
+  func windowDidExitFullScreen(_ notification: Notification) { fullScreen.didExit() }
+  func windowDidFailToEnterFullScreen(_ window: NSWindow) { fullScreen.didFailToEnter() }
+  func windowDidFailToExitFullScreen(_ window: NSWindow) { fullScreen.didFailToExit() }
 }

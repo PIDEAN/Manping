@@ -9,6 +9,8 @@ import subprocess
 import time
 import uuid
 
+from diagnostic_privacy import scrub, scrub_file
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -68,6 +70,7 @@ def main():
             except OSError as error:
                 file.write(f'{type(error).__name__}: {error}\n')
                 status = 'launch_failed'
+        scrub_file(path)
         # leaks uses exit 1 when it successfully reports leaked allocations.
         reported_leaks = leaks and status == 1 and re.search(r'\d+ leaks for', path.read_text(errors='replace'))
         success = status == 0 or bool(reported_leaks)
@@ -131,14 +134,14 @@ def main():
                     if not chunk:
                         selector.unregister(key.fileobj)
                         if pending:
-                            line = pending.decode('utf-8', errors='replace')
+                            line = scrub(pending.decode('utf-8', errors='replace'))
                             log.write(line); log.flush(); consume(line)
                             pending = b''
                         break
                     pending += chunk
                     while b'\n' in pending:
                         raw, pending = pending.split(b'\n', 1)
-                        line = raw.decode('utf-8', errors='replace') + '\n'
+                        line = scrub(raw.decode('utf-8', errors='replace')) + '\n'
                         log.write(line); log.flush(); consume(line)
             process.wait(timeout=min(5, max(0.1, deadline - time.monotonic())))
         contents = (output / 'app.log').read_text()

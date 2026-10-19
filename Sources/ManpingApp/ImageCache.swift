@@ -9,18 +9,52 @@ private struct DecodedImage: @unchecked Sendable {
   let image: CGImage
   var cost: Int { image.bytesPerRow * image.height }
 }
-actor ImageCache {
-  static let shared = ImageCache()
+/// The decoded-image memory tier. It is lock-protected rather than actor-isolated so a view can
+/// read it synchronously: a cover that is already decoded draws in a cell's first frame instead of
+/// a placeholder frame followed by an asynchronous swap and a second render.
+private final class DecodedImageMemory: @unchecked Sendable {
   private struct Entry {
     let image: DecodedImage
-    var accessed: Date
+    var tick: UInt64
   }
-  private var memory: [String: Entry] = [:]
+  private let lock = NSLock()
+  private var entries: [String: Entry] = [:]
+  private var cost = 0
+  private var tick: UInt64 = 0
+  private let limit: Int
+  init(limit: Int) { self.limit = limit }
+
+  func image(for key: String) -> DecodedImage? {
+    lock.lock(); defer { lock.unlock() }
+    guard var entry = entries[key] else { return nil }
+    tick &+= 1; entry.tick = tick; entries[key] = entry
+    return entry.image
+  }
+  /// Least recently used entries go first once the tier exceeds its byte limit.
+  func insert(_ image: DecodedImage, for key: String) {
+    lock.lock(); defer { lock.unlock() }
+    if let old = entries[key] { cost -= old.image.cost }
+    tick &+= 1
+    entries[key] = Entry(image: image, tick: tick)
+    cost += image.cost
+    while cost > limit, entries.count > 1, let oldest = entries.min(by: { $0.value.tick < $1.value.tick }) {
+      cost -= oldest.value.image.cost
+      entries[oldest.key] = nil
+    }
+  }
+  func removeAll() {
+    lock.lock(); defer { lock.unlock() }
+    entries.removeAll(); cost = 0
+  }
+}
+
+actor ImageCache {
+  static let shared = ImageCache()
   private var pending: [String: Task<DecodedImage, Error>] = [:]
-  private var memoryCost = 0
   private var clearing = false
   private var generation: UInt64 = 0
-  private let memoryLimit = 64 * 1024 * 1024
+  /// Keyed by the secured URL string so the synchronous lookup needs no hashing.
+  private nonisolated let memory = DecodedImageMemory(limit: 64 * 1024 * 1024)
   private let diskLimit = 200 * 1024 * 1024
   private let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
     .appendingPathComponent("Manping/Images", isDirectory: true)
@@ -36,6 +70,10 @@ actor ImageCache {
   }
 
   func imageForReader(for url: URL) async throws -> CGImage { try await image(for: url).image }
+  /// An already decoded image, without waiting; nil when it must be loaded or decoded.
+  nonisolated func cachedImage(for url: URL) -> CGImage? {
+    memory.image(for: Self.secured(url).absoluteString)?.image
+  }
   func clear() async throws {
     guard !clearing else { return }
     clearing = true; generation &+= 1
@@ -43,7 +81,7 @@ actor ImageCache {
     let flights = Array(pending.values)
     for flight in flights { flight.cancel() }
     for flight in flights { _ = await flight.result }
-    pending.removeAll(); memory.removeAll(); memoryCost = 0
+    pending.removeAll(); memory.removeAll()
     if FileManager.default.fileExists(atPath: directory.path) {
       try FileManager.default.removeItem(at: directory)
     }
@@ -52,19 +90,15 @@ actor ImageCache {
     guard !clearing else { throw CancellationError() }
     let revision = generation
     let url = Self.secured(original)
-    let key = SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }
+    let memoryKey = url.absoluteString
+    if let image = memory.image(for: memoryKey) { return image }
+    let key = SHA256.hash(data: Data(memoryKey.utf8)).map { String(format: "%02x", $0) }
       .joined()
-    if var entry = memory[key] {
-      entry.accessed = Date()
-      memory[key] = entry
-      return entry.image
-    }
     if DebugUIFixtures.enabled, url.host == "fixture.invalid", url.pathComponents.contains("emote") {
       guard let image = Self.fixtureEmote(heart: url.lastPathComponent == "heart") else {
         throw URLError(.cannotDecodeContentData)
       }
-      memory[key] = Entry(image: image, accessed: Date())
-      memoryCost += image.cost
+      memory.insert(image, for: memoryKey)
       return image
     }
     if let task = pending[key] {
@@ -74,7 +108,13 @@ actor ImageCache {
     }
     let directory = directory
     let diskLimit = diskLimit
+    let fixtureCover = PerformanceCoverData.data(for: url)
     let task = Task.detached(priority: .utility) {
+      // Scroll diagnostics: decode like a disk hit, never touch the shared cache directory.
+      if let fixtureCover {
+        guard let image = Self.decode(fixtureCover) else { throw URLError(.cannotDecodeContentData) }
+        return image
+      }
       let file = directory.appendingPathComponent(key)
       if let data = try? Data(contentsOf: file), let image = Self.decode(data) {
         try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
@@ -98,14 +138,7 @@ actor ImageCache {
       let image = try await task.value
       guard generation == revision, !clearing else { throw CancellationError() }
       pending[key] = nil
-      memory[key] = Entry(image: image, accessed: Date())
-      memoryCost += image.cost
-      while memoryCost > memoryLimit,
-        let oldest = memory.min(by: { $0.value.accessed < $1.value.accessed })
-      {
-        memoryCost -= oldest.value.image.cost
-        memory[oldest.key] = nil
-      }
+      memory.insert(image, for: memoryKey)
       return image
     } catch {
       if generation == revision { pending[key] = nil }
@@ -166,12 +199,23 @@ actor ImageCache {
 }
 struct CachedImage: View {
   let url: URL?
-  @State private var image: NSImage?
+  @State private var image: CGImage?
   @State private var failed = false
+  /// The placeholder glyph appears only when a load is actually slow (network), so memory and
+  /// disk hits do not draw and then replace a symbol for a frame or two while a grid scrolls.
+  @State private var waiting = false
+
+  init(url: URL?) {
+    self.url = url
+    // Used only when the view's identity is created: an already decoded image draws at once.
+    _image = State(initialValue: url.flatMap { ImageCache.shared.cachedImage(for: $0) })
+  }
+
   var body: some View {
     ZStack {
-      Rectangle().fill(.gray.opacity(0.12))
-      if DebugUIFixtures.enabled, url?.host == "fixture.invalid" {
+      // An opaque photo covers the tint completely; skipping it saves a layer per grid cell.
+      if !(image.map(Self.isOpaque) ?? false) { Rectangle().fill(.gray.opacity(0.12)) }
+      if DebugUIFixtures.enabled, url?.host == "fixture.invalid", !Self.pipelineFixture(url) {
         if PerformanceOptions.requested, url?.pathComponents.contains("cover") == true,
           let cover = PerformanceArtwork.cover(Int(url?.lastPathComponent ?? "0") ?? 0) {
           Image(nsImage: cover).resizable().scaledToFill()
@@ -179,21 +223,46 @@ struct CachedImage: View {
           DebugFixtureImage(index: Int(url?.lastPathComponent ?? "0") ?? 0, avatar: url?.pathComponents.contains("avatar") == true)
         }
       } else if let image {
-        Image(nsImage: image).resizable().scaledToFill()
-      } else {
+        Image(decorative: image, scale: 1).resizable().scaledToFill()
+      } else if failed || waiting {
         Image(systemName: failed ? "photo.badge.exclamationmark" : "photo").foregroundStyle(.tertiary)
       }
 
     }.clipped().task(id: url) {
-      image = nil
-      failed = false
-      guard let url else { return }
-      if DebugUIFixtures.enabled && url.host == "fixture.invalid" { return }
+      guard let url else { image = nil; failed = false; waiting = false; return }
+      if DebugUIFixtures.enabled && url.host == "fixture.invalid" && !Self.pipelineFixture(url) { return }
+      if let cached = ImageCache.shared.cachedImage(for: url) {
+        // Write only on change: an unchanged state write would still re-render the view.
+        if image !== cached { image = cached }
+        if failed { failed = false }
+        if waiting { waiting = false }
+        return
+      }
+      if image != nil { image = nil }
+      if failed { failed = false }
+      let reveal = Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(250))
+        if !Task.isCancelled { waiting = true }
+      }
+      defer { reveal.cancel() }
       do {
         let result = try await ImageCache.shared.image(for: url)
         try Task.checkCancellation()
-        image = NSImage(cgImage: result.image, size: .zero)
-      } catch is CancellationError {} catch { failed = true }
+        reveal.cancel()
+        image = result.image
+        if waiting { waiting = false }
+      } catch is CancellationError {} catch {
+        reveal.cancel()
+        failed = true
+        if waiting { waiting = false }
+      }
     }
+  }
+  private static func isOpaque(_ image: CGImage) -> Bool {
+    [.none, .noneSkipFirst, .noneSkipLast].contains(image.alphaInfo)
+  }
+  /// `--perf-covers pipeline` sends fixture covers through the production loading path.
+  private static func pipelineFixture(_ url: URL?) -> Bool {
+    PerformanceOptions.coverPipeline && url?.pathComponents.contains("cover") == true
   }
 }

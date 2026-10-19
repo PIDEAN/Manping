@@ -49,7 +49,6 @@ public final class CDNStore: @unchecked Sendable {
     }
   }
 
-  public func setCustom(_ hosts: [CDNHost]) { mutate { $0.custom = Array(Set(hosts.map(\.name))).sorted() } }
   public func addCustom(_ host: CDNHost) { mutate { if !$0.custom.contains(host.name) { $0.custom.append(host.name) } } }
   public func removeCustom(_ host: CDNHost) { mutate { $0.custom.removeAll { $0 == host.name } } }
   public func setDisabled(_ host: CDNHost, _ disabled: Bool) {

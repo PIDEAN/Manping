@@ -5,7 +5,7 @@ import SwiftUI
 import VideoToolbox
 
 // The playback chrome shared by the video, episode and live pages (DesignSystem.md §11): a
-// Liquid Glass control panel inset 16pt from the bottom of the picture that hides itself, its
+// Liquid Glass control panel inset 12pt from the bottom of the stage that hides itself, its
 // buttons, menus and popovers. Everything here is white-on-video and independent of the theme.
 
 // MARK: - Visibility
@@ -112,38 +112,42 @@ private struct PlayerChromeFade: ViewModifier {
 
 // MARK: - Panel
 
-/// The glass control panel: 16pt from the picture's edges, `lg` radius, always dark.
+/// The glass control panel: `stageInset` (12pt) inside the stage's edges, never touching them,
+/// `md` radius (the stage's 20 less the 12pt inset would leave 8, too tight for the 40pt play
+/// button), always dark.
 struct PlayerControlPanel<Content: View>: View {
   let chrome: PlayerChromeState
   @ViewBuilder var content: Content
   var body: some View {
     VStack(spacing: 6) { content }
-      .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 10)
+      .padding(.horizontal, PlayerPanelLayout.padding).padding(.top, 8).padding(.bottom, 10)
       .foregroundStyle(.white)
-      .glassEffect(.regular.tint(.black.opacity(0.3)), in: RoundedRectangle(cornerRadius: Theme.Radius.lg, style: .continuous))
+      .glassEffect(.regular.tint(.black.opacity(0.3)), in: RoundedRectangle(cornerRadius: PlayerPanelLayout.radius, style: .continuous))
       .environment(\.colorScheme, .dark)
       .onHover { chrome.setOverControls($0) }
-      .padding(16)
+      .padding(PlayerPanelLayout.inset)
   }
 }
 
-/// Which optional controls fit the panel. Below 640pt they fold away in a fixed order — comment
-/// field, subtitles, speed, quality — and the folded ones move into the player settings menu.
+/// The panel's content row. What fits it is `PlayerBarLayout.fit` (设置 › 控制条): the comment
+/// field shrinks to a button first, then the right group folds into 「更多」 from its left end.
 struct PlayerPanelLayout: Equatable {
+  /// The panel's distance from the stage's edges.
+  static let inset: CGFloat = Theme.stageInset
+  /// The panel's own horizontal padding around the row.
+  static let padding: CGFloat = 12
+  static let radius: CGFloat = Theme.Radius.md
   /// Width of the panel's content row.
   let width: CGFloat
-  init(pictureWidth: CGFloat) { width = pictureWidth - 32 - 24 }
-  var showsDanmakuInput: Bool { width >= 616 }
-  var showsSubtitles: Bool { width >= 566 }
-  var showsSpeed: Bool { width >= 516 }
-  var showsQuality: Bool { width >= 456 }
+  /// `stageWidth`: the stage as laid out now (the panel lives inside it).
+  init(stageWidth: CGFloat) { width = stageWidth - Self.inset * 2 - Self.padding * 2 }
   /// The time readout goes last, only when even the folded row would not fit.
   var showsTime: Bool { width >= 400 }
 }
 
 extension View {
-  /// Reports the picture's width so the panel can fold its optional controls.
-  func reportsPictureWidth(_ width: Binding<CGFloat>) -> some View {
+  /// Reports the stage's width so the panel can fold its optional controls.
+  func reportsStageWidth(_ width: Binding<CGFloat>) -> some View {
     onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width.wrappedValue = $0 }
   }
 }
@@ -218,27 +222,6 @@ struct PlayerTimeLabel: View {
   }
 }
 
-/// Mini window and full screen. The full-screen button follows the window the picture is in.
-struct PlayerWindowButtons: View {
-  let model: AppModel
-  let player: PlayerModel
-  @State private var fullScreen = false
-  var body: some View {
-    Button { model.toggleCompactPlayer() } label: { Image(systemName: "pip.enter") }
-      .buttonStyle(PlayerControlButtonStyle(size: 32)).help("小窗（⇧⌘P）").accessibilityLabel("小窗")
-    Button { model.togglePlayerFullScreen() } label: {
-      Image(systemName: fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-    }.buttonStyle(PlayerControlButtonStyle(size: 32))
-      .help(fullScreen ? "退出全屏幕" : "进入全屏幕").accessibilityLabel(fullScreen ? "退出全屏幕" : "进入全屏幕")
-      .onAppear(perform: refresh)
-      .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in refresh() }
-      .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in refresh() }
-  }
-  private func refresh() {
-    let value = player.surface?.window?.styleMask.contains(.fullScreen) ?? false
-    if value != fullScreen { fullScreen = value }
-  }
-}
 
 // MARK: - Menus and popovers
 
@@ -361,48 +344,384 @@ private struct PlayerVolumePanel: View {
   }
 }
 
-/// 播放器设置: a menu whose items each page supplies, the danmaku settings popover and, for
-/// videos and episodes, 「网络与节点…」 (the CDN panel). A dot on the button reports a low
-/// forward buffer.
-struct PlayerSettingsMenu<Items: View>: View {
-  let player: PlayerModel
-  let settings: M7SettingsModel
-  var cdn: CDNController? = nil
-  var setCDNSetting: (MacSettingKey, Bool) -> Void = { _, _ in }
-  var setProxyRoute: (MediaRoute) -> Void = { _ in }
-  @Binding var danmakuShown: Bool
-  @Binding var networkShown: Bool
-  /// 「更多弹幕设置…」: opens the settings window on 弹幕.
-  var openDanmakuSettings: () -> Void
-  @ViewBuilder var items: () -> Items
-  var body: some View {
-    Menu { items() } label: {
-      Image(systemName: "slider.horizontal.3")
-        .overlay(alignment: .topTrailing) { if let cdn { CDNHealthDot(cdn: cdn).offset(x: 5, y: -4) } }
-    }
-    .menuStyle(.button).buttonStyle(PlayerControlButtonStyle(size: 32)).menuIndicator(.hidden).fixedSize()
-    .help("播放器设置").accessibilityLabel("播放器设置")
-    .popover(isPresented: $danmakuShown, arrowEdge: .top) {
-      DanmakuSettingsPopover(settings: settings, player: player) {
-        danmakuShown = false
-        openDanmakuSettings()
+// MARK: - Control bar (设置 › 控制条)
+
+/// The right group of the control bar, kept in `Manping.playerBarItems`. Every playback window
+/// observes this one store, so a change in 设置 › 控制条 shows at once.
+@MainActor final class PlayerBarStore: ObservableObject {
+  static let shared = PlayerBarStore()
+  @Published private(set) var items: [PlayerBarItem]
+  private let defaults: UserDefaults
+
+  init(defaults: UserDefaults? = nil) {
+    let defaults = defaults ?? PerformanceEnvironment.defaults
+    self.defaults = defaults
+    items = Self.launchItems ?? PlayerBarLayout.decode(defaults.object(forKey: PlayerBarLayout.storageKey))
+  }
+
+  var isDefault: Bool { items == PlayerBarLayout.defaultItems }
+
+  func set(_ items: [PlayerBarItem]) {
+    guard items != self.items else { return }
+    self.items = items
+    defaults.set(PlayerBarLayout.encode(items), forKey: PlayerBarLayout.storageKey)
+  }
+
+  /// 恢复默认: forgets the stored list, so later default changes apply.
+  func reset() {
+    items = PlayerBarLayout.defaultItems
+    defaults.removeObject(forKey: PlayerBarLayout.storageKey)
+  }
+
+  #if DEBUG
+  /// `--ui-player-bar quality,speed,…` for screenshot checks: start with this bar instead of the
+  /// stored one (edits still save).
+  private static var launchItems: [PlayerBarItem]? {
+    let args = ProcessInfo.processInfo.arguments
+    guard let index = args.firstIndex(of: "--ui-player-bar"), index + 1 < args.count else { return nil }
+    return PlayerBarLayout.decode(args[index + 1].split(separator: ",").map(String.init))
+  }
+  #else
+  private static let launchItems: [PlayerBarItem]? = nil
+  #endif
+}
+
+#if DEBUG
+/// `--ui-more-menu` (screenshot checks): clicks 「更多」 once, 3 s after it first lays out.
+@MainActor enum PlayerBarDebug {
+  private static let requested = ProcessInfo.processInfo.arguments.contains("--ui-more-menu")
+  private static var scheduled = false
+  private static var latest = CGRect.zero
+  static func openMoreMenu(at newFrame: CGRect) {
+    latest = newFrame
+    guard requested, !scheduled, newFrame.width > 0 else { return }
+    scheduled = true
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+      let frame = latest
+      guard let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.canBecomeMain }),
+        let content = window.contentView else { return }
+      // `.global` is relative to the hosting view that draws the page, which may sit inside the window.
+      func hosts(_ view: NSView) -> [NSView] {
+        (String(describing: type(of: view)).contains("HostingView") ? [view] : []) + view.subviews.flatMap(hosts)
       }
-    }
-    .background {
-      if let cdn {
-        Color.clear.popover(isPresented: $networkShown, arrowEdge: .top) {
-          CDNPanel(cdn: cdn, setSetting: setCDNSetting, setProxyRoute: setProxyRoute)
-        }
+      let host = hosts(content).filter { $0.bounds.width >= frame.maxX && $0.bounds.height >= frame.maxY }
+        .min { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height } ?? content
+      let local = NSPoint(x: frame.midX, y: host.isFlipped ? frame.midY : host.bounds.height - frame.midY)
+      let point = host.convert(local, to: nil)
+      if let down = NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+        window.sendEvent(down)
       }
     }
   }
 }
+#endif
 
-/// 画面增强 ▸ family ▸ 关闭 / presets. Presets this Mac cannot run stay listed but disabled.
-struct PlayerShaderMenu: View {
+/// An item's symbol on the bar and in 设置 › 控制条. 弹幕设置 is the app's danmaku mark with a gear
+/// cut into its corner, so it reads apart from the 弹幕 switch.
+struct PlayerBarGlyph: View {
+  let item: PlayerBarItem
+  var size: CGFloat = 13
+  var body: some View {
+    if item == .danmakuSettings {
+      ZStack(alignment: .bottomTrailing) {
+        DanmakuSymbol().fill(.foreground).frame(width: size * 1.35, height: size * 1.35)
+        Circle().frame(width: size * 0.86, height: size * 0.86).offset(x: size * 0.2, y: size * 0.2)
+          .blendMode(.destinationOut)
+        Image(systemName: "gearshape.fill").font(.system(size: size * 0.62, weight: .bold))
+          .frame(width: size * 0.86, height: size * 0.86).offset(x: size * 0.2, y: size * 0.2)
+      }.compositingGroup().frame(width: size * 1.5, height: size * 1.5)
+    } else {
+      Image(systemName: item.symbol).font(.system(size: size, weight: .medium))
+    }
+  }
+}
+
+/// What a playback page puts on its control bar. Items outside `supported` are skipped and take
+/// no room (a live room has no speed or subtitles); `slots` replaces the shared control and
+/// 「更多」 entry where the data is the page's own (画质, 字幕, the live route).
+struct PlayerBarPage {
+  struct Slot {
+    var control: () -> AnyView
+    var menu: () -> AnyView
+  }
+  var supported: Set<PlayerBarItem> = Set(PlayerBarItem.allCases)
+  var slots: [PlayerBarItem: Slot] = [:]
+  /// Bar widths that differ from `PlayerBarLayout.Metrics`.
+  var widths: [PlayerBarItem: Double] = [:]
+  var downloadEnabled = true
+
+  /// Live rooms: no speed, subtitles, shaders, audio-only or downloads.
+  static let liveSupported = Set(PlayerBarItem.allCases).subtracting([.speed, .subtitle, .enhance, .audioOnly, .download])
+}
+
+extension PlayerBarPage.Slot {
+  /// 画质 for videos and episodes: the text capsule, and 「画质 · 1080P」 in 「更多」.
+  @MainActor static func quality(streams: [MediaStream], selected: MediaStream?, enabled: Bool = true,
+    choose: @escaping (MediaStream) -> Void) -> Self {
+    Self(control: {
+      AnyView(PlayerQualityMenu(streams: streams, selected: selected, choose: choose).disabled(!enabled))
+    }, menu: {
+      AnyView(Menu {
+        PlayerQualityItems(streams: streams, selected: selected, choose: choose)
+      } label: {
+        Label(selected.map { "画质 · \($0.label)" } ?? "画质", systemImage: PlayerBarItem.quality.symbol)
+      }.disabled(streams.isEmpty || !enabled))
+    })
+  }
+
+  /// 字幕 for videos and episodes.
+  @MainActor static func subtitle(features: PlaybackFeaturesModel, player: PlayerModel, filterAI: Bool) -> Self {
+    Self(control: {
+      AnyView(PlaybackSubtitleMenu(features: features, player: player, filterAI: filterAI))
+    }, menu: {
+      AnyView(Menu {
+        PlaybackSubtitleItems(features: features, player: player, filterAI: filterAI)
+      } label: { Label("字幕", systemImage: PlayerBarItem.subtitle.symbol) })
+    })
+  }
+}
+
+/// The panel's button row: the page's fixed left group (播放、下一个、时间、弹幕开关), the comment
+/// field, the viewer's right group as far as it fits, and 「更多」 on the far right. When the row is
+/// short the comment field becomes a 「发弹幕」 button first, then the right group folds into
+/// 「更多」 from its left end (`PlayerBarLayout.fit`, the same rule as the settings preview).
+struct PlayerBarRow<Leading: View>: View {
+  @ObservedObject var model: AppModel
+  @ObservedObject var player: PlayerModel
+  let layout: PlayerPanelLayout
+  let page: PlayerBarPage
+  var cdn: CDNController? = nil
+  @Binding var danmakuShown: Bool
+  @Binding var networkShown: Bool
+  @Binding var volumeShown: Bool
+  @Binding var composeShown: Bool
+  /// The comment field; nil where there is none (live rooms).
+  var input: (() -> AnyView)? = nil
+  /// The page's own 「更多」 entries, after the items that are not on the bar.
+  var extraMenu: () -> AnyView = { AnyView(EmptyView()) }
+  @ViewBuilder var leading: () -> Leading
+  @ObservedObject private var store = PlayerBarStore.shared
+  @State private var leadingWidth: CGFloat = 220
+  @State private var fullScreen = false
+  private let metrics = PlayerBarLayout.Metrics()
+
+  var body: some View {
+    let items = store.items.filter { page.supported.contains($0) }
+    let fit = PlayerBarLayout.fit(items, rowWidth: Double(layout.width), leadingWidth: Double(leadingWidth),
+      hasInput: input != nil, metrics: metrics, width: { page.widths[$0] ?? metrics.width(of: $0) })
+    HStack(spacing: 6) {
+      HStack(spacing: 6) { leading() }.fixedSize()
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { leadingWidth = $0 }
+      if let input {
+        if fit.compactInput { composeButton(input) } else { input().padding(.leading, 2) }
+      }
+      Spacer(minLength: 6)
+      ForEach(fit.visible, id: \.self) { item in control(item) }
+      moreMenu(fit: fit, onBar: Set(items))
+        #if DEBUG
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { PlayerBarDebug.openMoreMenu(at: $0) }
+        #endif
+    }
+    .onAppear(perform: refreshFullScreen)
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in refreshFullScreen() }
+    .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in refreshFullScreen() }
+  }
+
+  private func refreshFullScreen() {
+    let value = player.surface?.window?.styleMask.contains(.fullScreen) ?? false
+    if value != fullScreen { fullScreen = value }
+  }
+
+  // MARK: Bar controls
+
+  @ViewBuilder private func control(_ item: PlayerBarItem) -> some View {
+    if let slot = page.slots[item] {
+      slot.control()
+    } else {
+      switch item {
+      case .quality, .subtitle: EmptyView()
+      case .speed: PlayerSpeedMenu(player: player, holdSpeed: model.appSettings.number(.temporarySpeed))
+      case .volume: PlayerVolumeButton(player: player, maximum: model.appSettings.number(.maxVolume), shown: $volumeShown)
+      case .danmakuSettings:
+        iconButton(item, help: "弹幕设置", active: false) { danmakuShown.toggle() }
+          .popover(isPresented: $danmakuShown, arrowEdge: .top) { danmakuPopover }
+      case .screenshot:
+        iconButton(item, help: "截取画面（⇧⌘S）") { model.takePlayerScreenshot() }.disabled(!model.canTakeScreenshot)
+      case .network:
+        Button { networkShown.toggle() } label: {
+          PlayerBarGlyph(item: item).overlay(alignment: .topTrailing) {
+            if let cdn { CDNHealthDot(cdn: cdn).offset(x: 6, y: -4) }
+          }
+        }.buttonStyle(PlayerControlButtonStyle(size: 32)).help("网络与节点").accessibilityLabel("网络与节点")
+          .popover(isPresented: cdn == nil ? .constant(false) : $networkShown, arrowEdge: .top) { networkPanel }
+      case .enhance:
+        Menu { PlayerShaderItems(model: model) } label: { PlayerBarGlyph(item: item) }
+          .menuStyle(.button).buttonStyle(PlayerControlButtonStyle(size: 32, active: !model.shaderSelections.isEmpty))
+          .menuIndicator(.hidden).fixedSize().help("画面增强").accessibilityLabel("画面增强")
+      case .audioOnly:
+        iconButton(item, help: player.audioOnly ? "恢复画面" : "只听声音", active: player.audioOnly) {
+          player.setAudioOnly(!player.audioOnly)
+        }.accessibilityValue(player.audioOnly ? "开" : "关")
+      case .download:
+        iconButton(item, help: "下载…") { model.enqueueDownload() }.disabled(!page.downloadEnabled)
+      case .mini:
+        iconButton(item, help: "小窗（⇧⌘P）") { model.toggleCompactPlayer() }
+      case .detached:
+        Button { model.togglePlaybackWindow() } label: {
+          Image(systemName: model.playbackDetached ? "macwindow" : "macwindow.on.rectangle")
+        }.buttonStyle(PlayerControlButtonStyle(size: 32))
+          .help(model.playbackDetached ? "回到主窗口（⌥⌘P）" : "在独立窗口播放（⌥⌘P）")
+          .accessibilityLabel(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
+      case .fullscreen:
+        Button { model.togglePlayerFullScreen() } label: {
+          Image(systemName: fullScreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }.buttonStyle(PlayerControlButtonStyle(size: 32))
+          .help(fullScreen ? "退出全屏幕（⌃⌘F）" : "进入全屏幕（⌃⌘F）").accessibilityLabel(fullScreen ? "退出全屏幕" : "进入全屏幕")
+      }
+    }
+  }
+
+  private func iconButton(_ item: PlayerBarItem, help: String, active: Bool = false, action: @escaping () -> Void) -> some View {
+    Button(action: action) { PlayerBarGlyph(item: item) }
+      .buttonStyle(PlayerControlButtonStyle(size: 32, active: active)).help(help).accessibilityLabel(item.title)
+  }
+
+  /// 「发弹幕」: the comment field once the row is too short for it; it opens above the button.
+  private func composeButton(_ input: @escaping () -> AnyView) -> some View {
+    Button { composeShown.toggle() } label: { Image(systemName: "pencil.line") }
+      .buttonStyle(PlayerControlButtonStyle(size: 32, prominent: true)).help("发弹幕").accessibilityLabel("发弹幕")
+      .popover(isPresented: $composeShown, arrowEdge: .top) {
+        input().frame(width: 300).padding(12).preferredColorScheme(.dark)
+      }
+  }
+
+  private var danmakuPopover: some View {
+    DanmakuSettingsPopover(settings: model.settingsModel, player: player, openMore: {
+      danmakuShown = false
+      model.openSettings(.danmaku)
+    }, openPowerSettings: {
+      danmakuShown = false
+      model.openSettings(.playback)
+    })
+  }
+
+  @ViewBuilder private var networkPanel: some View {
+    if let cdn {
+      CDNPanel(cdn: cdn, setSetting: { key, value in model.settingsModel.set(key, .bool(value)) },
+        setProxyRoute: model.setProxyMediaRoute)
+    }
+  }
+
+  // MARK: 「更多」
+
+  /// Three parts: the items folded off the bar (each keeps its submenu), the other functions that
+  /// are not on the bar, then 「自定义控制条…」. Popovers whose button is not on the bar open here.
+  private func moreMenu(fit: PlayerBarFit, onBar: Set<PlayerBarItem>) -> some View {
+    let offBar = PlayerBarItem.allCases.filter { page.supported.contains($0) && !onBar.contains($0) }
+    let visible = Set(fit.visible)
+    let folded = fit.hidden.count
+    return Menu {
+      PowerSavingStatusItem()
+      if !fit.hidden.isEmpty {
+        Section("已收起") {
+          ForEach(fit.hidden, id: \.self) { menuEntry($0) }
+        }
+        Divider()
+      }
+      ForEach(offBar, id: \.self) { menuEntry($0) }
+      extraMenu()
+      PowerSavingMenu(settings: model.settingsModel) { model.openSettings(.playback) }
+      Divider()
+      Button { model.openPlayerBarSettings() } label: { Label("自定义控制条…", systemImage: "pencil.line") }
+    } label: {
+      Image(systemName: "ellipsis").font(.system(size: 14, weight: .semibold))
+        .frame(width: 32, height: 32)
+        .overlay(alignment: .topTrailing) {
+          if folded > 0 {
+            Text("\(folded)").font(.system(size: 9, weight: .heavy).monospacedDigit()).foregroundStyle(Theme.onAccent)
+              .padding(.horizontal, 3).frame(minWidth: 15, minHeight: 15).background(Capsule().fill(Theme.accent))
+              .offset(x: 3, y: -2).transition(.scale.combined(with: .opacity))
+          }
+        }
+        .overlay(alignment: .topLeading) {
+          if let cdn, !visible.contains(.network) { CDNHealthDot(cdn: cdn).offset(x: 4, y: 3) }
+        }
+    }
+    .menuStyle(.button).buttonStyle(PlayerControlButtonStyle(size: 32)).menuIndicator(.hidden).fixedSize()
+    .help(folded > 0 ? "更多（已收起 \(folded) 项）" : "更多")
+    .accessibilityLabel("更多").accessibilityValue(folded > 0 ? "已收起 \(folded) 项" : "")
+    .animation(.snappy(duration: 0.2), value: folded)
+    .popover(isPresented: Self.gated($danmakuShown, !visible.contains(.danmakuSettings)), arrowEdge: .top) { danmakuPopover }
+    .background {
+      if cdn != nil {
+        Color.clear.popover(isPresented: Self.gated($networkShown, !visible.contains(.network)), arrowEdge: .top) { networkPanel }
+      }
+    }
+  }
+
+  /// A popover binding that only this anchor presents (the other anchor is on the bar).
+  private static func gated(_ binding: Binding<Bool>, _ active: Bool) -> Binding<Bool> {
+    Binding(get: { active && binding.wrappedValue }, set: { binding.wrappedValue = $0 })
+  }
+
+  @ViewBuilder private func menuEntry(_ item: PlayerBarItem) -> some View {
+    if let slot = page.slots[item] {
+      slot.menu()
+    } else {
+      switch item {
+      case .quality, .subtitle: EmptyView()
+      case .speed:
+        Menu { PlayerSpeedItems(player: player, holdSpeed: model.appSettings.number(.temporarySpeed)) } label: {
+          Label("倍速 · " + PlayerSpeedItems.label(player.speed), systemImage: item.symbol)
+        }
+      case .volume:
+        Menu { volumeItems } label: { Label("音量 · \(Int(player.volume))%", systemImage: item.symbol) }
+      case .danmakuSettings:
+        Button { danmakuShown = true } label: { Label("弹幕设置…", systemImage: item.symbol) }
+      case .screenshot:
+        Button { model.takePlayerScreenshot() } label: { Label("截取画面", systemImage: item.symbol) }
+          .disabled(!model.canTakeScreenshot)
+      case .network:
+        Button { networkShown = true } label: { Label("网络与节点…", systemImage: item.symbol) }.disabled(cdn == nil)
+      case .enhance:
+        Menu { PlayerShaderItems(model: model) } label: { Label("画面增强", systemImage: item.symbol) }
+      case .audioOnly:
+        Toggle(isOn: Binding(get: { player.audioOnly }, set: { player.setAudioOnly($0) })) {
+          Label("只听声音", systemImage: item.symbol)
+        }
+      case .download:
+        Button { model.enqueueDownload() } label: { Label("下载…", systemImage: item.symbol) }.disabled(!page.downloadEnabled)
+      case .mini:
+        Button { model.toggleCompactPlayer() } label: { Label("小窗", systemImage: item.symbol) }
+      case .detached:
+        Button { model.togglePlaybackWindow() } label: {
+          Label(model.playbackDetached ? "回到主窗口" : "在独立窗口播放", systemImage: item.symbol)
+        }
+      case .fullscreen:
+        Button { model.togglePlayerFullScreen() } label: {
+          Label(fullScreen ? "退出全屏幕" : "进入全屏幕", systemImage: fullScreen ? "arrow.down.right.and.arrow.up.left" : item.symbol)
+        }
+      }
+    }
+  }
+
+  /// 音量 in 「更多」: mute and a few levels (the slider needs the button on the bar).
+  @ViewBuilder private var volumeItems: some View {
+    let maximum = max(1, model.appSettings.number(.maxVolume))
+    Toggle("静音", isOn: Binding(get: { player.volume == 0 }, set: { player.setVolume($0 ? 0 : min(80, maximum)) }))
+    Divider()
+    ForEach(([25.0, 50, 75, 100] + (maximum > 100 ? [maximum] : [])).filter { $0 <= maximum }, id: \.self) { level in
+      Toggle("\(Int(level))%", isOn: Binding(get: { abs(player.volume - level) < 0.5 }, set: { if $0 { player.setVolume(level) } }))
+    }
+  }
+}
+
+/// The families and 全部关闭, for 「更多」 and the 画面增强 button on the bar.
+struct PlayerShaderItems: View {
   @ObservedObject var model: AppModel
   var body: some View {
-    Menu("画面增强") {
+    Group {
       ForEach(ShaderCatalog.families, id: \.self) { family in
         Menu(family) {
           Toggle("关闭", isOn: Binding(get: { model.shaderSelections[family] == nil }, set: { on in
@@ -448,35 +767,31 @@ enum PlayerPreferences {
 }
 
 /// The playback pages' last toolbar controls, after their own (分享…): 在独立窗口播放 and
-/// 显示 / 隐藏右侧栏. The pages put them in `.pageToolbar(accessory:)`; 返回 / 前进 belong to the
-/// main window's toolbar, and the standalone window draws the same toolbar without them.
+/// 显示 / 隐藏右侧栏, drawn as cells of the page's `ToolbarIconGroup`. The pages put them in
+/// `.pageToolbar(accessory:)`; 返回 / 前进 belong to the main window's toolbar, and the standalone
+/// window draws the same toolbar without them.
 struct PlayerToolbarActions: View {
   @ObservedObject var model: AppModel
   @Binding var sidebarHidden: Bool
   /// Live rooms keep 在独立窗口播放 in their settings menu only.
   var windowToggle = true
   var body: some View {
-    HStack(spacing: 8) {
-      if windowToggle {
-        Button { model.togglePlaybackWindow() } label: {
-          Image(systemName: model.playbackDetached ? "macwindow" : "macwindow.on.rectangle")
-        }.buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true))
-          .help(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
-          .accessibilityLabel(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
-      }
-      Button { withAnimation(.snappy(duration: 0.25)) { sidebarHidden.toggle() } } label: { Image(systemName: "sidebar.right") }
-        .buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true))
-        .help(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏").accessibilityLabel(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏")
+    if windowToggle {
+      Button { model.togglePlaybackWindow() } label: {
+        ToolbarGroupIcon(model.playbackDetached ? "macwindow" : "macwindow.on.rectangle")
+      }.help(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
+        .accessibilityLabel(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
     }
+    Button { withAnimation(.snappy(duration: 0.25)) { sidebarHidden.toggle() } } label: { ToolbarGroupIcon("sidebar.right") }
+      .help(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏").accessibilityLabel(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏")
   }
 }
 
-/// A plain share button for a page's toolbar.
+/// A share cell for a page's toolbar `ToolbarIconGroup`.
 struct ToolbarShareButton: View {
   let url: URL
   var body: some View {
-    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-      .buttonStyle(AppButtonStyle(role: .plain, size: .small, iconOnly: true)).help("分享").accessibilityLabel("分享")
+    ShareLink(item: url) { ToolbarGroupIcon("square.and.arrow.up") }.help("分享").accessibilityLabel("分享")
   }
 }
 
@@ -505,17 +820,66 @@ private struct GlassTileBody: View {
       .contentShape(shape)
       .scaleEffect(configuration.isPressed ? 0.97 : 1)
       .animation(Theme.hoverAnimation, value: configuration.isPressed)
+      .environment(\.glassTileSelected, selected)
   }
 }
 
-/// Symbol over a figure, the content of a `GlassTileButtonStyle` button.
+private extension EnvironmentValues {
+  @Entry var glassTileSelected = false
+}
+
+/// Symbol over a figure, the content of a `GlassTileButtonStyle` button. Until the action is
+/// active the symbol is the primary colour at 70% and the figure the secondary colour; an active
+/// one keeps the accent on both.
 struct GlassTileLabel: View {
   let symbol: String
   let value: String
+  @Environment(\.colorScheme) private var scheme
+  @Environment(\.isEnabled) private var isEnabled
+  @Environment(\.glassTileSelected) private var selected
   var body: some View {
+    let resting = isEnabled && !selected
     VStack(spacing: 5) {
       Image(systemName: symbol).font(.system(size: 16, weight: .medium))
+        .opacity(resting ? 0.7 : 1)
       Text(value).font(Theme.Font.caption2.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.8)
+        .foregroundStyle(resting ? Theme.secondaryText(scheme) : (isEnabled ? Theme.accentText(scheme) : Theme.disabledText(scheme)))
+    }
+  }
+}
+
+// MARK: - 省电模式
+
+/// The disabled first line of 「更多」 while playback saves power (「正在省电 · 用电池」), with a
+/// divider under it; nothing otherwise.
+private struct PowerSavingStatusItem: View {
+  @ObservedObject private var power = PowerState.shared
+  var body: some View {
+    if let status = power.menuStatus {
+      Button(status) {}.disabled(true)
+      Divider()
+    }
+  }
+}
+
+/// 「更多」 › 省电模式: 自动 / 始终 / 关闭, then 「省电设置…」 (设置 › 播放). The choice is written
+/// through `M7SettingsModel`, so every window and the settings page follow it.
+private struct PowerSavingMenu: View {
+  let settings: M7SettingsModel
+  let openSettings: () -> Void
+  @ObservedObject private var power = PowerState.shared
+  var body: some View {
+    Menu {
+      Picker("省电模式", selection: Binding(
+        get: { power.preferences.mode },
+        set: { settings.set(.powerSavingMode, .text($0.rawValue)) })) {
+        ForEach(PowerSavingMode.allCases, id: \.self) { Text($0.title).tag($0) }
+      }
+      .pickerStyle(.inline).labelsHidden()
+      Divider()
+      Button("省电设置…", action: openSettings)
+    } label: {
+      Label("省电模式", systemImage: "leaf")
     }
   }
 }
