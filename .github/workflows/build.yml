@@ -2,20 +2,30 @@ name: build
 on: [push, pull_request, workflow_dispatch]
 jobs:
   build-and-test:
-    # The package targets macOS 27, so the runner needs an Xcode with the macOS 27 SDK.
+    # The package targets macOS 27 and Swift 6.4, so it needs Xcode 27. Until the hosted runners
+    # ship it, the job reports that and skips; it starts building on its own once they do.
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - name: Use the newest installed Xcode
+        id: xcode
         run: |
           xcode=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
           sudo xcode-select -s "$xcode/Contents/Developer"
           xcodebuild -version
-          swift --version
+          major=$(xcodebuild -version | awk 'NR==1 { split($2, v, "."); print v[1] }')
+          if [ "$major" -ge 27 ]; then
+            echo "supported=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "supported=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Xcode 27 required::This runner has Xcode $major; build and tests are skipped until macOS runners provide Xcode 27."
+          fi
       - name: Build
+        if: steps.xcode.outputs.supported == 'true'
         run: swift build
       - name: Swift tests (Core and App; offline fixtures only)
+        if: steps.xcode.outputs.supported == 'true'
         run: swift test
       - name: Script tests
         run: |
