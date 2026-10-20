@@ -4,18 +4,18 @@ import XCTest
 
 final class M8AIConfigurationTests: XCTestCase {
   func testRegisteredProvidersAndSourceModelCatalogue() {
-    XCTAssertEqual(AIProvider.sourceProviders.count, 22)
+    XCTAssertEqual(AIProvider.sourceProviders.count, 29)
     XCTAssertEqual(Array(AIProvider.allCases.suffix(2)), [.chatGPTPlan, .appleLocal])
     XCTAssertEqual(AIProvider.allCases.prefix(4).map(\.rawValue), ["openai", "azure_openai", "azure_ai", "xai"])
     XCTAssertEqual(AIProvider.azureOpenAI.predefinedModels, [])
     XCTAssertEqual(AIProvider.azureAI.predefinedModels, [])
     XCTAssertEqual(AIProvider.ollama.predefinedModels, [])
     XCTAssertEqual(AIProvider.doubao.predefinedModels, [])
-    XCTAssertEqual(AIProvider.openAI.predefinedModels.count, 16)
-    XCTAssertEqual(AIProvider.zhiPu.predefinedModels.count, 14)
-    XCTAssertEqual(AIProvider.openAI.predefinedModels.first?.id, "gpt-5")
+    XCTAssertEqual(AIProvider.openAI.predefinedModels.count, 15)
+    XCTAssertEqual(AIProvider.zhiPu.predefinedModels.count, 15)
+    XCTAssertEqual(AIProvider.openAI.predefinedModels.first?.id, "gpt-6-astra")
     XCTAssertEqual(AIProvider.anthropic.predefinedModels.first?.id, "claude-opus-5-5")
-    XCTAssertEqual(AIProvider.gemini.predefinedModels.first?.id, "gemini-2.5-pro")
+    XCTAssertEqual(AIProvider.gemini.predefinedModels.first?.id, "gemini-3.8-flash")
     for provider in AIProvider.allCases {
       XCTAssertEqual(Set(provider.predefinedModels.map(\.id)).count, provider.predefinedModels.count)
     }

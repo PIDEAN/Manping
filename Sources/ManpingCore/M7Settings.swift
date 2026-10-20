@@ -1,9 +1,9 @@
 import CoreFoundation
 import Foundation
 
-/// The nine categories of the settings window, in sidebar order.
+/// The categories of the settings window, in sidebar order.
 public enum MacSettingGroup: String, CaseIterable, Sendable {
-  case general = "通用", playback = "播放", danmaku = "弹幕", network = "网络", download = "下载与截图"
+  case general = "通用", playback = "播放", danmaku = "弹幕", live = "直播", network = "网络", download = "下载与截图"
   case notifications = "通知", privacy = "隐私", ai = "AI", advanced = "高级"
 }
 /// Retired keys (Windows-only renderer switches and the old top navigation toggle) are no
@@ -15,6 +15,11 @@ public enum MacSettingKey: String, CaseIterable, Sendable {
   case globalSpeed = "Manping.globalSpeed", bottomProgress = "Manping.bottomProgress", speed = "Manping.playbackSpeed"
   case reportProgress = "Manping.reportProgress", spotlightIndex = "Manping.spotlightIndex", autoSkipClips = "Manping.autoSkipClips"
   case liveText = "Manping.liveText"
+  case liveAllowPaidGifts = "Manping.liveAllowPaidGifts", livePaidConfirmThreshold = "Manping.livePaidConfirmThreshold"
+  case liveHideGifting = "Manping.liveHideGifting", livePureMode = "Manping.livePureMode"
+  case liveGiftEffects = "Manping.liveGiftEffects", liveGuardEffects = "Manping.liveGuardEffects"
+  case liveSuperChatEffects = "Manping.liveSuperChatEffects", liveLotteryBanner = "Manping.liveLotteryBanner"
+  case liveInteractNotices = "Manping.liveInteractNotices"
   case volume = "Manping.defaultVolume", danmakuEnabled = "Manping.danmakuEnabled", danmakuFontSize = "Manping.danmakuFontSize"
   case danmakuOpacity = "Manping.danmakuOpacity", danmakuSpeed = "Manping.danmakuSpeed", screenshotFormat = "Manping.screenshotFormat"
   case danmakuFrameRate = "Manping.danmakuFrameRate"
@@ -148,6 +153,29 @@ public enum MacSettingsCatalog {
     .init(.danmakuSpeed, .danmaku, "外观", "速度", "数值越大，弹幕越快划过画面。", .number(0.5...2, step: 0.1), .number(1)),
     .init(.danmakuFrameRate, .danmaku, "外观", "弹幕帧率", "「60 帧」更省电。省电时的上限见 设置 › 播放 › 省电。", options([(DanmakuFrameRate.display, "跟随屏幕"), (DanmakuFrameRate.sixty, "60 帧")]), .text(DanmakuFrameRate.display)),
     .init(.danmakuEnabled, .danmaku, "默认显示", "打开视频时显示弹幕", "播放时随时可以用 ⇧⌘D 切换。", .toggle, .bool(true)),
+    // 直播
+    .init(
+      .livePureMode, .live, "纯享", "纯享模式", "一键关闭下面所有特效和横幅，只看直播画面和弹幕。聊天栏照常显示文字。", .toggle,
+      .bool(false)),
+    .init(.liveGiftEffects, .live, "画面上的特效与横幅", "礼物特效", "画面左下角滑入的送礼提示与连击数。", .toggle, .bool(true)),
+    .init(.liveGuardEffects, .live, "画面上的特效与横幅", "上舰特效", "开通舰长、提督、总督时的提示。", .toggle, .bool(true)),
+    .init(
+      .liveSuperChatEffects, .live, "画面上的特效与横幅", "醒目留言特效", "新醒目留言在画面上的弹出；侧栏的醒目留言条不受影响。", .toggle,
+      .bool(true)),
+    .init(
+      .liveLotteryBanner, .live, "画面上的特效与横幅", "抽奖与红包横幅", "天选时刻、人气红包在画面顶部的横幅。", .toggle, .bool(true)),
+    .init(
+      .liveInteractNotices, .live, "画面上的特效与横幅", "点赞与进场提示", "聊天栏里的「点了赞」「进入直播间」等提示。", .toggle,
+      .bool(true)),
+    .init(
+      .liveHideGifting, .live, "送礼", "屏蔽送礼", "隐藏礼物按钮、聊天栏里的礼物消息和礼物特效。直播间侧栏最下方有同一个开关。", .toggle,
+      .bool(false)),
+    .init(
+      .liveAllowPaidGifts, .live, "送礼", "允许送付费礼物", "默认关闭。打开后可以用电池送礼，每次都要在确认框里核对金额；礼物送出后不能退回。",
+      .toggle, .bool(false)),
+    .init(
+      .livePaidConfirmThreshold, .live, "送礼", "单次超过以下金额时需要额外勾选确认", "",
+      .number(0...1_000_000_000, step: 100), .number(10000)),
     // 网络
     .init(.cdnAuto, .network, "节点优选", "自动选择最快的节点", "播放前测速候选节点并选用最快的一个，结果按网络记住。", .toggle, .bool(true)),
     .init(.cdnRefresh, .network, "节点优选", "重新测速", "测速结果的有效期，切换网络时总会重新测速。", options([("frequent", "频繁（30 分钟）"), ("balanced", "平衡（90 分钟）"), ("economy", "较少（6 小时）")]), .text("balanced")),
@@ -222,7 +250,7 @@ public struct MacSettings: Sendable, Equatable {
       let normalized = Self.normalize(value, descriptor: descriptor) else { return false }
     values[key] = normalized; return true
   }
-  public static func load(from defaults: UserDefaults) -> Self {
+  public static func load(from defaults: any PreferencesStore) -> Self {
     var settings = Self()
     for descriptor in MacSettingsCatalog.descriptors {
       guard let raw = defaults.object(forKey: descriptor.key.rawValue) else { continue }
@@ -235,7 +263,7 @@ public struct MacSettings: Sendable, Equatable {
     }
     return settings
   }
-  public func save(_ key: MacSettingKey, to defaults: UserDefaults) {
+  public func save(_ key: MacSettingKey, to defaults: any PreferencesStore) {
     if key == .quality, number(.quality) == 0 { defaults.removeObject(forKey: key.rawValue); return }
     switch self[key] {
     case .bool(let value): defaults.set(value, forKey: key.rawValue)
@@ -264,7 +292,8 @@ extension MacSettings {
   /// value another part of the app saved meanwhile (the player's codec choice, for example)
   /// is kept. Returns the merged settings, or nil when the key or value is not accepted.
   public static func committing(_ key: MacSettingKey, _ value: MacSettingValue, capabilities: Set<MacSettingKey>,
-    to defaults: UserDefaults) -> MacSettings? {
+    to defaults: any PreferencesStore
+  ) -> MacSettings? {
     var latest = load(from: defaults)
     guard latest.set(key, value, capabilities: capabilities) else { return nil }
     latest.save(key, to: defaults)
@@ -338,5 +367,30 @@ public enum M7MomentNotificationPolicy {
       remembered.append(id)
     }
     return (notifications, remembered)
+  }
+}
+
+public struct LiveEffectiveSettings: Sendable, Equatable {
+  public let giftMessages: Bool
+  public let giftEffects: Bool
+  public let guardEffects: Bool
+  public let superChatEffects: Bool
+  public let lotteryBanner: Bool
+  public let interactNotices: Bool
+  public init(_ settings: MacSettings) {
+    let effects = !settings.bool(.livePureMode)
+    giftMessages = !settings.bool(.liveHideGifting)
+    giftEffects = effects && giftMessages && settings.bool(.liveGiftEffects)
+    guardEffects = effects && settings.bool(.liveGuardEffects)
+    superChatEffects = effects && settings.bool(.liveSuperChatEffects)
+    lotteryBanner = effects && settings.bool(.liveLotteryBanner)
+    interactNotices = effects && settings.bool(.liveInteractNotices)
+  }
+}
+extension MacSettings {
+  public var liveEffective: LiveEffectiveSettings { LiveEffectiveSettings(self) }
+  public func liveGiftPolicy(fixedGoldPrices: [Int64: Int64] = [:]) -> LiveGiftPolicy {
+    LiveGiftPolicy(allowPaid: bool(.liveAllowPaidGifts),
+      extraConfirmationThreshold: Int64(number(.livePaidConfirmThreshold)), fixedGoldPrices: fixedGoldPrices)
   }
 }

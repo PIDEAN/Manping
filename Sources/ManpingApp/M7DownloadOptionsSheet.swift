@@ -153,7 +153,7 @@ struct M7DownloadOptionsSheet: View {
   }
   private func initialize() {
     guard !initialized else { return }; initialized = true
-    let settings = MacSettings.load(from: .standard)
+    let settings = MacSettings.load(from: PerformanceEnvironment.defaults)
     directory = model.usesUIFixtures ? "/tmp/Bili Downloads" : settings.text(.downloadDirectory)
     if directory.isEmpty {
       directory = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?

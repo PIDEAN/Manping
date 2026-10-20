@@ -204,9 +204,16 @@ private func liveIdentifier(_ value: Int64) throws {
 
 public enum LiveChatEvent: Sendable, Equatable {
   case connected
-  case danmaku(user: String, text: String, color: UInt32)
-  case superChat(user: String, text: String, price: Int)
-  case gift(user: String, name: String, count: Int)
+  case danmaku(LiveDanmaku)
+  case superChat(LiveSuperChat)
+  case superChatDeleted([String])
+  case gift(LiveGiftMessage)
+  case guardPurchase(LiveGuardMessage)
+  case like(LiveNoticeEvent)
+  case entrance(LiveNoticeEvent)
+  case moderation(LiveNoticeEvent)
+  case lottery(LiveNoticeEvent)
+  case redPocket(LiveNoticeEvent)
   /// 「xx 人看过」.
   case watched(Int64)
   /// Viewers online now (online rank count).
@@ -281,23 +288,28 @@ public enum LiveChatPacket {
   /// Events in a frame, and whether it carried an auth reply that was not `{"code":0}`. A
   /// rejected (or unreadable) auth reply is not a connection: the client closes the socket so the
   /// caller counts a failure and reconnects with a fresh token.
-  public static func decode(_ frame: Data) -> (events: [LiveChatEvent], authRejected: Bool) {
+  public static func decode(_ frame: Data) -> (events: [LiveChatEvent], authRejected: Bool, authCode: Int?) {
     var rejected = false
-    let events = packets(frame).compactMap { packet -> LiveChatEvent? in
+    var authCode: Int?
+    var events: [LiveChatEvent] = []
+    for packet in packets(frame) {
       switch Operation(rawValue: packet.operation) {
       case .authReply:
-        guard authAccepted(packet.body) else { rejected = true; return nil }
-        return .connected
+        guard authAccepted(packet.body) else {
+          rejected = true
+          let json = (try? JSONSerialization.jsonObject(with: packet.body)) as? [String: Any]
+          authCode = JSONValue.int64(json?["code"]).flatMap(Int.init(exactly:))
+          continue
+        }
+        events.append(.connected)
       case .heartbeatReply:
-        guard packet.body.count >= 4 else { return nil }
-        return .popularity(Int64(packet.body.prefix(4).reduce(0) { $0 << 8 | UInt32($1) }))
+        if packet.body.count >= 4 { events.append(.popularity(Int64(packet.body.prefix(4).reduce(0) { $0 << 8 | UInt32($1) }))) }
       case .message:
-        guard let json = try? JSONSerialization.jsonObject(with: packet.body) as? [String: Any] else { return nil }
-        return event(json)
-      default: return nil
+        if let json = try? JSONSerialization.jsonObject(with: packet.body) as? [String: Any] { events += event(json) }
+      default: break
       }
     }
-    return (events, rejected)
+    return (events, rejected, authCode)
   }
 
   static func authAccepted(_ body: Data) -> Bool {
@@ -305,33 +317,66 @@ public enum LiveChatPacket {
     return JSONValue.int64(json["code"]) == 0
   }
 
-  static func event(_ json: [String: Any]) -> LiveChatEvent? {
+  public static func event(_ json: [String: Any]) -> [LiveChatEvent] {
     let command = (json["cmd"] as? String ?? "").split(separator: ":").first.map(String.init) ?? ""
     let data = json["data"] as? [String: Any] ?? [:]
     switch command {
     case "DANMU_MSG":
       guard let info = json["info"] as? [Any], info.count > 2, let text = info[1] as? String,
-        let user = info[2] as? [Any], user.count > 1 else { return nil }
+        let user = info[2] as? [Any], user.count > 1 else { return [] }
       let meta = info[0] as? [Any] ?? []
-      let color = meta.count > 3 ? UInt32(truncatingIfNeeded: JSONValue.int64(meta[3]) ?? 0xffffff) : 0xffffff
-      return .danmaku(user: user[1] as? String ?? "", text: text, color: color == 0 ? 0xffffff : color)
-    case "SUPER_CHAT_MESSAGE":
-      let user = (data["user_info"] as? [String: Any])?["uname"] as? String ?? ""
-      return .superChat(user: user, text: data["message"] as? String ?? "", price: liveInt(data["price"]) ?? 0)
+      func item(_ values: [Any], _ i: Int) -> Any? { values.indices.contains(i) ? values[i] : nil }
+      let modeInfo = item(meta, 15) as? [String: Any] ?? [:]
+      let extraString = modeInfo["extra"] as? String ?? "{}"
+      let extra = extraString.utf8.count <= 262144 ? ((try? JSONSerialization.jsonObject(with: Data(extraString.utf8))) as? [String: Any] ?? [:]) : [:]
+      let color = UInt32(truncatingIfNeeded: JSONValue.int64(item(meta, 3)) ?? 0xffffff)
+      let medalValues = item(info, 3) as? [Any] ?? []
+      let medal = medalValues.isEmpty ? nil : LiveMedal(medalValues)
+      let modernUser = modeInfo["user"] as? [String: Any] ?? [:]
+      let guardInfo = modernUser["guard"] as? [String: Any] ?? [:]
+      let reply = extra.filter { $0.key.hasPrefix("reply_") || $0.key == "replay_dmid" }
+      return [.danmaku(LiveDanmaku(uid: JSONValue.int64(user[0]) ?? 0, user: user[1] as? String ?? "", text: text,
+        color: color == 0 ? 0xffffff : color, mode: JSONValue.int64(item(meta, 1)) ?? 1, medal: medal,
+        guardLevel: [JSONValue.int64(guardInfo["level"]), medal?.guardLevel, JSONValue.int64(item(info, 7))].compactMap { $0 }.first { $0 > 0 } ?? 0,
+        id: extra["id_str"] as? String, emotes: value(extra["emots"]), roomEmote: value(item(meta, 13)),
+        reply: reply.isEmpty ? .null : value(reply), dmType: JSONValue.int64(extra["dm_type"]) ?? 0,
+        emoticonUnique: extra["emoticon_unique"] as? String,
+        timestamp: JSONValue.int64((item(info, 9) as? [String: Any])?["ts"]) ?? JSONValue.int64(item(meta, 4))))]
+    case "SUPER_CHAT_MESSAGE": return LiveSuperChat(value(data)).map { [.superChat($0)] } ?? []
+    case "SUPER_CHAT_MESSAGE_DELETE":
+      let ids = (data["ids"] as? [Any] ?? []).compactMap { ($0 as? String) ?? JSONValue.int64($0).map(String.init) }
+      return ids.isEmpty ? [] : [.superChatDeleted(ids)]
     case "SEND_GIFT":
-      return .gift(user: data["uname"] as? String ?? "", name: data["giftName"] as? String ?? "",
-        count: liveInt(data["num"]) ?? 1)
-    case "WATCHED_CHANGE":
-      return JSONValue.int64(data["num"]).map { .watched($0) }
-    case "ONLINE_RANK_COUNT":
-      return (JSONValue.int64(data["online_count"]) ?? JSONValue.int64(data["count"])).map { .online($0) }
-    case "LIVE": return .liveStarted
-    case "PREPARING": return .liveEnded
-    case "ROOM_CHANGE":
-      return (data["title"] as? String).map { .titleChanged($0) }
-    default: return nil
+      return [.gift(LiveGiftMessage(uid: JSONValue.int64(data["uid"]) ?? 0, user: data["uname"] as? String ?? "",
+        giftID: JSONValue.int64(data["giftId"]) ?? 0, name: data["giftName"] as? String ?? "",
+        count: JSONValue.int64(data["num"]) ?? 1, price: JSONValue.int64(data["price"]) ?? 0,
+        totalCoin: JSONValue.int64(data["total_coin"]) ?? 0, coinType: data["coin_type"] as? String ?? "unknown",
+        tid: data["tid"] as? String ?? "", batchID: data["batch_combo_id"] as? String ?? "",
+            timestamp: JSONValue.int64(data["timestamp"]), raw: value(data),
+            hasKnownTotal: data["total_coin"] != nil
+              && (JSONValue.int64(data["total_coin"]) ?? -1) >= 0))
+      ]
+    case "SEND_GIFT_V2": return giftV2(data["pb"] as? String ?? "")
+    case "GUARD_BUY", "USER_TOAST_MSG_V2":
+      return [.guardPurchase(LiveGuardMessage(command: command, uid: JSONValue.int64(data["uid"]) ?? 0,
+        user: data["username"] as? String ?? data["uname"] as? String ?? "", level: JSONValue.int64(data["guard_level"]) ?? 0,
+        count: JSONValue.int64(data["num"]) ?? 1, raw: value(data)))]
+    case "INTERACT_WORD":
+      guard JSONValue.int64(data["msg_type"]) == 1 else { return [] }
+      return [.entrance(LiveNoticeEvent(command: command, data: value(data)))]
+    case "LIKE_INFO_V3_UPDATE", "LIKE_INFO_V3_CLICK": return [.like(LiveNoticeEvent(command: command, data: value(data)))]
+    case "ROOM_SILENT_ON", "ROOM_SILENT_OFF", "ROOM_BLOCK_MSG": return [.moderation(LiveNoticeEvent(command: command, data: value(data)))]
+    case "ANCHOR_LOT_START", "ANCHOR_LOT_END", "ANCHOR_LOT_AWARD": return [.lottery(LiveNoticeEvent(command: command, data: value(data)))]
+    case let name where name.hasPrefix("POPULARITY_RED_POCKET_"): return [.redPocket(LiveNoticeEvent(command: command, data: value(data)))]
+    case "WATCHED_CHANGE": return JSONValue.int64(data["num"]).map { [.watched($0)] } ?? []
+    case "ONLINE_RANK_COUNT": return (JSONValue.int64(data["online_count"]) ?? JSONValue.int64(data["count"])).map { [.online($0)] } ?? []
+    case "LIVE": return [.liveStarted]
+    case "PREPARING": return [.liveEnded]
+    case "ROOM_CHANGE": return (data["title"] as? String).map { [.titleChanged($0)] } ?? []
+    default: return []
     }
   }
+
 }
 
 extension BiliService {
@@ -374,18 +419,21 @@ extension BiliService {
     return try LivePlayback.parse(try await json(Self.liveBase + "/xlive/web-room/v2/index/getRoomPlayInfo", params: params))
   }
 
-  public func liveChatEndpoint(roomID: Int64) async throws -> LiveChatEndpoint {
+  public func liveChatEndpoint(roomID: Int64, expectedIdentity: AuthSnapshot) async throws -> LiveChatEndpoint {
     try liveIdentifier(roomID)
-    let info = try await json(Self.liveBase + "/xlive/web-room/v1/index/getDanmuInfo",
-      params: ["id": String(roomID), "type": "0", "web_location": "444.8"], signed: true)
-    guard let token = info["token"] as? String, !token.isEmpty else { throw BiliError.invalidResponse("Missing chat token") }
-    let urls = (info["host_list"] as? [[String: Any]] ?? []).compactMap { host -> URL? in
-      guard let name = host["host"] as? String, let port = liveInt(host["wss_port"]) else { return nil }
+    try checkRESTIdentity(expectedIdentity)
+    let envelope = try await liveRequest(.danmuInfo, fields: ["id": String(roomID)], expectedIdentity: expectedIdentity)
+    try checkRESTIdentity(expectedIdentity)
+    let info = try envelope.checkedData(for: .danmuInfo)
+    guard let token = info["token"].string, !token.isEmpty else { throw BiliError.invalidResponse("Missing chat token") }
+    let urls = (info["host_list"].array ?? []).compactMap { host -> URL? in
+      guard let name = host["host"].string, let port = host["wss_port"].int64,
+        (1...65535).contains(port), !name.contains("/"), !name.contains("@") else { return nil }
       return URL(string: "wss://\(name):\(port)/sub")
     }
-    let uid = authSnapshot().token?.mid ?? cookieValue("DedeUserID").flatMap { Int64($0) } ?? 0
+    let uid = accountMid() ?? 0
     return LiveChatEndpoint(urls: urls.isEmpty ? [URL(string: "wss://broadcastlv.chat.bilibili.com/sub")!] : urls,
-      token: token, roomID: roomID, uid: uid, buvid: cookieValue("buvid3") ?? "")
+      token: token, roomID: roomID, uid: uid, buvid: try liveBuvid(expectedIdentity: expectedIdentity))
   }
 
   private static func secureURL(_ value: String) -> URL? {

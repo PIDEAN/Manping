@@ -16,10 +16,10 @@ struct PinnedLiveRoom: Codable, Identifiable, Equatable {
 @MainActor final class PinnedLiveStore: ObservableObject {
   static let shared = PinnedLiveStore()
   @Published private(set) var rooms: [PinnedLiveRoom] = []
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
   private let key = "pinnedLiveRooms.v1"
 
-  init(defaults: UserDefaults = .standard) {
+  init(defaults: any PreferencesStore = PerformanceEnvironment.defaults) {
     self.defaults = defaults
     if let data = defaults.data(forKey: key),
       let decoded = try? JSONDecoder().decode([PinnedLiveRoom].self, from: data) {

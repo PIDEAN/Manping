@@ -211,6 +211,7 @@ struct PlaybackTimeline: View {
   static let curveHeight: CGFloat = 14
   static let trackHeight: CGFloat = 4
   static let hitHeight: CGFloat = 16
+  static let chapterGap: CGFloat = 3
 
   private var total: Double { max(1, duration) }
 
@@ -221,13 +222,19 @@ struct PlaybackTimeline: View {
     VStack(spacing: 0) {
       energyCurve.frame(height: Self.curveHeight)
       ZStack(alignment: .leading) {
-        Capsule().fill(.white.opacity(0.22)).frame(height: Self.trackHeight)
-        Capsule().fill(.white.opacity(0.32)).frame(width: trackWidth * buffered, height: Self.trackHeight)
-        StreakFill(progress: fraction).frame(height: Self.trackHeight)
-        ForEach(chapterMarks, id: \.self) { mark in
-          Rectangle().fill(.white.opacity(0.9)).frame(width: 2, height: 8)
-            .offset(x: trackWidth * mark - 1)
+        // One bar per chapter with a gap between them, as on Bilibili; the hovered chapter brightens.
+        ZStack(alignment: .leading) {
+          Capsule().fill(.white.opacity(0.22)).frame(height: Self.trackHeight)
+          if let segment = hoveredSegment {
+            Rectangle().fill(.white.opacity(0.24))
+              .frame(width: trackWidth * (segment.upperBound - segment.lowerBound), height: Self.trackHeight)
+              .offset(x: trackWidth * segment.lowerBound)
+          }
+          Capsule().fill(.white.opacity(0.32)).frame(width: trackWidth * buffered, height: Self.trackHeight)
+          StreakFill(progress: fraction).frame(height: Self.trackHeight)
         }
+        .frame(height: Self.hitHeight)
+        .mask(ChapterSegments(marks: chapterMarks, gap: Self.chapterGap))
         ForEach(markerFractions, id: \.self) { mark in
           RoundedRectangle(cornerRadius: 1.5).fill(Theme.highlight).frame(width: 3, height: 10)
             .shadow(color: Theme.highlight.opacity(0.9), radius: 4)
@@ -296,6 +303,14 @@ struct PlaybackTimeline: View {
     chapters.map { $0.time / total }.filter { $0 > 0.002 && $0 < 0.998 }
   }
 
+  /// The chapter span under the pointer (fractions of the track), while hovering a chaptered video.
+  private var hoveredSegment: ClosedRange<Double>? {
+    guard scrub == nil, let hover = hoverFraction, !chapterMarks.isEmpty else { return nil }
+    let edges = [0.0] + chapterMarks + [1.0]
+    guard let end = edges.firstIndex(where: { $0 > hover }) else { return nil }
+    return edges[end - 1]...edges[end]
+  }
+
   @ViewBuilder private var energyCurve: some View {
     if density.count > 1 {
       DanmakuDensityCurve(values: density)
@@ -312,15 +327,26 @@ struct PlaybackTimeline: View {
   @ViewBuilder private var hoverPreview: some View {
     if enabled, duration > 0, let fraction = scrub ?? hoverFraction {
       let target = clamp(fraction) * duration
-      let label = [Self.format(target), chapterTitle(at: target)].compactMap { $0 }.joined(separator: " · ")
+      let title = chapterTitle(at: target)
       VStack(spacing: 6) {
         if let preview {
+          // As on Bilibili: the time on the frame, the chapter title on its own line below.
           VideoShotFrame(shot: preview, time: target).frame(width: 176, height: 99)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Theme.Radius.sm, style: .continuous).strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+            .overlay(alignment: .bottom) {
+              Text(Self.format(target)).font(Theme.Font.caption.weight(.semibold).monospacedDigit()).foregroundStyle(.white)
+                .padding(.horizontal, 8).frame(height: 20).background(.black.opacity(0.55), in: Capsule()).padding(.bottom, 6)
+            }
+          if let title {
+            Text(title).font(Theme.Font.caption2.weight(.medium)).foregroundStyle(.white).lineLimit(1)
+              .padding(.horizontal, 8).frame(height: 20).frame(maxWidth: 176).background(.black.opacity(0.62), in: Capsule())
+          }
+        } else {
+          Text([Self.format(target), title].compactMap { $0 }.joined(separator: " · "))
+            .font(Theme.Font.caption2.weight(.medium).monospacedDigit()).foregroundStyle(.white).lineLimit(1)
+            .padding(.horizontal, 8).frame(height: 20).background(.black.opacity(0.62), in: Capsule())
         }
-        Text(label).font(Theme.Font.caption2.weight(.medium).monospacedDigit()).foregroundStyle(.white).lineLimit(1)
-          .padding(.horizontal, 8).frame(height: 20).background(.black.opacity(0.62), in: Capsule())
       }
       .fixedSize()
       .shadow(color: .black.opacity(0.45), radius: 10, y: 4)
@@ -339,13 +365,56 @@ struct PlaybackTimeline: View {
   }
 
   private func chapterTitle(at time: Double) -> String? {
-    chapters.last { $0.time <= time }?.title
+    PlaybackChapter.current(chapters, at: time)?.title
   }
 
   static func format(_ seconds: Double) -> String {
     let value = max(0, Int(seconds.isFinite ? seconds : 0))
     return value >= 3600 ? String(format: "%d:%02d:%02d", value / 3600, value / 60 % 60, value % 60)
       : String(format: "%02d:%02d", value / 60, value % 60)
+  }
+}
+
+/// The track cut at chapter starts: one rectangle per chapter with `gap` between neighbours.
+struct ChapterSegments: Shape {
+  let marks: [Double]
+  let gap: CGFloat
+  func path(in rect: CGRect) -> Path {
+    var path = Path()
+    let edges = [0.0] + marks + [1.0]
+    for index in 0..<(edges.count - 1) {
+      let start = rect.minX + rect.width * edges[index] + (index == 0 ? 0 : gap / 2)
+      let end = rect.minX + rect.width * edges[index + 1] - (index == edges.count - 2 ? 0 : gap / 2)
+      if end > start { path.addRect(CGRect(x: start, y: rect.minY, width: end - start, height: rect.height)) }
+    }
+    return path
+  }
+}
+
+/// 「章节 · 当前章节 ›」 after the time readout; opens the chapter list to jump between chapters.
+struct PlayerChapterButton: View {
+  @ObservedObject var clock: PlaybackClock
+  let chapters: [PlaybackChapter]
+  var override: Double? = nil
+  @Binding var shown: Bool
+  let seek: (Double) -> Void
+  var body: some View {
+    let title = (PlaybackChapter.current(chapters, at: override ?? clock.time) ?? chapters.first)?.title ?? ""
+    Button { shown.toggle() } label: {
+      HStack(spacing: 5) {
+        Text("章节").foregroundStyle(.white.opacity(0.6))
+        Text(title).lineLimit(1).truncationMode(.tail)
+        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.white.opacity(0.6))
+      }
+      .font(Theme.Font.caption).foregroundStyle(.white.opacity(0.9)).frame(maxWidth: 200, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+    }
+    .buttonStyle(PlayerControlButtonStyle(size: 28, horizontalPadding: 10))
+    .help("章节").accessibilityLabel("章节：" + title)
+    .popover(isPresented: $shown, arrowEdge: .top) {
+      ScrollView {
+        PlaybackChapterList(clock: clock, chapters: chapters, override: override) { seek($0); shown = false }.padding(14)
+      }.frame(width: 320).frame(maxHeight: 420)
+    }
   }
 }
 

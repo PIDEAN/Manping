@@ -270,7 +270,7 @@ import SwiftUI
           index += 2
           continue
         }
-        if ["--ui-live-area", "--ui-live-sort"].contains(args[index]), index + 1 < args.count {
+        if ["--ui-live-area", "--ui-live-sort", "--ui-live-scene"].contains(args[index]), index + 1 < args.count {
           index += 2; continue
         }
         if ["--ui-playback-report", "--ui-report-seconds", "--ui-report-actions"].contains(args[index]), index + 1 < args.count {
@@ -310,13 +310,26 @@ import SwiftUI
       index += 1
     }
     do {
+      #if DEBUG
+        if let scene = DebugUIFixtures.liveScene {
+          guard LiveSessionFixture.scenes.contains(scene) else {
+            throw DiagnosticArguments.Failure.invalid("--ui-live-scene")
+          }
+          if DebugUIFixtures.livePresentation?.opensLiveSettings == true {
+            launchPage = "settings:live"
+          }
+        }
+      #endif
       try PerformanceOptions.validate()
       if let page = PerformanceOptions.scrollPage { launchPage = page == "search" ? "search:性能样本" : page }
       if PerformanceOptions.requested { skipAuthentication = true; launchTheme = .dark }
       options = try DiagnosticArguments(diagnosticArgs)
-      if let launchPage, !model.configureLaunchPage(launchPage) {
+      if let launchPage,
+        !model.configureLaunchPage(launchPage == "settings:live" ? "settings" : launchPage)
+      {
         throw DiagnosticArguments.Failure.invalid("--ui-page")
       }
+      if launchPage == "settings:live" { model.launchSettingsGroup = .live }
     } catch {
       // Do not echo argv: media URLs may contain signatures.
       model.error = "Invalid diagnostic arguments"
@@ -382,14 +395,16 @@ import SwiftUI
       if let launchWindowSize { window.setContentSize(launchWindowSize) }
       window.contentView = NSHostingView(
         rootView: ContentView(model: model, diagnosticTheme: launchTheme)
-          .defaultAppStorage(PerformanceEnvironment.defaults))
+          .persistentAppStorage())
     }
     window.delegate = self
     // AppKit crash-history restoration would block launch with a modal "reopen windows?" alert.
     // The original MainWindow only persists its bounds, so keep just the frame.
     window.isRestorable = false
     window.center()
-    if launchWindowSize == nil, !(options.requested && options.flags.contains("--fixed-viewport")) {
+    if !DebugUIFixtures.usesLiveSceneMemory, launchWindowSize == nil,
+      !(options.requested && options.flags.contains("--fixed-viewport"))
+    {
       window.setFrameAutosaveName("MainWindow")
     }
     // Performance diagnostics run beside whatever the user is doing: the window shows (it must be on
@@ -413,6 +428,11 @@ import SwiftUI
       if model.launchSettingsPlayerBar { model.openPlayerBarSettings() } else { model.openSettings(group) }
       return SettingsWindowController.shared.window
     }
+    #if DEBUG
+    if DebugUIFixtures.liveScene?.hasPrefix("settings-") == true, let launchWindowSize {
+      settingsWindow?.setContentSize(launchWindowSize)
+    }
+    #endif
     #if DEBUG
       if let index = args.firstIndex(of: "--ui-playback-report"), index + 1 < args.count {
         let seconds = args.firstIndex(of: "--ui-report-seconds").flatMap { args.indices.contains($0 + 1) ? Double(args[$0 + 1]) : nil } ?? 25
@@ -730,6 +750,10 @@ import SwiftUI
     item("截取画面", #selector(saveVideoScreenshot), "s", [.command, .shift], in: playback)
     item("小窗", #selector(toggleCompact), "p", [.command, .shift], in: playback)
     item("在独立窗口播放", #selector(toggleDetachedPlayback), "p", [.command, .option], in: playback)
+    playback.addItem(.separator())
+    item("发弹幕", #selector(composeLiveDanmaku), in: playback)
+    item("送礼物", #selector(openLiveGifts), in: playback)
+    item("点赞", #selector(likeLiveRoom), in: playback)
     // 窗口
     let windows = top("窗口")
     item("最小化", #selector(NSWindow.performMiniaturize(_:)), "m", in: windows, own: false)
@@ -829,6 +853,9 @@ import SwiftUI
         ?? window?.styleMask.contains(.fullScreen) ?? false
       item.title = full ? "退出全屏幕" : "进入全屏幕"
       return window != nil
+    case #selector(composeLiveDanmaku), #selector(openLiveGifts), #selector(likeLiveRoom):
+      guard let live = model.livePlayback, !model.compactPlayer else { return false }
+      return action != #selector(openLiveGifts) || live.ui.settings.liveEffective.giftMessages
     case #selector(saveVideoScreenshot): return model.canTakeScreenshot
     case #selector(goBack): return model.canGoBack
     case #selector(goForward): return model.canGoForward
@@ -879,6 +906,20 @@ import SwiftUI
   @objc private func openHistory() { model.go(to: .history) }
   @objc private func openMessages() { model.navigate(to: .message) }
   @objc private func saveVideoScreenshot() { model.takePlayerScreenshot() }
+  @objc private func composeLiveDanmaku() {
+    guard !model.compactPlayer else { return }
+    model.livePlayback?.ui.requestCompose()
+  }
+  @objc private func openLiveGifts() {
+    guard !model.compactPlayer, let live = model.livePlayback,
+      live.ui.settings.liveEffective.giftMessages
+    else { return }
+    live.ui.panel = .gifts
+  }
+  @objc private func likeLiveRoom() {
+    guard !model.compactPlayer else { return }
+    model.livePlayback?.ui.like()
+  }
   @objc private func togglePlayback() { activePlayer.togglePause() }
   @objc private func seekBackward() { activePlayer.seek(max(0, activePlayer.time - model.appSettings.number(.stepBackward))) }
   @objc private func seekForward() { activePlayer.seek(min(activePlayer.duration, activePlayer.time + model.appSettings.number(.stepForward))) }

@@ -76,8 +76,9 @@ public struct AIURLSessionTransport: AIHTTPTransport {
 }
 
 public enum AIChatRequestPlanner {
-  public static func family(_ provider: AIProvider) -> AIProtocolFamily {
-    switch provider {
+  public static func family(_ provider: AIProvider, model: String = "") -> AIProtocolFamily {
+    if [.opencodeZen, .opencodeGo].contains(provider) { return AIOpenCodeRouting.family(provider: provider, model: model) }
+    return switch provider {
     case .anthropic: .anthropic
     case .chatGPTPlan: .responses
     case .gemini: .gemini
@@ -85,7 +86,7 @@ public enum AIChatRequestPlanner {
     default: .openAI
     }
   }
-  private static func validHeader(_ value: String) -> Bool {
+  static func validHeader(_ value: String) -> Bool {
     !value.isEmpty && value.utf8.count <= 16_384 && !value.unicodeScalars.contains { $0.value < 32 || $0.value == 127 }
   }
   private static func escaped(_ value: String) -> String {
@@ -120,6 +121,9 @@ public enum AIChatRequestPlanner {
       conversation.messages.allSatisfy({ !$0.text.isEmpty }), totalBytes <= 8_388_608,
       options.temperature == nil || (options.temperature!.isFinite && (0...2).contains(options.temperature!)),
       options.maxTokens == nil || (1...1_048_576).contains(options.maxTokens!) else { throw AIChatFailure.missingConfiguration }
+    if provider == .moonshot, model == "kimi-k3", conversation.messages.contains(where: { $0.role == .assistant }) {
+      throw AIChatFailure.reasoningHistoryRequired
+    }
     let system = conversation.system.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
     let capability = AIStructuredCapability.of(provider: provider, configuration: configuration, model: model)
     let wantsJSON = conversation.format == .json
@@ -128,7 +132,7 @@ public enum AIChatRequestPlanner {
     let plannedTokens = explicitTokens == nil ? conversation.budget?.maxOutputTokens : nil
     var key = secrets.key
     if provider == .mistral, configuration.useCodestral { key = secrets.codestralKey ?? "" }
-    if provider != .ollama, !validHeader(key) { throw AIChatFailure.missingConfiguration }
+    if provider.needsKey || !key.isEmpty, !validHeader(key) { throw AIChatFailure.missingConfiguration }
     var endpointText = configuration.endpoint ?? provider.defaultEndpoint ?? ""
     // The plan bearer only ever goes to the public Responses API; the public JSON
     // configuration cannot redirect it to another host.
@@ -142,12 +146,27 @@ public enum AIChatRequestPlanner {
     var url = try endpoint(endpointText)
     var path = url.percentEncodedPath
     while path.hasSuffix("/") { path.removeLast() }
-    let chatMessages: [[String: Any]] = (provider == .anthropic ? [] : system.map { [["role": "system", "content": $0]] } ?? [])
+    let family = family(provider, model: model)
+    let openCode = [.opencodeZen, .opencodeGo].contains(provider)
+    if openCode {
+      if path.hasSuffix("/v1") { path = String(path.dropLast(3)) }
+      switch family {
+      case .anthropic: path += "/anthropic/v1"
+      case .gemini: path += "/google/v1beta"
+      default: path += "/openai/v1"
+      }
+    }
+    let chatMessages: [[String: Any]] = (family == .anthropic ? [] : system.map { [["role": "system", "content": $0]] } ?? [])
       + conversation.messages.map { ["role": $0.role.rawValue, "content": $0.text] }
     var body: [String: Any] = ["model": model, "stream": streaming, "messages": chatMessages]
     var headers: [String: String] = ["Content-Type": "application/json",
       "Accept": streaming && provider != .ollama ? "text/event-stream" : "application/json"]
-    switch provider {
+    if openCode {
+      headers["User-Agent"] = AIOpenCodeHeaders.userAgent
+      if provider == .opencodeGo { headers["x-opencode-session"] = AIOpenCodeHeaders.session }
+    }
+    let protocolProvider: AIProvider = openCode ? (family == .anthropic ? .anthropic : family == .gemini ? .gemini : family == .responses ? .opencodeZen : .openAI) : provider
+    switch protocolProvider {
     case .azureOpenAI:
       path += "/openai/deployments/" + escaped(model) + "/chat/completions"
       url.queryItems = [URLQueryItem(name: "api-version", value: configuration.apiVersion ?? "2024-10-21")]
@@ -174,6 +193,13 @@ public enum AIChatRequestPlanner {
           body["fallbacks"] = "default"
         }
       }
+    case .opencodeZen:
+      path += "/responses"
+      headers["Authorization"] = "Bearer " + key
+      body = ["model": model, "stream": streaming, "input": conversation.messages.map { ["role": $0.role.rawValue, "content": $0.text] }]
+      if let system { body["instructions"] = system }
+      if let tokens = explicitTokens ?? plannedTokens { body["max_output_tokens"] = tokens }
+      if let effort = options.effort, ["low", "medium", "high", "xhigh", "max"].contains(effort) { body["reasoning"] = ["effort": effort] }
     case .chatGPTPlan:
       // Public Responses API only; plan usage requires store:false and stream:true on every request.
       // No output cap or JSON parameter: plan usage rejects capabilities it does not support.
@@ -214,22 +240,27 @@ public enum AIChatRequestPlanner {
           throw AIChatFailure.missingConfiguration
         }
         headers["Authorization"] = "Bearer " + token
-      } else { headers["Authorization"] = "Bearer " + key }
+      } else if !key.isEmpty { headers["Authorization"] = "Bearer " + key }
       if provider == .openAI, let organization = configuration.organization, !organization.isEmpty {
         guard validHeader(organization) else { throw AIChatFailure.missingConfiguration }
         headers["OpenAI-Organization"] = organization
       }
     }
-    if ![.gemini, .ollama, .chatGPTPlan].contains(provider) {
+    if family != .gemini && family != .ollama && family != .responses {
       // Current Claude models reject sampling parameters.
-      if let temperature = options.temperature, !(provider == .anthropic && isCurrentClaude(model)) { body["temperature"] = temperature }
-      if let tokens = explicitTokens { body["max_tokens"] = tokens }
-      else if let tokens = plannedTokens, provider != .anthropic {
+      if let temperature = options.temperature, ![.xiaomiMimo, .mimoTokenPlan].contains(provider), !(provider == .moonshot && model == "kimi-k3"), !(family == .anthropic && isCurrentClaude(model)) { body["temperature"] = temperature }
+      if let tokens = explicitTokens { body[provider == .moonshot && model == "kimi-k3" || [.openAI, .azureOpenAI, .xiaomiMimo, .mimoTokenPlan].contains(provider) ? "max_completion_tokens" : "max_tokens"] = tokens }
+      else if let tokens = plannedTokens, family != .anthropic {
         // OpenAI's own chat models (reasoning ones included) take max_completion_tokens.
-        body[[.openAI, .azureOpenAI].contains(provider) ? "max_completion_tokens" : "max_tokens"] = tokens
+        body[([.openAI, .azureOpenAI, .xiaomiMimo, .mimoTokenPlan].contains(provider) || (provider == .moonshot && model == "kimi-k3")) ? "max_completion_tokens" : "max_tokens"] = tokens
       }
       if wantsJSON, capability == .openAIJSONObject { body["response_format"] = ["type": "json_object"] }
     }
+    if openCode {
+      headers["x-api-key"] = nil; headers["x-goog-api-key"] = nil
+      headers["Authorization"] = "Bearer " + key
+    }
+    if family == .openAI { applyThinking(provider: provider, model: model, effort: options.effort, body: &body) }
     url.percentEncodedPath = path
     guard let target = url.url else { throw AIChatFailure.invalidEndpoint }
     var request = URLRequest(url: target, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 60)
@@ -237,6 +268,30 @@ public enum AIChatRequestPlanner {
     request.httpBody = try JSONSerialization.data(withJSONObject: body)
     for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
     return request
+  }
+  private static func applyThinking(provider: AIProvider, model: String, effort: String?, body: inout [String: Any]) {
+    guard let effort else { return }
+    let id = model.lowercased()
+    if [.minimax, .minimaxPlan].contains(provider), id == "minimax-m3.1-flash", ["low", "medium", "high", "xhigh", "max"].contains(effort) {
+      body["reasoning_effort"] = effort; return
+    }
+    guard ["low", "medium", "high", "max"].contains(effort) else { return }
+    // Official parameter sources and model restrictions are recorded in docs/AIProviders.md.
+    if provider == .deepSeek, ["deepseek-flash", "deepseek-v4-pro"].contains(id) {
+      body["thinking"] = ["type": effort == "low" ? "disabled" : "enabled"]
+      if effort != "low" { body["reasoning_effort"] = effort == "medium" ? "high" : effort }
+    } else if (provider == .qwen && ["qwen3.8-max", "qwen3.8-flash", "qwen3.7-plus", "qwen3.6-plus", "qwen3.5-plus"].contains(id))
+      || (provider == .siliconFlow && id == "qwen/qwen3.6-35b-a3b") {
+      body["enable_thinking"] = effort != "low"
+    } else if provider == .zhiPu {
+      if ["glm-5.3", "glm-5.3-flash", "glm-5.3-flashx"].contains(id) {
+        body["thinking"] = ["type": "enabled"]; body["reasoning_effort"] = effort == "medium" ? "high" : effort
+      } else if ["glm-4.5", "glm-4.6", "glm-4.7"].contains(id) { body["thinking"] = ["type": effort == "low" ? "disabled" : "enabled"] }
+    } else if [.xiaomiMimo, .mimoTokenPlan].contains(provider), ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed"].contains(id) {
+      body["thinking"] = ["type": effort == "low" ? "disabled" : "enabled"]
+    } else if provider == .moonshot, id == "kimi-k3" {
+      body["reasoning_effort"] = effort == "medium" ? "high" : effort
+    }
   }
   public static func ernieAuthorization(accessKey: String, secret: String, date: Date) throws -> String {
     guard validHeader(accessKey), validHeader(secret), !accessKey.contains("/") else { throw AIChatFailure.missingConfiguration }
@@ -278,7 +333,7 @@ public struct AIChatClient: Sendable {
             secrets: secrets, model: model, conversation: conversation, streaming: streaming, options: options,
             bearerToken: provider == .ernie ? "validation-only" : nil)
           let bearer = provider == .ernie ? try await authorizeErnie(secrets: secrets) : nil
-          let family = AIChatRequestPlanner.family(provider)
+          let family = AIChatRequestPlanner.family(provider, model: model)
           var credentials = secrets
           var attempt = 0, refreshed = false
           var response: AIHTTPStream
@@ -287,7 +342,7 @@ public struct AIChatClient: Sendable {
               secrets: credentials, model: model, conversation: conversation, streaming: streaming, options: options, bearerToken: bearer)
             response = try await transport.stream(request)
             if (200...299).contains(response.status) { break }
-            let failure = await Self.failure(response, family: family)
+            let failure = await Self.failure(response, family: provider == .chatGPTPlan ? .responses : family == .responses ? .openAI : family)
             response.cancel()
             if provider == .chatGPTPlan, response.status == 401, !refreshed, let refreshBearer {
               refreshed = true; credentials.key = try await refreshBearer(); continue
@@ -300,7 +355,7 @@ public struct AIChatClient: Sendable {
           }
           defer { response.cancel() }
           if streaming {
-            var parser = AIStreamParser(family: family)
+            var parser = AIStreamParser(family: family, planUsage: provider == .chatGPTPlan)
             for try await chunk in response.chunks {
               try Task.checkCancellation()
               for text in try parser.append(chunk) {

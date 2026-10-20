@@ -7,6 +7,7 @@ import SwiftUI
   let text: String
   let emotes: [RPCEmote]
   var maxLines: Int? = nil
+  var liveHeader: LiveInlineHeader? = nil
   @Environment(\.colorScheme) private var scheme
 
   func makeCoordinator() -> Coordinator { Coordinator() }
@@ -24,7 +25,8 @@ import SwiftUI
   }
   func updateNSView(_ view: EmoteTextView, context: Context) {
     let coordinator = context.coordinator
-    let signature = Signature(text: text, emotes: emotes, maxLines: maxLines, dark: scheme == .dark)
+    let signature = Signature(
+      text: text, emotes: emotes, maxLines: maxLines, dark: scheme == .dark, liveHeader: liveHeader)
     guard coordinator.signature != signature else { return }
     coordinator.signature = signature
     coordinator.task?.cancel()
@@ -32,7 +34,8 @@ import SwiftUI
     view.textContainer?.maximumNumberOfLines = maxLines ?? 0
     view.textContainer?.lineBreakMode = maxLines == nil ? .byWordWrapping : .byTruncatingTail
     let segments = RPCEmoteTextSegment.parse(text, emotes: emotes)
-    view.textStorage?.setAttributedString(Self.attributed(segments, images: [:], dark: signature.dark))
+    view.textStorage?.setAttributedString(
+      Self.attributed(segments, images: [:], dark: signature.dark, header: signature.liveHeader))
     view.invalidateIntrinsicContentSize()
     coordinator.task = Task { @MainActor [weak view, weak coordinator] in
       var images: [URL: NSImage] = [:]
@@ -43,7 +46,9 @@ import SwiftUI
           try Task.checkCancellation()
           guard coordinator?.revision == revision, let view else { return }
           images[url] = NSImage(cgImage: decoded, size: NSSize(width: 20, height: 20))
-          view.textStorage?.setAttributedString(Self.attributed(segments, images: images, dark: signature.dark))
+          view.textStorage?.setAttributedString(
+            Self.attributed(
+              segments, images: images, dark: signature.dark, header: signature.liveHeader))
           view.invalidateIntrinsicContentSize()
         } catch is CancellationError { return } catch { /* Keep the exact token when an image fails. */ }
       }
@@ -57,15 +62,20 @@ import SwiftUI
     coordinator.revision = UUID(); coordinator.task?.cancel(); coordinator.task = nil
     nsView.textStorage?.setAttributedString(NSAttributedString(string: ""))
   }
-  private static func attributed(_ segments: [RPCEmoteTextSegment], images: [URL: NSImage], dark: Bool) -> NSAttributedString {
+  private static func attributed(
+    _ segments: [RPCEmoteTextSegment], images: [URL: NSImage], dark: Bool, header: LiveInlineHeader?
+  ) -> NSAttributedString {
     let paragraph = NSMutableParagraphStyle()
     paragraph.minimumLineHeight = 24; paragraph.maximumLineHeight = 24
     paragraph.lineBreakMode = .byWordWrapping
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: NSFont.systemFont(ofSize: 14), .foregroundColor: dark ? NSColor(white: 0.95, alpha: 1) : NSColor(white: 0.10, alpha: 1),
+    var attributes: [NSAttributedString.Key: Any] = [
+      .font: NSFont.systemFont(ofSize: header == nil ? 14 : 13),
+      .foregroundColor: dark ? NSColor(white: 0.95, alpha: 1) : NSColor(white: 0.10, alpha: 1),
       .paragraphStyle: paragraph,
     ]
+    if header != nil { attributes[.foregroundColor] = NSColor(Theme.text(dark ? .dark : .light)) }
     let result = NSMutableAttributedString(string: "")
+    if let header { result.append(header.attributed(dark: dark, attributes: attributes)) }
     for segment in segments {
       switch segment {
       case .text(let text): result.append(NSAttributedString(string: text, attributes: attributes))
@@ -92,6 +102,7 @@ import SwiftUI
     let emotes: [RPCEmote]
     let maxLines: Int?
     let dark: Bool
+    let liveHeader: LiveInlineHeader?
   }
   @MainActor final class Coordinator {
     var signature: Signature?

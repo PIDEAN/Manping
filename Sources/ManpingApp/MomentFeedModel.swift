@@ -33,11 +33,11 @@ enum MomentFeedSection: String, CaseIterable { case video = "视频", comprehens
 
   init(model: AppModel) {
     auth = model.service; rpc = try? model.standardRPCService()
-    section = MomentFeedSection(rawValue: UserDefaults.standard.string(forKey: "moment.lastSection") ?? "") ?? .video
+    section = MomentFeedSection(rawValue: PerformanceEnvironment.defaults.string(forKey: "moment.lastSection") ?? "") ?? .video
     if let transport = model.libraryRPCTransport {
       operations = MomentOperationsService(auth: model.service, transport: transport, installationID: "ui-fixture")
     } else {
-      let installationID = UserDefaults.standard.string(forKey: "Manping.RPCInstallationID") ?? "Manping.Moment"
+      let installationID = InstallationIdentity.rpc
       operations = try? MomentOperationsService(auth: model.service, installationID: installationID)
     }
     let auth = self.auth
@@ -82,7 +82,7 @@ enum MomentFeedSection: String, CaseIterable { case video = "视频", comprehens
   func select(section: MomentFeedSection) async {
     guard self.section != section else { return }
     reset(clearUsers: true); self.section = section; selectedUserID = nil; active = true
-    UserDefaults.standard.set(section.rawValue, forKey: "moment.lastSection")
+    PerformanceEnvironment.defaults.set(section.rawValue, forKey: "moment.lastSection")
     await loadNext()
   }
   func selectUser(_ mid: Int64?) async {

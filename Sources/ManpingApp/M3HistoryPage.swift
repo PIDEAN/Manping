@@ -14,11 +14,7 @@ struct M3HistoryPage: View {
     _history = StateObject(wrappedValue: HistoryPageModel(service: model.service, rpc: Self.makeRPC(model)))
   }
   private static func makeRPC(_ model: AppModel) -> LibraryRPCService? {
-    // Write only the first time: a defaults write on every init re-renders views that observe
-    // defaults (the shell's sidebar preference), which re-creates this view, in a loop.
-    let installation: String
-    if let saved = UserDefaults.standard.string(forKey: "libraryInstallationID") { installation = saved }
-    else { installation = UUID().uuidString; UserDefaults.standard.set(installation, forKey: "libraryInstallationID") }
+    let installation = InstallationIdentity.library
     if let transport = model.libraryRPCTransport {
       return LibraryRPCService(auth: model.service, transport: transport, installationID: installation)
     } else {

@@ -35,7 +35,7 @@ import AppKit
       window.delegate = self
       window.center()
       // Reopens where the user last left it (center() is only the first-run default).
-      window.setFrameAutosaveName("PlaybackWindow")
+      if !DebugUIFixtures.usesLiveSceneMemory { window.setFrameAutosaveName("PlaybackWindow") }
       self.window = window
     }
     guard let window else { return }

@@ -58,7 +58,7 @@ struct AITimelineMarks: Equatable {
     #else
     scene = nil
     #endif
-    introShown = fixtures ? scene != "intro" && scene != nil : UserDefaults.standard.bool(forKey: Self.introKey)
+    introShown = fixtures ? scene != "intro" && scene != nil : PerformanceEnvironment.defaults.bool(forKey: Self.introKey)
     if fixtures {
       conversations = try? AIConversationService.fixture(); coordinator = nil; storeError = nil
     } else {
@@ -149,7 +149,7 @@ struct AITimelineMarks: Equatable {
   func markIntroShown() {
     guard !introShown else { return }
     introShown = true
-    if !fixtures { UserDefaults.standard.set(true, forKey: Self.introKey) }
+    if !fixtures { PerformanceEnvironment.defaults.set(true, forKey: Self.introKey) }
   }
   /// 清除全部: stops running answers, deletes every thread and cache, empties open panels.
   func clearAll() async throws {

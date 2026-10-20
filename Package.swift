@@ -54,7 +54,9 @@ let package = Package(
         .product(name: "NIOHTTP2", package: "swift-nio-http2"),
         .product(name: "NIOHPACK", package: "swift-nio-http2"),
         .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
-      ], resources: [.copy("Fixtures/RPC")]),
+      ], resources: [.copy("Fixtures/RPC"), .copy("Fixtures/Live")]),
+    // App-level logic (navigation, placement, coordinators) tested in process, without windows.
+    .testTarget(name: "ManpingAppTests", dependencies: ["ManpingApp", "ManpingCore"]),
   ],
   swiftLanguageModes: [.v6]
 )

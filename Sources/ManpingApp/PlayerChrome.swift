@@ -143,6 +143,8 @@ struct PlayerPanelLayout: Equatable {
   init(stageWidth: CGFloat) { width = stageWidth - Self.inset * 2 - Self.padding * 2 }
   /// The time readout goes last, only when even the folded row would not fit.
   var showsTime: Bool { width >= 400 }
+  /// 「章节 · 标题」 joins the left group only when the row has room to spare for it.
+  var showsChapter: Bool { width >= 620 }
 }
 
 extension View {
@@ -351,9 +353,9 @@ private struct PlayerVolumePanel: View {
 @MainActor final class PlayerBarStore: ObservableObject {
   static let shared = PlayerBarStore()
   @Published private(set) var items: [PlayerBarItem]
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
 
-  init(defaults: UserDefaults? = nil) {
+  init(defaults: (any PreferencesStore)? = nil) {
     let defaults = defaults ?? PerformanceEnvironment.defaults
     self.defaults = defaults
     items = Self.launchItems ?? PlayerBarLayout.decode(defaults.object(forKey: PlayerBarLayout.storageKey))
@@ -496,15 +498,21 @@ struct PlayerBarRow<Leading: View>: View {
   @Binding var networkShown: Bool
   @Binding var volumeShown: Bool
   @Binding var composeShown: Bool
-  /// The comment field; nil where there is none (live rooms).
+  /// The page-specific comment field; omitted when interaction is unavailable.
   var input: (() -> AnyView)? = nil
+  var externalComposePopover = false
+  var inputWidth: Double = 180
   /// The page's own 「更多」 entries, after the items that are not on the bar.
   var extraMenu: () -> AnyView = { AnyView(EmptyView()) }
   @ViewBuilder var leading: () -> Leading
   @ObservedObject private var store = PlayerBarStore.shared
   @State private var leadingWidth: CGFloat = 220
   @State private var fullScreen = false
-  private let metrics = PlayerBarLayout.Metrics()
+  private var metrics: PlayerBarLayout.Metrics {
+    var value = PlayerBarLayout.Metrics()
+    value.inputWidth = inputWidth
+    return value
+  }
 
   var body: some View {
     let items = store.items.filter { page.supported.contains($0) }
@@ -591,7 +599,9 @@ struct PlayerBarRow<Leading: View>: View {
   private func composeButton(_ input: @escaping () -> AnyView) -> some View {
     Button { composeShown.toggle() } label: { Image(systemName: "pencil.line") }
       .buttonStyle(PlayerControlButtonStyle(size: 32, prominent: true)).help("发弹幕").accessibilityLabel("发弹幕")
-      .popover(isPresented: $composeShown, arrowEdge: .top) {
+    .popover(
+      isPresented: externalComposePopover ? .constant(false) : $composeShown, arrowEdge: .top
+    ) {
         input().frame(width: 300).padding(12).preferredColorScheme(.dark)
       }
   }

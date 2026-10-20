@@ -22,9 +22,24 @@ public actor BiliService {
   private var jar = BiliCookieJar()
   private var appToken: AppToken?
   private var keys: (String, String)?
+  /// When `keys` were fetched; Bilibili rotates the WBI keys daily, so they expire after
+  /// `wbiKeyLifetime` and are fetched again before the next signed request.
+  private var keysFetchedAt: Date?
+  static let wbiKeyLifetime: TimeInterval = 6 * 3600
+  private var wbiKeysStale: Bool {
+    guard keys != nil, let fetched = keysFetchedAt else { return true }
+    let age = now().timeIntervalSince(fetched)
+    return age < 0 || age > Self.wbiKeyLifetime
+  }
   private var authEpoch: UInt64 = 0
   private var identityRevision: UInt64 = 0
   private var requests: [UUID: Task<AuthHTTPResponse, Error>] = [:]
+  #if DEBUG
+  private var transportDispatchBarrierForTesting: (@Sendable (URLRequest) async -> Void)?
+  func setTransportDispatchBarrierForTesting(_ barrier: (@Sendable (URLRequest) async -> Void)?) {
+    transportDispatchBarrierForTesting = barrier
+  }
+  #endif
   private var rpcRequests: [UUID: @Sendable () -> Void] = [:]
   private var identityObservers: [UUID: AsyncStream<AuthIdentityEvent>.Continuation] = [:]
   private var refreshTask: AuthRefreshFlight?
@@ -277,7 +292,8 @@ public actor BiliService {
     jar.merge(cookies, now: now())
   }
   private func send(
-    _ base: URLRequest, epoch: UInt64, useCookies: Bool = true, receiveCookies: Bool = true
+    _ base: URLRequest, epoch: UInt64, useCookies: Bool = true, receiveCookies: Bool = true,
+    beforeSend: @escaping @Sendable () throws -> Void = {}
   ) async throws
     -> AuthHTTPResponse
   {
@@ -289,7 +305,20 @@ public actor BiliService {
     }
     let id = UUID()
     let transport = routedTransport()
-    let task = Task { try await transport.send(request) }
+    #if DEBUG
+    let dispatchBarrier = transportDispatchBarrierForTesting
+    #endif
+    let task = Task {
+      #if DEBUG
+      if let dispatchBarrier { await dispatchBarrier(request) }
+      #endif
+      // This task may start after its caller's checks. Revalidate at the actual transport
+      // handoff, after every dispatch suspension, while still isolated to this service.
+      try Task.checkCancellation()
+      try self.checkIdentity(revision, epoch: epoch)
+      try beforeSend()
+      return try await transport.send(request)
+    }
     requests[id] = task
     defer { requests[id] = nil }
     let result: AuthHTTPResponse
@@ -349,12 +378,21 @@ public actor BiliService {
   public func json(_ path: String, params: [String: String] = [:], signed: Bool = false)
     async throws -> [String: Any]
   {
+    do {
+      return try await envelope(path, params: params, signed: signed)
+    } catch BiliError.api(let code, _) where signed && (code == -403 || code == -352) {
+      // A signature made with keys rotated since they were fetched: fetch them again and retry once.
+      keys = nil
+      return try await envelope(path, params: params, signed: signed)
+    }
+  }
+  private func envelope(_ path: String, params: [String: String], signed: Bool) async throws -> [String: Any] {
     let epoch = authEpoch
     let revision = identityRevision
     var parts = URLComponents(
       string: path.hasPrefix("https:") ? path : "https://api.bilibili.com" + path)!
     if signed {
-      if keys == nil { try await refreshKeys() }
+      if wbiKeysStale { try await refreshKeys() }
       try checkIdentity(revision, epoch: epoch)
       guard let keys else { throw BiliError.invalidResponse("Missing WBI keys") }
       parts.percentEncodedQuery = try WBI.sign(params, imageKey: keys.0, subKey: keys.1)
@@ -384,8 +422,16 @@ public actor BiliService {
   }
   /// WBI-signed GET returning the raw body, so callers can interpret non-zero envelope codes.
   func wbiSignedBody(_ path: String, params: [String: String], expectedIdentity: AuthSnapshot) async throws -> Data {
+    let body = try await signedBody(path, params: params, expectedIdentity: expectedIdentity)
+    // A signature made with rotated keys: fetch them again and retry once, as `json` does.
+    guard let root = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+      let code = root["code"] as? Int, code == -403 || code == -352 else { return body }
+    keys = nil
+    return try await signedBody(path, params: params, expectedIdentity: expectedIdentity)
+  }
+  private func signedBody(_ path: String, params: [String: String], expectedIdentity: AuthSnapshot) async throws -> Data {
     try checkRESTIdentity(expectedIdentity)
-    if keys == nil { try await refreshKeys() }
+    if wbiKeysStale { try await refreshKeys() }
     try checkRESTIdentity(expectedIdentity)
     guard let keys else { throw BiliError.invalidResponse("Missing WBI keys") }
     var parts = URLComponents(string: "https://api.bilibili.com" + path)!
@@ -406,6 +452,7 @@ public actor BiliService {
     let second = subURL.deletingPathExtension().lastPathComponent
     _ = try WBI.mixinKey(imageKey: first, subKey: second)
     keys = (first, second)
+    keysFetchedAt = now()
   }
   public func popular(page: Int = 1) async throws -> [Video] {
     let payload = try await json(
@@ -476,6 +523,67 @@ public actor BiliService {
     try checkIdentity(snapshot.identityRevision, epoch: snapshot.epoch)
   }
 
+  func liveBuvid(expectedIdentity: AuthSnapshot) throws -> String {
+    try checkRESTIdentity(expectedIdentity)
+    return jar.matching(LiveRoute.danmuInfo.url, now: now()).first { $0.name == "buvid3" && !$0.value.isEmpty }?.value ?? ""
+  }
+
+  /// Caller-owned identity boundary for live requests, including preparation awaits.
+  public func liveRequest(_ route: LiveRoute, fields: [String: String] = [:],
+    expectedIdentity: AuthSnapshot, gate: LiveMutationGate = LiveMutationGate()) async throws -> LiveEnvelope {
+    let prepared = try await prepareLiveRequest(route, fields: fields, expectedIdentity: expectedIdentity, gate: gate)
+    return try await executeLiveRequest(prepared)
+  }
+
+  func prepareLiveRequest(_ route: LiveRoute, fields: [String: String] = [:],
+    expectedIdentity: AuthSnapshot, gate: LiveMutationGate = LiveMutationGate()) async throws -> LivePreparedRequest {
+    try checkRESTIdentity(expectedIdentity)
+    guard gate.allows(route) else { throw LiveRouteError.mutationClosed(route) }
+    var (query, body) = try route.fields(fields, timestamp: Int64(now().timeIntervalSince1970))
+    // Fail missing login/CSRF before device or WBI preparation can send anything.
+    let cookies = jar.matching(route.url, now: now())
+    if route.isMutation {
+      guard cookies.contains(where: { $0.name == "SESSDATA" && !$0.value.isEmpty }) else { throw LiveRouteError.missingWebIdentity }
+      guard let csrf = cookies.first(where: { $0.name == "bili_jct" && !$0.value.isEmpty })?.value else { throw AuthFailure.missingCSRF }
+      switch route.csrf {
+      case .none: break
+      case .query: query["csrf"] = csrf
+      case .form: body["csrf"] = csrf
+      case .formBoth: body["csrf"] = csrf; body["csrf_token"] = csrf
+      }
+      for key in ["uid"] where fields[key] != nil {
+        guard fields[key] == accountMid().map(String.init) else { throw CancellationError() }
+      }
+    }
+    await ensureDeviceCookies()
+    try checkRESTIdentity(expectedIdentity)
+    var target = URLComponents(url: route.url, resolvingAgainstBaseURL: false)!
+    if route.signedQuery {
+      if wbiKeysStale { try await refreshKeys() }
+      try checkRESTIdentity(expectedIdentity)
+      guard let keys else { throw BiliError.invalidResponse("Missing WBI keys") }
+      target.percentEncodedQuery = try WBI.sign(query, imageKey: keys.0, subKey: keys.1, timestamp: Int(now().timeIntervalSince1970))
+    } else { target.queryItems = query.keys.sorted().map { URLQueryItem(name: $0, value: query[$0]) } }
+    var outgoing = request(target.url!)
+    outgoing.httpMethod = route.method
+    outgoing.setValue("https://live.bilibili.com", forHTTPHeaderField: "Origin")
+    outgoing.setValue("https://live.bilibili.com/", forHTTPHeaderField: "Referer")
+    if route.isMutation, !body.isEmpty {
+      outgoing.httpBody = AppForm.encoded(body)
+      outgoing.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    }
+    try checkRESTIdentity(expectedIdentity)
+    return LivePreparedRequest(request: outgoing, identity: expectedIdentity)
+  }
+
+  func executeLiveRequest(_ prepared: LivePreparedRequest, beforeSend: @escaping @Sendable () throws -> Void = {}) async throws -> LiveEnvelope {
+    try checkRESTIdentity(prepared.identity)
+    try beforeSend()
+    let response = try await send(prepared.request, epoch: prepared.identity.epoch, receiveCookies: false, beforeSend: beforeSend)
+    try checkRESTIdentity(prepared.identity)
+    return try LiveEnvelope.parse(response.body)
+  }
+
   /// Refreshes expired App authorization while preserving the caller's account boundary.
   public func authorizeAppInteraction(expectedIdentity: AuthSnapshot? = nil) async throws -> AuthSnapshot {
     if let expectedIdentity { try checkRESTIdentity(expectedIdentity) }
@@ -500,7 +608,8 @@ public actor BiliService {
 
   // Closed routes prevent a signed access_key from being attached to a caller-supplied URL.
   func appREST(
-    _ route: BiliAppRoute, fields: [String: String] = [:], expectedIdentity: AuthSnapshot? = nil
+    _ route: BiliAppRoute, fields: [String: String] = [:], expectedIdentity: AuthSnapshot? = nil,
+    beforeSend: @escaping @Sendable () throws -> Void = {}
   ) async throws -> Any? {
     if let expectedIdentity { try checkRESTIdentity(expectedIdentity) }
     let epoch = authEpoch
@@ -566,8 +675,10 @@ public actor BiliService {
       }
       try checkIdentity(revision, epoch: epoch)
       if let expectedIdentity { try checkRESTIdentity(expectedIdentity) }
+      try beforeSend()
       let response = try await send(request, epoch: epoch,
-        useCookies: cookieMutation || route == .librarySeasonContents || route == .curated, receiveCookies: false)
+        useCookies: cookieMutation || route == .librarySeasonContents || route == .curated, receiveCookies: false,
+        beforeSend: beforeSend)
       try checkIdentity(revision, epoch: epoch)
       guard let root = try JSONSerialization.jsonObject(with: response.body) as? [String: Any],
         let code = root["code"] as? Int
@@ -632,7 +743,7 @@ public actor BiliService {
         expectedIdentity.token?.mid == token.mid else { throw CancellationError() }
 
     }
-    if keys == nil { try await refreshKeys() }
+    if wbiKeysStale { try await refreshKeys() }
     try checkRESTIdentity(expectedIdentity)
     guard let keys else { throw BiliError.invalidResponse("Missing WBI keys") }
     let cookies = jar.matching(target, now: now())

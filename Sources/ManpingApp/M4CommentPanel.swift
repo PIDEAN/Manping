@@ -88,7 +88,7 @@ struct M4CommentList: View {
     CommentCell(comment: comment, pinned: comments.pinned?.id == comment.id, ownerMid: ownerMid,
       likes: comments.likeCount(comment), liked: comments.isLiked(comment), showsReplies: comments.thread == nil,
       canReply: comments.canInteract && !comments.busy,
-      onAuthor: { model.openOverlay(.userSpace(comment.author.mid)) },
+      onAuthor: { model.openSpaceKeepingPlayback(comment.author.mid) },
       onLike: { Task { await comments.toggleLike(comment) { model.showingLogin = true } } },
       canLike: comments.canLike(comment),
       onReply: { comments.reply(to: comment) },

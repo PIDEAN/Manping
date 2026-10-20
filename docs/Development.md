@@ -1,6 +1,6 @@
 # 开发者文档
 
-原生 Apple Silicon 应用，目标 macOS 27。界面和业务以 BiliCopilot `896a06290ba440cb17776d292dff119bbd3383d6` 为基准，BiliKernel 协议基准为 `22fdf8ca04bab384b46536b05f6524a41f83a2d4`。页面验收见 [docs/Parity.md](docs/Parity.md)，性能结果见 [docs/Performance.md](docs/Performance.md)，未达项和使用者复验清单见 [docs/KnownIssues.md](docs/KnownIssues.md)，交接记录见 [Ledger.md](Ledger.md)。
+原生 Apple Silicon 应用，目标 macOS 27。界面和业务以 BiliCopilot `896a06290ba440cb17776d292dff119bbd3383d6` 为基准，BiliKernel 协议基准为 `22fdf8ca04bab384b46536b05f6524a41f83a2d4`。页面验收见 [docs/Parity.md](docs/Parity.md)，性能结果见 [docs/Performance.md](docs/Performance.md)，未达项和使用者复验清单见 [docs/KnownIssues.md](docs/KnownIssues.md)。
 
 ## 环境与源码构建
 
@@ -64,7 +64,7 @@ python3 scripts/bundle.py --replace-release
 python3 scripts/verify_bundle.py --static-only
 ```
 
-`build_mpv.py` 只在项目 `.build/` 内建立 Meson 环境、下载校验固定 mpv 0.41.0 源码、应用锁定补丁并构建 arm64 libmpv，不安装或覆盖 Homebrew。现有 shader 资源已经入库，常规产品构建无需重新生成。构建输入和许可证由 `Dependencies.lock.json`、`MpvBuild.json` 与 `ThirdPartyNotices/` 记录。
+`build_mpv.py` 只在项目 `.build/` 内建立 Meson 环境、下载校验固定 mpv 0.41.0 源码、应用锁定补丁并构建 arm64 libmpv，不安装或覆盖 Homebrew。现有 shader 资源已经入库，常规产品构建无需重新生成。构建输入和许可证由 `Dependencies.lock.json`、打包时写入 App 的 `Contents/Resources/MpvBuild.json` 与 `ThirdPartyNotices/` 记录。
 
 若在另一台机器上 Homebrew 依赖的实际 SHA 或绝对源路径与锁文件不同，`--verify-inputs` 会明确失败。核对依赖版本和来源后，可显式运行 `python3 scripts/bundle.py --update-lock --verify-inputs` 记录该机器的输入；不要把校验失败当作成功。
 
@@ -85,11 +85,11 @@ scripts/live_check.sh --wait 60 --video BV1xx411c7mD --pgc ep837204
 
 ## AI 与最终验收边界
 
-AI 配置按原版注册的 22 个 provider 和各协议族实现，API key、附加 secret 只加密保存在本地凭据目录，非秘密配置保存为 `ChatClientConfiguration.json`。设置页和播放/阅读页入口以 Parity 实际状态为准。协议验证只允许 fixture 或本地 mock server，不在开发过程中发起付费调用。
+AI 配置保留原版 22 个 provider 并新增 MiniMax、MiMo、OpenCode Zen、LM Studio 及三个可选套餐。远程模型发现只发 GET，按协议分页，限制 16 MB／1000 模型，容量按自定义／服务器／预置合并；地区与自定义地址变更会清除旧目录。套餐条款、协议路由和核实出处见 [AIProviders.md](AIProviders.md)。API key、附加 secret 只加密保存在本地凭据目录，非秘密配置保存为 `ChatClientConfiguration.json`。设置页和播放/阅读页入口以 Parity 实际状态为准。协议验证只允许 fixture 或本地 mock server，不在开发过程中发起付费调用。
 
 ### 用 ChatGPT 套餐（Sign in with ChatGPT）
 
-设置 → AI 服务 → 「ChatGPT 套餐」卡片 → **Continue with ChatGPT**。按 OpenAI 面向开源／本地应用的官方流程（[文档](https://developers.openai.com/siwc/token-sharing-open-source)）：首次登录动态注册本应用（`dynamic_agent_client` → 签发的 `oaiapp_…`），浏览器授权后回到 `http://127.0.0.1:<端口>/auth/callback`，PKCE + RS256 ID token 校验，必须授予 `chatgpt.tokens.use.direct`。令牌只存 Keychain（`io.github.pidean.manping.ai.chatgpt.v1`），刷新令牌轮换且单飞刷新；推理走公开 Responses API（`store:false`、`stream:true`），用量计入 ChatGPT Plus／Pro 套餐，额度用尽时提示「Manage usage」而不会改走其它计费渠道。退出登录会撤销刷新令牌。
+设置 → AI 服务 → 「ChatGPT 套餐」卡片 → **Continue with ChatGPT**。按 OpenAI 面向开源／本地应用的官方流程（[文档](https://developers.openai.com/siwc/token-sharing-open-source)）：首次登录动态注册本应用（`dynamic_agent_client` → 签发的 `oaiapp_…`），浏览器授权后回到 `http://127.0.0.1:<端口>/auth/callback`，PKCE + RS256 ID token 校验，必须授予 `chatgpt.tokens.use.direct`。令牌只存本地加密凭据库（`Secrets/`，旧 Keychain 条目在首次读取时迁移），刷新令牌轮换且单飞刷新；推理走公开 Responses API（`store:false`、`stream:true`），用量计入 ChatGPT Plus／Pro 套餐，额度用尽时提示「Manage usage」而不会改走其它计费渠道。退出登录会撤销刷新令牌。
 
 ### Claude
 

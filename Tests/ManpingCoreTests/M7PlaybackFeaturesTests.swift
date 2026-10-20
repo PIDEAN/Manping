@@ -92,5 +92,14 @@ final class M7PlaybackFeaturesTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(chapters.map(\.title), ["章节 2", "Finale"])
     XCTAssertEqual(chapters.map(\.time), [0, 100])
     XCTAssertThrowsError(try PlaybackChapter.parse(Data("{}".utf8)))
+    let engine = [PlaybackChapter(index: 0, title: "Embedded", time: 0)]
+    XCTAssertEqual(PlaybackChapter.preferred(viewPoints: [], engine: engine), engine)
+    let official = PlaybackChapter.preferred(viewPoints: [
+      AIViewPoint(id: "ch1", start: 0, end: 85, title: "平台选型与定位"), AIViewPoint(id: "ch2", start: 85, end: 300, title: "模型与优化方案"),
+    ], engine: engine)
+    XCTAssertEqual(official.map(\.title), ["平台选型与定位", "模型与优化方案"])
+    XCTAssertEqual(PlaybackChapter.current(official, at: 254)?.title, "模型与优化方案")
+    XCTAssertEqual(PlaybackChapter.current(official, at: 10)?.title, "平台选型与定位")
+    XCTAssertNil(PlaybackChapter.current([PlaybackChapter(index: 0, title: "Late", time: 30)], at: 10))
   }
 }

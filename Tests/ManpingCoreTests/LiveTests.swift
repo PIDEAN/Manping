@@ -119,7 +119,7 @@ final class LiveTests: XCTestCase {
     let events = LiveChatPacket.decode(auth + compressed + reply).events
     XCTAssertEqual(events, [
       .connected,
-      .danmaku(user: "观众甲", text: "好耶", color: 16_772_431),
+      .danmaku(LiveDanmaku(uid: 42, user: "观众甲", text: "好耶", color: 16_772_431)),
       .liveEnded,
       .watched(12345),
       .popularity(888),
@@ -135,11 +135,11 @@ final class LiveTests: XCTestCase {
 
   func testCommandSuffixesAndGiftsParse() {
     XCTAssertEqual(LiveChatPacket.event(["cmd": "DANMU_MSG:4:0:2:2:2:0", "info": [[0, 1, 25, 0], "hi", [1, "u"]]]),
-      .danmaku(user: "u", text: "hi", color: 0xffffff))
+      [.danmaku(LiveDanmaku(uid: 1, user: "u", text: "hi", color: 0xffffff))])
     XCTAssertEqual(LiveChatPacket.event(["cmd": "SEND_GIFT", "data": ["uname": "u", "giftName": "小心心", "num": 3]]),
-      .gift(user: "u", name: "小心心", count: 3))
-    XCTAssertEqual(LiveChatPacket.event(["cmd": "ONLINE_RANK_COUNT", "data": ["count": 6281, "online_count": 6290]]), .online(6290))
-    XCTAssertNil(LiveChatPacket.event(["cmd": "UNKNOWN"]))
+      [.gift(LiveGiftMessage(user: "u", name: "小心心", count: 3, raw: LiveChatPacket.value(["uname": "u", "giftName": "小心心", "num": 3])))])
+    XCTAssertEqual(LiveChatPacket.event(["cmd": "ONLINE_RANK_COUNT", "data": ["count": 6281, "online_count": 6290]]), [.online(6290)])
+    XCTAssertTrue(LiveChatPacket.event(["cmd": "UNKNOWN"]).isEmpty)
   }
 
   // MARK: Live danmaku timeline

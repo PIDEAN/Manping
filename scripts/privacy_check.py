@@ -53,13 +53,22 @@ COOKIE_NAME = re.compile(r'"name"\s*:\s*"(SESSDATA|bili_jct|DedeUserID|DedeUserI
 COOKIE_VALUE = re.compile(r'"value"\s*:\s*"([^"]*)"')
 
 
+# Findings name the file, line and kind only: the matched text could be the very secret, and CI
+# logs are public. `--reveal` prints it for a local run.
+REVEAL = False
+
+
+def shown(value):
+    return value if REVEAL else f'<hidden, {len(value)} chars>'
+
+
 def scan_text(name, text, deny):
     problems = []
     for record in COOKIE_RECORD.finditer(text):
         cookie, value = COOKIE_NAME.search(record.group(0)), COOKIE_VALUE.search(record.group(0))
         if cookie and value and looks_secret(cookie.group(1), value.group(1)):
             line_number = text.count('\n', 0, record.start()) + 1
-            problems.append(f'{name}:{line_number}: cookie record: {cookie.group(1)}={value.group(1)[:40]}')
+            problems.append(f'{name}:{line_number}: cookie record: {cookie.group(1)}={shown(value.group(1)[:40])}')
     for line_number, line in enumerate(text.splitlines(), 1):
         for label, pattern in PATTERNS.items():
             for match in pattern.finditer(line):
@@ -80,10 +89,10 @@ def scan_text(name, text, deny):
                     before = line[max(0, match.start() - 12):match.start()]
                     if re.search(r'(version|[A-Za-z]-|\d\.|[A-Za-z]\.)$', before, re.I) or 'luajit' in line.lower():
                         continue
-                problems.append(f'{name}:{line_number}: {label}: {value[:80]}')
+                problems.append(f'{name}:{line_number}: {label}: {shown(value[:80])}')
         for word in deny:
             if word and word.lower() in line.lower():
-                problems.append(f'{name}:{line_number}: denied word: {word}')
+                problems.append(f'{name}:{line_number}: denied word: {shown(word)}')
     return problems
 
 
@@ -92,7 +101,10 @@ def main():
     parser.add_argument('--deny', action='append', default=[], help='private word that must not appear (repeatable)')
     parser.add_argument('--authors', action='store_true', help='also require noreply commit authors')
     parser.add_argument('--app', type=pathlib.Path, help='also scan text resources and binaries of a built app')
+    parser.add_argument('--reveal', action='store_true', help='print matched values (local use only; never in CI)')
     args = parser.parse_args()
+    global REVEAL
+    REVEAL = args.reveal
     files = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split('\n')
     problems = []
     for name in files:
@@ -127,7 +139,7 @@ def main():
         for author in subprocess.run(['git', 'log', '--format=%ae%n%ce'], cwd=ROOT, capture_output=True, text=True,
                                      check=True).stdout.split():
             if 'users.noreply.github.com' not in author:
-                problems.append(f'git author/committer is not a noreply address: {author}')
+                problems.append(f'git author/committer is not a noreply address: {shown(author)}')
                 break
     for problem in problems:
         print(problem)

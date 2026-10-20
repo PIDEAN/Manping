@@ -242,11 +242,9 @@ import WebKit
   @Published var searchFocusRequest = 0
   /// 热搜 (⌘K): bumped to open the trending list under the toolbar search box.
   @Published var hotSearchRequest = 0
+  /// Mirrors 设置 › 外观; `M7SettingsModel` owns the stored value (`applySettings` sets this).
   @Published var theme: AppTheme =
-    AppTheme(rawValue: PerformanceEnvironment.defaults.string(forKey: "appTheme") ?? "") ?? .system
-  {
-    didSet { PerformanceEnvironment.defaults.set(theme.rawValue, forKey: "appTheme") }
-  }
+    AppTheme(rawValue: PerformanceEnvironment.defaults.string(forKey: MacSettingKey.theme.rawValue) ?? "") ?? .system
   var canGoBack: Bool { !overlays.isEmpty }
   var canGoForward: Bool { !forwardRoutes.isEmpty }
   var currentOverlay: OverlayRoute? { overlays.last }
@@ -291,11 +289,12 @@ import WebKit
     quality: PerformanceEnvironment.defaults.object(forKey: "preferredVideoQuality") as? Int,
     lastQuality: PerformanceEnvironment.defaults.object(forKey: "lastVideoQuality") as? Int,
     avoidP2P: PerformanceEnvironment.defaults.bool(forKey: "playWithoutP2P")) {
+    // Codec, quality and P2P mirror settings that `M7SettingsModel` stores; only the last
+    // chosen quality is this model's own preference.
     didSet {
-      PerformanceEnvironment.defaults.set(playbackPreferences.codec.rawValue, forKey: "preferredCodec")
-      PerformanceEnvironment.defaults.set(playbackPreferences.quality, forKey: "preferredVideoQuality")
-      PerformanceEnvironment.defaults.set(playbackPreferences.lastQuality, forKey: "lastVideoQuality")
-      PerformanceEnvironment.defaults.set(playbackPreferences.avoidP2P, forKey: "playWithoutP2P")
+      if playbackPreferences.lastQuality != oldValue.lastQuality {
+        PerformanceEnvironment.defaults.set(playbackPreferences.lastQuality, forKey: "lastVideoQuality")
+      }
     }
   }
   @Published private(set) var selectedStream: MediaStream? {
@@ -437,7 +436,10 @@ import WebKit
     try? (showingLogin ? "blocked" : "ready").write(to: file, atomically: true, encoding: .utf8)
     #endif
   }
-  @Published var downloads: [DownloadRecord] = []
+  /// The download queue (DownloadCoordinator); the downloads page observes it directly.
+  private(set) lazy var downloadQueue = DownloadCoordinator(service: service, store: downloadStore,
+    records: DebugUIFixtures.enabled ? Self.fixtureDownloads : [], fixtures: usesUIFixtures) { [weak self] in self?.error = $0 }
+  var downloads: [DownloadRecord] { downloadQueue.records }
   @Published var showingDownloadOptions = false
   @Published private(set) var appSettings = MacSettings.load(from: PerformanceEnvironment.defaults)
   private let scrollAcceleration = M7ScrollAcceleration()
@@ -587,6 +589,7 @@ import WebKit
   }
   private func applySettings(_ settings: MacSettings) {
     let previous = appSettings; appSettings = settings
+    LiveInteractionPreferences.shared.update(settings)
     if previous.bool(.dockBadge) != settings.bool(.dockBadge) { updateDockBadge() }
     watchActivity.indexesSpotlight = settings.bool(.spotlightIndex)
     if previous.bool(.spotlightIndex), !settings.bool(.spotlightIndex) { watchActivity.end(); watchActivity.clearSpotlight() }
@@ -698,9 +701,7 @@ import WebKit
   private let authCallbacks = AuthCallbackGate()
   private var accountTask: Task<Void, Never>?
   private var loadTask: Task<Void, Never>?
-  private var downloadTasks: [String: Task<Void, Never>] = [:]
-  private var downloadIdentities: [String: AuthSnapshot] = [:]
-  private var store: DownloadStore?
+  private var downloadStore: DownloadStore?
   static var support: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("Manping")
@@ -710,27 +711,29 @@ import WebKit
     return FileManager.default.fileExists(atPath: bundled.path)
       ? bundled : URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
   }
+  private static let fixtureDownloads = [
+    DownloadRecord(id: "fixture-complete", bvid: "BV1fixture01", title: "山野记录 · 已完成的样本", state: "complete", progress: 1, output: "/tmp/Bili Downloads/sample.mp4", options: DownloadOptions(cid: 1000, directory: "/tmp/Bili Downloads")),
+    DownloadRecord(id: "fixture-interrupted", bvid: "BV1fixture02", title: "城市的声音 · 中断后可恢复", state: "interrupted", progress: 0.42, error: "上次运行中断，可恢复下载", options: DownloadOptions(cid: 1001, directory: "/tmp/Bili Downloads")),
+    DownloadRecord(id: "fixture-failed", bvid: "BV1fixture03", title: "桌面计划 · 磁盘错误样本", state: "failed", progress: 0.12, error: "磁盘空间不足，请释放空间后恢复", options: DownloadOptions(cid: 1002, directory: "/tmp/Bili Downloads"))
+  ]
   init() {
     if DebugUIFixtures.enabled {
       service = BiliService(transport: DebugUITransport(), credentials: DebugUICredentialStore())
       let transport = M3FixtureRPCTransport(richUI: true)
       libraryRPCTransport = transport
       libraryStandardRPC = try? NativeBiliRPCService(auth: service, transport: transport, installationID: "ui-fixture")
-      downloads = [
-        DownloadRecord(id: "fixture-complete", bvid: "BV1fixture01", title: "山野记录 · 已完成的样本", state: "complete", progress: 1, output: "/tmp/Bili Downloads/sample.mp4", options: DownloadOptions(cid: 1000, directory: "/tmp/Bili Downloads")),
-        DownloadRecord(id: "fixture-interrupted", bvid: "BV1fixture02", title: "城市的声音 · 中断后可恢复", state: "interrupted", progress: 0.42, error: "上次运行中断，可恢复下载", options: DownloadOptions(cid: 1001, directory: "/tmp/Bili Downloads")),
-        DownloadRecord(id: "fixture-failed", bvid: "BV1fixture03", title: "桌面计划 · 磁盘错误样本", state: "failed", progress: 0.12, error: "磁盘空间不足，请释放空间后恢复", options: DownloadOptions(cid: 1002, directory: "/tmp/Bili Downloads"))
-      ]
       observeQueueIdentity()
       return
     }
     service = BiliService(webDeviceCookies: true)
+    // The store exists before anything can touch the lazily created download queue.
+    do {
+      let store = try DownloadStore(url: Self.support.appendingPathComponent("downloads.sqlite"))
+      downloadStore = store
+      downloadQueue.records = try store.records()
+    } catch { self.error = error.localizedDescription }
     observeQueueIdentity()
     setUpProxy()
-    do {
-      store = try DownloadStore(url: Self.support.appendingPathComponent("downloads.sqlite"))
-      downloads = try store?.records() ?? []
-    } catch { self.error = error.localizedDescription }
   }
   #if DEBUG
   init(probeService: BiliService) {
@@ -856,6 +859,17 @@ import WebKit
     leavePlaybackPage()
     overlays.append(route)
   }
+  /// Avatars and names on the playback pages (video, 番剧, live room and their comments) open
+  /// the space while what is playing moves to the mini window and keeps playing; closing the
+  /// mini window brings it back. Without playback in the main window it is a plain open.
+  func openSpaceKeepingPlayback(_ mid: Int64) {
+    guard mid > 0 else { return }
+    if mainShowsPlayer, !playbackElsewhere {
+      userPlacedPicture()
+      presentMiniPlayer()
+    }
+    openOverlay(.userSpace(mid))
+  }
   func submitRegionalSearch(_ keyword: String) {
     guard let route = currentOverlay else { search = keyword; submitSearch(); return }
     switch route {
@@ -921,13 +935,7 @@ import WebKit
   }
   func standardRPCService() throws -> any BiliRPCService {
     if let libraryStandardRPC { return libraryStandardRPC }
-    let key = "Manping.RPCInstallationID"
-    let installationID: String
-    if let saved = PerformanceEnvironment.defaults.string(forKey: key), !saved.isEmpty { installationID = saved }
-    else {
-      installationID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-      PerformanceEnvironment.defaults.set(installationID, forKey: key)
-    }
+    let installationID = InstallationIdentity.rpc
     let rpc = try NativeBiliRPCService(auth: service, installationID: installationID)
     libraryStandardRPC = rpc
     return rpc
@@ -1662,6 +1670,8 @@ import WebKit
     queueIdentityTask = Task { [weak self, service] in
       for await event in await service.identityEvents() {
         guard let self, !Task.isCancelled else { return }
+        // Events are coalesced (newest kept), so every decision below uses this one snapshot of
+        // the current identity rather than mixing it with the event's possibly older values.
         let displaySnapshot = await service.authSnapshot()
         progressReporter.identityChanged(to: displaySnapshot)
         if let record = pausedBrowsing.suspension,
@@ -1669,9 +1679,7 @@ import WebKit
           pausedBrowsing.invalidate()
           player.suspendForBrowsing()
         }
-        for (id, binding) in downloadIdentities where binding.epoch != displaySnapshot.epoch || binding.identityRevision != displaySnapshot.identityRevision {
-          downloadTasks[id]?.cancel()
-        }
+        downloadQueue.cancel(notMatching: displaySnapshot)
         let identity = (epoch: displaySnapshot.epoch, revision: displaySnapshot.identityRevision)
         if let previous = accountDisplayIdentity,
           previous.epoch != identity.epoch || previous.revision != identity.revision {
@@ -1681,13 +1689,13 @@ import WebKit
           DanmakuShieldSync.shared.configure(service: service, mid: nil)
           // Opening the login sheet bumps the identity without changing the account; show it again.
           // Only the display refreshes here: a login sheet opened to switch accounts stays open.
-          if event.state != .needsLogin { Task { [weak self] in await self?.loginCompleted(dismissLogin: false) } }
+          if displaySnapshot.state != .needsLogin { Task { [weak self] in await self?.loginCompleted(dismissLogin: false) } }
           refreshStreamsForIdentity()
         }
         accountDisplayIdentity = identity
         reportIdentity = displaySnapshot
         configureNotifications()
-        if playbackQueue.invalidate(epoch: event.epoch, revision: event.identityRevision) {
+        if playbackQueue.invalidate(epoch: displaySnapshot.epoch, revision: displaySnapshot.identityRevision) {
           pausedBrowsing.invalidate()
           if queueLoadIdentity != nil {
             // Leave the page instead of a dead player that can no longer load anything.
@@ -1697,7 +1705,7 @@ import WebKit
           queueLoadIdentity = nil; playbackNotice = nil
           eofObservation = nil; clipGeneration = UUID()
         }
-        if let pending = curatedIdentity, pending.epoch != event.epoch || pending.revision != event.identityRevision {
+        if let pending = curatedIdentity, pending.epoch != displaySnapshot.epoch || pending.revision != displaySnapshot.identityRevision {
           cancelCuratedPlaylist()
         }
         #if DEBUG
@@ -2115,15 +2123,10 @@ import WebKit
           choices.append((source, "\(video.title) · \(part.title)", choice)) }
       }
     }
-    guard let store, !choices.isEmpty else { error = "没有可下载的分集。"; return }
+    guard downloadQueue.canSave, !choices.isEmpty else { error = "没有可下载的分集。"; return }
     let launch: (URL) -> Void = { [weak self] directory in
       guard let self else { return }
-      for (source, title, var choice) in choices {
-        choice.directory = directory.path
-        let record = DownloadRecord(bvid: source, title: title, options: choice)
-        do { try store.save(record); self.runDownload(record) } catch { self.error = error.localizedDescription }
-      }
-      self.downloads = (try? store.records()) ?? self.downloads
+      self.downloadQueue.launch(choices.map { (source: $0.0, title: $0.1, options: $0.2) }, directory: directory)
       self.showingDownloadOptions = false
     }
     if !options.directory.isEmpty { launch(URL(fileURLWithPath: options.directory)) }
@@ -2133,137 +2136,8 @@ import WebKit
       panel.begin { response in MainActor.assumeIsolated { if response == .OK, let directory = panel.url { launch(directory) } } }
     }
   }
-  func retryDownload(_ record: DownloadRecord) {
-    guard !usesUIFixtures, downloadTasks[record.id] == nil, record.state != "complete" else { return }
-    guard record.options != nil else { error = "旧任务缺少分集与画质信息，请从播放页重新建立任务。"; return }
-    runDownload(record)
-  }
-  private func checkDownloadIdentity(_ snapshot: AuthSnapshot) async throws {
-    try Task.checkCancellation()
-    let current = await service.authSnapshot()
-    try Task.checkCancellation()
-    guard current.epoch == snapshot.epoch, current.identityRevision == snapshot.identityRevision else { throw CancellationError() }
-  }
-  private func runDownload(_ record: DownloadRecord) {
-    guard let options = record.options, let store, downloadTasks[record.id] == nil else { return }
-    downloadTasks[record.id] = Task {
-      var current = record
-      let temporary = Self.support.appendingPathComponent("Transfers").appendingPathComponent(record.id)
-      let checkpoint = Self.support.appendingPathComponent("Completion").appendingPathComponent(record.id + ".json")
-      defer { downloadTasks[record.id] = nil; downloadIdentities[record.id] = nil }
-      do {
-        if let recovered = try await DownloadCompletion.recover(checkpoint: checkpoint) {
-          current.state = "complete"; current.progress = 1; current.output = recovered.path
-          current.error = "已从完成记录恢复媒体；如需要附加弹幕，请单独导出。"
-          try update(current); return
-        }
-        let snapshot = await service.authSnapshot()
-        downloadIdentities[record.id] = snapshot
-        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
-        do { try FileManager.default.createDirectory(at: checkpoint.deletingLastPathComponent(), withIntermediateDirectories: true) }
-        catch { throw DownloadFailure.disk(operation: "创建完成记录目录", code: (error as NSError).code) }
-        current.state = "downloading"; current.error = ""; try update(current)
-        let video: Video
-        let manifest: PlaybackManifest?
-        if let episodeID = options.episodeID {
-          let details = try await service.pgcDetails(PGCSelection(episodeID: episodeID), expectedIdentity: snapshot)
-          guard let episode = details.episodes.first(where: { $0.id == episodeID }), episode.cid == options.cid else { throw BiliError.invalidResponse("剧集信息已改变，请重新创建任务。") }
-          video = Video(bvid: episode.bvid, title: episode.title, cover: episode.cover, cid: episode.cid, aid: episode.aid)
-          manifest = [.video, .audio].contains(options.content) ? try await service.pgcPlayback(episode, quality: options.quality, expectedIdentity: snapshot) : nil
-        } else {
-          let detail = try await service.detail(record.bvid, expectedIdentity: snapshot)
-          video = Video(bvid: detail.bvid, title: detail.title, cover: detail.cover, cid: options.cid ?? detail.cid, aid: detail.aid)
-          manifest = [.video, .audio].contains(options.content) ? try await service.playback(video, quality: options.quality, expectedIdentity: snapshot) : nil
-        }
-        try await checkDownloadIdentity(snapshot)
-        let directory = URL(fileURLWithPath: options.directory).resolvingSymlinksInPath()
-        do { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true) }
-        catch { throw DownloadFailure.disk(operation: "创建下载目录", code: (error as NSError).code) }
-        let stem = record.bvid + "-" + String(options.cid ?? 0)
-        var output = directory.appendingPathComponent(stem + ".mp4")
-        switch options.content {
-        case .video:
-          guard let manifest else { throw BiliError.invalidResponse("没有播放地址") }
-          let codec: PlaybackCodec = options.codec == .avc ? .h264 : options.codec == .hevc ? .hevc : .av1
-          let preferences = PlaybackPreferences(codec: codec, quality: options.quality)
-          let choice = try PlaybackSelector.select(manifest, preferences: preferences, supportsHardware: { _ in true })
-          let audio = choice.audioURL
-          let vFile = try await DownloadWorker.resumeTransfer(request: service.request(choice.videoURL), to: temporary.appendingPathComponent("video.m4s"), identity: "aid:\(video.aid ?? 0):cid:\(video.cid ?? 0):video:\(choice.video.quality):codec:\(choice.video.codecID):bw:\(choice.video.bandwidth)") { [weak self] progress in Task { @MainActor in self?.updateProgress(record.id, progress * 0.8) } }
-          try await checkDownloadIdentity(snapshot)
-          let aFile = try await DownloadWorker.resumeTransfer(request: service.request(audio), to: temporary.appendingPathComponent("audio.m4s"), identity: "aid:\(video.aid ?? 0):cid:\(video.cid ?? 0):audio:\(choice.audio.quality):codec:\(choice.audio.codecID):bw:\(choice.audio.bandwidth)") { [weak self] progress in Task { @MainActor in self?.updateProgress(record.id, 0.8 + progress * 0.15) } }
-          try await checkDownloadIdentity(snapshot); current.state = "merging"; current.progress = 0.95; try update(current)
-          let staged = temporary.appendingPathComponent("output.mp4")
-          if FileManager.default.fileExists(atPath: staged.path) { try FileManager.default.removeItem(at: staged) }
-          try await DownloadWorker.merge(video: vFile, audio: aFile, output: staged, ffmpeg: Self.ffmpeg)
-          try await checkDownloadIdentity(snapshot)
-          output = try await DownloadCompletion.publish(staged: staged, to: output, checkpoint: checkpoint)
-        case .audio:
-          guard let audio = manifest?.audio.first else { throw BiliError.invalidResponse("没有可下载的音频。") }
-          let file = try await DownloadWorker.resumeTransfer(request: service.request(audio.url), to: temporary.appendingPathComponent("audio.m4a"), identity: "aid:\(video.aid ?? 0):cid:\(video.cid ?? 0):audio:\(audio.quality):codec:\(audio.codecID):bw:\(audio.bandwidth)") { [weak self] progress in Task { @MainActor in self?.updateProgress(record.id, progress) } }
-          output = directory.appendingPathComponent(stem + ".m4a")
-          try await checkDownloadIdentity(snapshot)
-          output = try await DownloadCompletion.publish(staged: file, to: output, checkpoint: checkpoint)
-        case .cover:
-          guard let cover = video.cover else { throw BiliError.invalidResponse("没有可下载的封面。") }
-          let file = try await DownloadWorker.resumeTransfer(request: service.request(ImageCache.secured(cover)), to: temporary.appendingPathComponent("cover"))
-          output = directory.appendingPathComponent(stem + "." + (["png", "jpeg", "jpg", "webp", "avif"].contains(cover.pathExtension.lowercased()) ? cover.pathExtension.lowercased() : "jpg"))
-          try await checkDownloadIdentity(snapshot)
-          output = try await DownloadCompletion.publish(staged: file, to: output, checkpoint: checkpoint)
-        case .danmaku:
-          guard let cid = video.cid else { throw BiliError.invalidResponse("没有弹幕标识") }
-          let xml = try await service.exportDanmakuXML(cid: cid, expectedIdentity: snapshot)
-          output = directory.appendingPathComponent(stem + ".xml")
-          let staged = temporary.appendingPathComponent("danmaku.xml")
-          try xml.write(to: staged, options: .atomic)
-          try await checkDownloadIdentity(snapshot)
-          output = try await DownloadCompletion.publish(staged: staged, to: output, checkpoint: checkpoint)
-        case .subtitle:
-          guard let aid = video.aid, let cid = video.cid else { throw BiliError.invalidResponse("没有字幕媒体标识") }
-          let tracks = DownloadSubtitleTrack.filtered(try await service.downloadSubtitleTracks(aid: aid, cid: cid, expectedIdentity: snapshot), filterAI: options.filterAISubtitle)
-          guard let track = tracks.first(where: { $0.id == options.subtitleID }) ?? tracks.first(where: { $0.language == options.subtitleLanguage }) else {
-            throw BiliError.invalidResponse("所选字幕已不可用，请重新选择字幕。")
-          }
-          let cues = try await service.downloadSubtitleCues(track: track, expectedIdentity: snapshot)
-          let language = track.language.range(of: "^[A-Za-z0-9-]{1,32}$", options: .regularExpression) != nil ? track.language : "subtitle"
-          output = directory.appendingPathComponent(stem + "-" + language + ".srt")
-          let staged = temporary.appendingPathComponent("subtitle.srt")
-          try DownloadExport.subtitleSRT(cues).write(to: staged, options: .atomic)
-          try await checkDownloadIdentity(snapshot)
-          output = try await DownloadCompletion.publish(staged: staged, to: output, checkpoint: checkpoint)
-        }
-        current.output = output.path
-        if options.content == .video, options.includeDanmaku, let cid = video.cid {
-          let xml = try await service.exportDanmakuXML(cid: cid, expectedIdentity: snapshot)
-          try await checkDownloadIdentity(snapshot)
-          try DownloadExport.write(xml, to: directory.appendingPathComponent(stem + ".xml"))
-        }
-        current.state = "complete"; current.progress = 1; current.output = output.path; try update(current)
-        try? FileManager.default.removeItem(at: temporary)
-        if MacSettings.load(from: PerformanceEnvironment.defaults).bool(.openDownloadFolder) { NSWorkspace.shared.activateFileViewerSelecting([output]) }
-      } catch {
-        current.state = !current.output.isEmpty ? "complete" : Task.isCancelled || error is CancellationError ? "cancelled" : "failed"
-        if !current.output.isEmpty { current.progress = 1 }
-        current.error = !current.output.isEmpty ? "媒体已保存；附加导出或任务记录失败：" + error.localizedDescription : error.localizedDescription
-        do { try update(current) } catch {
-          if let index = downloads.firstIndex(where: { $0.id == current.id }) { downloads[index] = current }
-          self.error = "任务记录写入失败；恢复下载时会校验持久完成记录。"
-        }
-      }
-    }
-  }
-  private func update(_ record: DownloadRecord) throws {
-    try store?.save(record)
-    downloads = try store?.records() ?? []
-  }
-  /// Progress callbacks arrive per network packet; publish at most every half percent so a
-  /// running download does not re-render the whole app (and close menus) hundreds of times a second.
-  private func updateProgress(_ id: String, _ progress: Double) {
-    if let index = downloads.firstIndex(where: { $0.id == id && $0.state == "downloading" }),
-      progress - downloads[index].progress >= 0.005 || progress >= 1 {
-      downloads[index].progress = progress
-    }
-  }
-  func cancelDownload(_ id: String) { downloadTasks[id]?.cancel() }
+  func retryDownload(_ record: DownloadRecord) { downloadQueue.retry(record) }
+  func cancelDownload(_ id: String) { downloadQueue.cancel(id) }
   /// `dismissLogin: false` refreshes the account shown without closing an open login sheet.
   func loginCompleted(token: UInt64? = nil, dismissLogin: Bool = true) async {
     let generation = authCallbacks.generation
@@ -2302,7 +2176,7 @@ import WebKit
     }
   }
   func logout() {
-    for task in downloadTasks.values { task.cancel() }
+    downloadQueue.cancelAll()
     authCallbacks.invalidate()
     accountTask?.cancel()
     showingLogin = false
@@ -2332,7 +2206,7 @@ import WebKit
     authCallbacks.invalidate()
     accountTask?.cancel()
     loadTask?.cancel()
-    for task in downloadTasks.values { task.cancel() }
+    downloadQueue.cancelAll()
     cdn.detach()
     player.shutdown()
     MpvEnginePool.shared.drain()

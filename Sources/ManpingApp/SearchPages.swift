@@ -74,22 +74,32 @@ struct LibraryEntryCard: View {
   let action: () -> Void
   @Environment(\.colorScheme) private var scheme
   var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
-        Color.clear.aspectRatio(16 / 9, contentMode: .fit)
-          .overlay { CachedImage(url: entry.cover) }
-          .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-        VStack(alignment: .leading, spacing: 4) {
+    VStack(alignment: .leading, spacing: 4) {
+      Button(action: action) {
+        VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
+          Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+            .overlay { CachedImage(url: entry.cover) }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
           Text(entry.title).font(Theme.Font.headline).lineLimit(2, reservesSpace: true)
             .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .topLeading)
+        }.contentShape(Rectangle())
+      }.buttonStyle(CardPressStyle())
+      // A video's subtitle starts with its UP 主: that name opens their space.
+      if case .video(let video) = entry.destination, !video.author.isEmpty, entry.subtitle.hasPrefix(video.author) {
+        CardMetadataLine(author: video.author, authorID: video.authorID,
+          rest: String(entry.subtitle.dropFirst(video.author.count)).trimmingCharacters(in: CharacterSet(charactersIn: " ·")),
+          action: action)
+      } else {
+        Button(action: action) {
           Text(entry.subtitle).font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)).lineLimit(1)
-          if case .web = entry.destination {
-            Label("在浏览器中打开", systemImage: "arrow.up.right.square").font(Theme.Font.caption)
-              .foregroundStyle(Theme.accentText(scheme))
-          }
-        }
-      }.foregroundStyle(Theme.text(scheme)).contentShape(Rectangle()).cardHover()
-    }.buttonStyle(CardPressStyle()).disabled(entry.destination == .unavailable)
+            .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+      }
+      if case .web = entry.destination {
+        Label("在浏览器中打开", systemImage: "arrow.up.right.square").font(Theme.Font.caption)
+          .foregroundStyle(Theme.accentText(scheme))
+      }
+    }.foregroundStyle(Theme.text(scheme)).cardHover().disabled(entry.destination == .unavailable)
   }
 }
 

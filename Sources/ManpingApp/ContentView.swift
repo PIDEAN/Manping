@@ -62,7 +62,11 @@ private struct ShellContent: View {
   @ObservedObject private var pins = PinnedUserStore.shared
   @ObservedObject private var livePins = PinnedLiveStore.shared
   @ObservedObject private var shell = ShellSidebarState.shared
-  @AppStorage(ShellPreferences.sidebarHiddenKey) private var sidebarHidden = false
+  @AppStorage(ShellPreferences.sidebarHiddenKey) private var storedSidebarHidden = false
+  @State private var fixtureSidebarHidden = false
+  private var sidebarHidden: Bool {
+    DebugUIFixtures.usesLiveSceneMemory ? fixtureSidebarHidden : storedSidebarHidden
+  }
   @State private var showingAccount = false
   init(model: AppModel) {
     self.model = model
@@ -111,6 +115,13 @@ private struct ShellContent: View {
       .onChange(of: immersive) { _, value in if value && shell.peeking { shell.peeking = false } }
     }.ignoresSafeArea(.container, edges: .top)
     .environment(\.cardActions, CardActions(model: model))
+      .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) {
+        _ in
+        if DebugUIFixtures.usesLiveSceneMemory {
+          fixtureSidebarHidden = PerformanceEnvironment.defaults.bool(
+            forKey: ShellPreferences.sidebarHiddenKey)
+        }
+      }
   }
   /// Slides in from the leading edge; 减弱动态效果 only fades.
   private var sidebarTransition: AnyTransition {
@@ -428,7 +439,7 @@ struct DetachedPlaybackContent: View {
     DetachedPlaybackLayout(model: model)
       .preferredColorScheme(model.theme.colorScheme).tint(Theme.accent)
       .environment(\.cardActions, CardActions(model: model))
-      .defaultAppStorage(PerformanceEnvironment.defaults)
+      .persistentAppStorage()
       .appDialogs(model: model, inDetachedWindow: true)
   }
 }

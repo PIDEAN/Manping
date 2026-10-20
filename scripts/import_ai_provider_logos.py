@@ -22,6 +22,9 @@ MAPPING = {
     'siliconflow': 'siliconcloud-color.svg', 'open_router': 'openrouter.svg', 'together_ai': 'together-color.svg',
     'groq': 'groq.svg', 'ollama': 'ollama.svg', 'mistral': 'mistral-color.svg', 'perplexity': 'perplexity-color.svg',
     'chatgpt_plan': 'openai.svg',
+    'minimax': 'minimax-color.svg', 'minimax_plan': 'minimax-color.svg',
+    'xiaomi_mimo': 'xiaomimimo.svg', 'mimo_token_plan': 'xiaomimimo.svg',
+    'opencode_zen': 'opencode.svg', 'opencode_go': 'opencode.svg', 'lm_studio': 'lmstudio.svg',
 }
 NUMBER = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
 

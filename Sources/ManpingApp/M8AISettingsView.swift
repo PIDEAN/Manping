@@ -6,6 +6,7 @@ import SwiftUI
 struct M8AISettingsView: View {
   @ObservedObject var model: M8AISettingsModel
   @Environment(\.colorScheme) private var scheme
+  @State private var unsupportedExpanded = false
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       if let runtime = model.runtime {
@@ -27,6 +28,17 @@ struct M8AISettingsView: View {
       M8AppleLocalCard()
       M8ChatGPTPlanCard(model: model)
       ForEach(AIProvider.sourceProviders) { provider in M8AIProviderCard(model: model, provider: provider) }
+      DisclosureGroup("不支持的订阅套餐", isExpanded: $unsupportedExpanded) {
+        VStack(alignment: .leading, spacing: 10) {
+          Text("以下套餐不适用于本应用的视频摘要、问答等场景，请改用对应服务的按量付费 API。")
+          ForEach(AIUnsupportedSubscription.all) { item in
+            VStack(alignment: .leading, spacing: 3) {
+              Text(item.title + "：" + item.reason)
+              Link("官方条款", destination: item.url)
+            }
+          }
+        }.font(Theme.Font.caption).padding(12)
+      }.padding(14).cardSurface(scheme)
       if let error = model.loadError {
         InlineErrorText(message: error).padding(12)
       }
@@ -142,6 +154,11 @@ private struct M8AIProviderCard: View {
           DisclosureChevron(expanded: expanded)
         }.padding(.horizontal, 16).frame(minHeight: 60).contentShape(Rectangle())
       }.buttonStyle(.plain)
+      if provider.subscriptionRisk {
+        Text("条款未明确允许第三方应用，风险自负")
+          .font(Theme.Font.caption).foregroundStyle(.orange).padding(.horizontal, 16).padding(.bottom, 12)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
       if expanded {
         Hairline()
         VStack(spacing: 0) {
@@ -150,8 +167,8 @@ private struct M8AIProviderCard: View {
               .font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme)).padding(.horizontal, 16).padding(.top, 12)
               .frame(maxWidth: .infinity, alignment: .leading)
           }
-          if provider != .ollama {
-            AIServiceSettingsRow("访问密钥", detail: configuration?.keyConfigured == true ? "已加密保存在本机，留空保留。" : "仅加密保存在本机。") {
+          if provider.needsKey || provider == .lmStudio {
+            AIServiceSettingsRow(provider == .lmStudio ? "访问密钥（可选）" : "访问密钥", detail: configuration?.keyConfigured == true ? "已加密保存在本机，留空保留。" : "仅加密保存在本机。") {
               secureField("API key", text: binding(\.key))
             }
           }
@@ -168,8 +185,27 @@ private struct M8AIProviderCard: View {
               secureField("Codestral key", text: binding(\.codestralKey))
             }
           }
+          if !provider.regions.isEmpty {
+            AIServiceSettingsRow("地区", detail: "切换地区后需使用该地区的密钥并重新获取模型。") {
+              Picker("地区", selection: binding(\.endpoint)) {
+                Text("默认地区").tag("")
+                ForEach(provider.regions, id: \.endpoint) { region in Text(region.name).tag(region.endpoint) }
+                if !model.draft(provider).endpoint.isEmpty && !provider.regions.contains(where: { $0.endpoint == model.draft(provider).endpoint }) {
+                  Text("自定义地址").tag(model.draft(provider).endpoint)
+                }
+              }.labelsHidden().frame(width: 260)
+            }
+          }
+          if provider == .mimoTokenPlan {
+            Text("套餐 key 通常以 tp- 或 ttp- 开头；请确认所选地区。")
+              .font(Theme.Font.caption).padding(12)
+          }
+          if provider == .perplexity {
+            Text("Perplexity 已迁移至 Gateway API；旧 Sonar 模型已移除；Gateway Private Preview 需申请权限。原默认地址配置请确认地址并重新保存，再获取模型。")
+              .font(Theme.Font.caption).padding(12)
+          }
           if provider.supportsEndpoint {
-            AIServiceSettingsRow("终结点", detail: provider.defaultEndpoint == nil ? "请输入此资源的终结点。" : "留空使用原版默认终结点。") {
+            AIServiceSettingsRow("终结点", detail: provider.defaultEndpoint == nil ? "请输入此资源的终结点。" : "留空使用默认终结点。") {
               textField(provider.defaultEndpoint ?? "https://…", text: binding(\.endpoint))
             }
           }
@@ -180,7 +216,7 @@ private struct M8AIProviderCard: View {
             AIServiceSettingsRow("API 版本", detail: "可选，留空使用这种协议的默认版本。") { textField("例如 2024-02-01", text: binding(\.apiVersion)) }
           }
           if !provider.predefinedModels.isEmpty {
-            AIServiceSettingsRow("预定义模型", detail: "与固定原版 SDK 的模型列表一致。") {
+            AIServiceSettingsRow("预定义模型", detail: "已知模型；服务器列表可随时更新。") {
               Button("查看所有预定义模型") { showPredefined.toggle() }.foregroundStyle(Theme.accentText(scheme)).buttonStyle(AppButtonStyle(role: .plain, size: .small))
                 .popover(isPresented: $showPredefined) {
                   ScrollView {
@@ -195,6 +231,14 @@ private struct M8AIProviderCard: View {
                   }.frame(maxHeight: 420)
                 }
             }
+          }
+          AIServiceSettingsRow("服务器模型", detail: model.draft(provider).modelsFetchedAt.map { "获取于 " + $0.formatted(date: .abbreviated, time: .shortened) } ?? "仅发送 GET 请求，不产生生成费用。") {
+            Button(busy ? "请求中…" : "获取模型") { Task { await model.fetchModels(provider) } }
+              .buttonStyle(AppButtonStyle(size: .small))
+          }
+          if !model.draft(provider).fetchedModels.isEmpty {
+            Text(model.draft(provider).fetchedModels.map(\.id).joined(separator: "、"))
+              .font(Theme.Font.caption).lineLimit(4).textSelection(.enabled).padding(12)
           }
           customModels
           HStack(spacing: 8) {
@@ -219,7 +263,7 @@ private struct M8AIProviderCard: View {
     VStack(alignment: .leading, spacing: 8) {
       Text("自定义模型").font(Theme.Font.body)
       if provider.requiresCustomModels {
-        Text(provider == .azureOpenAI ? "模型标识请填写部署名称。" : "此服务没有预定义模型，请添加要使用的模型。")
+        Text(provider == .azureOpenAI ? "推理模型标识请手动填写部署名称；服务器目录仅供参考，不代表已部署。" : "此服务没有预定义模型，请添加要使用的模型。")
           .font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
       }
       ForEach(model.draft(provider).models) { item in
@@ -236,6 +280,10 @@ private struct M8AIProviderCard: View {
       HStack(spacing: 8) {
         textField("模型标识", text: binding(\.newModelID))
         textField("显示名称（可选）", text: binding(\.newModelName))
+      }
+      HStack(spacing: 8) {
+        textField("上下文 tokens（可选）", text: binding(\.newContextTokens))
+        textField("最大输出 tokens（可选）", text: binding(\.newMaxOutputTokens))
         Button("添加模型") { model.addModel(provider) }.buttonStyle(AppButtonStyle(size: .small))
       }
     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)

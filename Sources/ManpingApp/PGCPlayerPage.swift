@@ -23,6 +23,7 @@ struct PGCPlayerPage: View {
   @State private var fixturePaused = false
   @State private var volumeShown = false
   @State private var composeShown = false
+  @State private var chaptersShown = false
   @State private var showingCoin = false
   @State private var showingFavorites = false
   @State private var showingTriple = false
@@ -114,7 +115,7 @@ struct PGCPlayerPage: View {
   private var paused: Bool { playback.usesFixtures ? fixturePaused : player.paused }
   /// Paused, a popover open, typing a comment or scrubbing: the controls stay up.
   private var controlsPinned: Bool {
-    playback.usesFixtures || paused || volumeShown || danmakuSettingsShown || networkShown || composeShown || scrubbing
+    playback.usesFixtures || paused || volumeShown || danmakuSettingsShown || networkShown || composeShown || chaptersShown || scrubbing
       || !features.input.isEmpty
   }
   private var controlsShown: Bool { chrome.visible || controlsPinned }
@@ -193,12 +194,14 @@ struct PGCPlayerPage: View {
     player.endTemporarySpeed()
   }
   private var streams: [MediaStream] { playback.manifest?.video ?? [] }
+  /// Bilibili's own chapters when the episode has them, else the media's.
+  private var chapters: [PlaybackChapter] { PlaybackChapter.preferred(viewPoints: features.viewPoints, engine: player.chapters) }
   private var controls: some View {
     let layout = PlayerPanelLayout(stageWidth: stageWidth)
     return PlayerControlPanel(chrome: chrome) {
       PlaybackTimeline(clock: player.clock, duration: duration, override: playback.usesFixtures ? playback.fixturePosition : nil,
         enabled: playback.manifest != nil || playback.usesFixtures, preview: videoShot,
-        density: player.timeline.density(duration: duration), chapters: player.chapters, markers: model.aiMarks(for: model.aiMediaKey),
+        density: player.timeline.density(duration: duration), chapters: chapters, markers: model.aiMarks(for: model.aiMediaKey),
         bufferedAhead: { [player] in player.bufferedAhead }, scrubbing: { scrubbing = $0 }) { playback.seek($0) }
       PlayerBarRow(model: model, player: player, layout: layout, page: barPage, cdn: model.cdn,
         danmakuShown: $danmakuSettingsShown, networkShown: $networkShown, volumeShown: $volumeShown,
@@ -222,6 +225,10 @@ struct PGCPlayerPage: View {
         if layout.showsTime {
           PlayerTimeLabel(clock: player.clock, duration: duration, override: playback.usesFixtures ? playback.fixturePosition : nil)
             .padding(.horizontal, 4)
+        }
+        if layout.showsChapter, !chapters.isEmpty {
+          PlayerChapterButton(clock: player.clock, chapters: chapters, override: playback.usesFixtures ? playback.fixturePosition : nil,
+            shown: $chaptersShown) { playback.seek($0) }
         }
         DanmakuToggleButton(enabled: $player.commentsEnabled) { danmakuSettingsShown = true }
       }
@@ -287,8 +294,8 @@ struct PGCPlayerPage: View {
     VStack(alignment: .leading, spacing: 20) {
       if let details = playback.details {
         descriptor(details)
-        if !player.chapters.isEmpty {
-          PlaybackChapterList(clock: player.clock, chapters: player.chapters,
+        if !chapters.isEmpty {
+          PlaybackChapterList(clock: player.clock, chapters: chapters,
             override: playback.usesFixtures ? playback.fixturePosition : nil, seek: playback.seek)
         }
         operations(details)

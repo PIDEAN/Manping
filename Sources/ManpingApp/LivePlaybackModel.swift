@@ -5,31 +5,33 @@ import Foundation
 /// Recent live chat lines for the side panel. Kept apart from the playback model so a busy
 /// room only re-renders the chat list, and flushed at most every 0.3 s.
 @MainActor final class LiveChatModel: ObservableObject {
-  struct Line: Identifiable, Equatable {
-    enum Kind: Equatable { case danmaku, superChat(Int), gift, notice }
-    let id: Int
-    let user: String
-    let text: String
-    let kind: Kind
-  }
+  typealias Line = LiveChatLine
   @Published private(set) var lines: [Line] = []
   @Published private(set) var connected = false
-  private var pending: [Line] = []
+  private var history = LiveChatHistory()
   private var flush: Task<Void, Never>?
-  private var nextID = 0
-  private static let limit = 200
 
-  func add(user: String, text: String, kind: Line.Kind) {
-    nextID += 1
-    pending.append(Line(id: nextID, user: user, text: text, kind: kind))
+  func add(user: String, text: String, kind: Line.Kind, group: UUID? = nil, serverID: String? = nil,
+           uid: Int64 = 0, gift: LiveGiftMessage? = nil) {
+    history.add(user: user, text: text, kind: kind, group: group, serverID: serverID, uid: uid, gift: gift)
+    scheduleFlush()
+  }
+  func add(_ message: LiveDanmaku, accountMid: Int64?) {
+    history.add(message, accountMid: accountMid); scheduleFlush()
+  }
+  private func scheduleFlush() {
     guard flush == nil else { return }
     flush = Task { [weak self] in
-      try? await Task.sleep(nanoseconds: 300_000_000)
+      do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
       guard let self else { return }
-      self.lines = Array((self.lines + self.pending).suffix(Self.limit))
-      self.pending = []; self.flush = nil
+      self.lines = self.history.lines; self.flush = nil
     }
   }
+  func removeSuperChats(_ ids: [String]) {
+    history.removeSuperChats(ids); lines = history.lines
+  }
+  func hideGifts() { history.removeGifts(); lines = history.lines }
+  func reset() { flush?.cancel(); flush = nil; history = LiveChatHistory(); lines = [] }
   func setConnected(_ value: Bool) { if connected != value { connected = value } }
 }
 
@@ -64,6 +66,10 @@ import Foundation
   #endif
   let player: PlayerModel
   let chat = LiveChatModel()
+  let interaction: LiveInteractionSession
+  let ui: LiveInteractionModel
+  private(set) var interactionContext: LiveInteractionContext?
+  @Published private(set) var interactionSettings = MacSettings().liveEffective
   let roomID: Int64
   let usesFixtures: Bool
   private let service: BiliService
@@ -74,7 +80,12 @@ import Foundation
   private var retryBudget = LiveReconnectBudget()
   private var loadTask: Task<Void, Never>?
   private var chatTask: Task<Void, Never>?
+  private var chatIdentityTask: Task<Void, Never>?
+  private var chatGeneration: UInt64 = 0
+  private var chatIdentity: AuthSnapshot?
+  private(set) var chatAccountMid: Int64?
   private let chatClient = LiveChatClient()
+  private var chatReducer = LiveChatReducer()
   private let probe = CDNURLSessionFetcher(maximumConnectionsPerHost: 2)
   private var watchdog: Timer?
   private var lastClock = -1.0
@@ -82,6 +93,7 @@ import Foundation
   private var loadedAt = Date.distantPast
   /// The clock moved since the last load: the opening grace period is over.
   private var playedSinceLoad = false
+  private var interactionSettingsObservation: AnyCancellable?
   private var errorObservation: AnyCancellable?
   private var endObservation: AnyCancellable?
   private var generation = 0
@@ -91,6 +103,20 @@ import Foundation
   init(roomID: Int64, service: BiliService, player: PlayerModel, preferHEVC: Bool, avoidPeerAssisted: Bool, usesFixtures: Bool = false) {
     self.roomID = roomID; self.service = service; self.player = player
     self.preferHEVC = preferHEVC; self.avoidPeerAssisted = avoidPeerAssisted; self.usesFixtures = usesFixtures
+    let settings = MacSettings.load(from: PerformanceEnvironment.defaults)
+    interactionSettings = settings.liveEffective
+    let fixturePolicy = usesFixtures ? LiveGiftPolicySource(settings.liveGiftPolicy()) : nil
+    let interaction = LiveInteractionSession(service: service,
+      gate: usesFixtures ? LiveMutationGate(enabled: Set(LiveRoute.allCases)) : LiveMutationGate(),
+      policy: settings.liveGiftPolicy(), policySource: fixturePolicy ?? LiveInteractionPreferences.shared.policySource, receipts: usesFixtures ? LiveContractFixture.receiptPolicy : LiveReceiptPolicy())
+    self.interaction = interaction
+    ui = LiveInteractionModel(session: interaction, fixtures: usesFixtures, fixturePolicySource: fixturePolicy)
+    interactionSettingsObservation = LiveInteractionPreferences.shared.$effective.sink { [weak self] effective in
+      guard let self else { return }
+      self.interactionSettings = effective
+      self.ui.reloadSettings()
+      if !effective.giftMessages { self.chat.hideGifts() }
+    }
     player.tracksDuration = false
   }
 
@@ -106,6 +132,68 @@ import Foundation
 
   func start() {
     guard room == nil, loadTask == nil else { return }
+    #if DEBUG
+    if usesFixtures, let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--ui-live-scene"),
+      ProcessInfo.processInfo.arguments.indices.contains(index + 1) {
+      let scene = ProcessInfo.processInfo.arguments[index + 1]
+      room = LiveRoomInfo(roomID: roomID, anchorID: 900010, anchorName: "示例主播", status: .live, title: "直播解析样本")
+      chatTask = Task { [weak self] in
+        guard let self else { return }
+        do {
+          let room = try await self.service.liveRoom(self.roomID)
+          guard self.active, !Task.isCancelled else { return }
+          self.room = room
+          let identity = await self.service.authSnapshot()
+          let account = await self.service.accountMid()
+          guard await Self.matches(identity, service: self.service), self.active, !Task.isCancelled else { return }
+          self.chatIdentity = identity; self.chatAccountMid = account
+          let context = LiveInteractionContext(identity: identity, accountMid: account,
+            roomID: room.roomID, anchorID: room.anchorID, generation: self.chatGeneration)
+          self.interactionContext = context
+          let lifetimeRevision = self.interaction.lifetime.revision
+          await self.interaction.bind(context, lifetimeRevision: lifetimeRevision)
+          let messages = try await LiveSessionFixture.run(scene: scene, session: self.interaction, context: context,
+            waitForLateHandoff: { await DebugUITransport.waitForLiveMutation() })
+          guard self.active, !Task.isCancelled else { return }
+            let bound = await self.interaction.context
+            guard self.active, !Task.isCancelled else { return }
+            if scene == "unknown-cross-room", let original = bound {
+              let next = LiveInteractionContext(
+                identity: original.identity, accountMid: original.accountMid,
+                roomID: 6001, anchorID: 900011, generation: original.generation &+ 1)
+              await self.interaction.bind(next)
+              guard self.active, !Task.isCancelled, self.interaction.lifetime.matches(next) else {
+                return
+              }
+              self.room = LiveRoomInfo(
+                roomID: 6001, anchorID: 900011, anchorName: "另一位示例主播", status: .live,
+                title: "切换房间后的待核对记录")
+              self.interactionContext = next
+              self.ui.anchorName = "另一位示例主播"
+              self.ui.bind(next)
+            } else {
+              self.interactionContext = bound
+            }
+            if let bound = self.interactionContext, self.interaction.lifetime.matches(bound) {
+              self.ui.anchorName = self.room?.anchorName ?? room.anchorName
+              self.ui.bind(bound)
+            }
+            for event in LiveChatPacket.decode(
+              try
+                (LiveSessionFixture.uiScenes.contains(scene)
+                ? LiveChatFixture.presentationFrame()
+                : LiveChatFixture.frame(includeDeletion: scene == "sc-deleted"))
+            ).events { await self.handle(event) }
+          for text in messages { self.chat.add(user: "", text: text, kind: .notice) }
+          self.chat.setConnected(true)
+            if let bound = self.interactionContext {
+              await self.ui.configureScene(scene, expected: bound)
+            }
+          } catch { self.chat.add(user: "", text: error.localizedDescription, kind: .notice) }
+      }
+      return
+    }
+    #endif
     load(quality: requestedQuality, refreshRoom: true)
     startChat()
   }
@@ -132,8 +220,14 @@ import Foundation
     active = false
     generation += 1
     loadTask?.cancel(); loadTask = nil
+    chatGeneration &+= 1
     chatTask?.cancel(); chatTask = nil
+    chatIdentityTask?.cancel(); chatIdentityTask = nil
     chatClient.disconnect()
+    interactionContext = nil
+    ui.retire()
+    let retired = interaction.lifetime.retire()
+    Task { await interaction.shutdown(lifetimeRevision: retired) }
     watchdog?.invalidate(); watchdog = nil
     errorObservation = nil; endObservation = nil
     // The engine is pooled; do not leak live-only network options into the next video.
@@ -165,6 +259,16 @@ import Foundation
         if refreshRoom || self.room == nil {
           let room = try await self.service.liveRoom(self.roomID)
           guard current == self.generation else { return }
+          if let previous = self.room, previous.roomID != room.roomID || previous.anchorID != room.anchorID {
+            self.chatGeneration &+= 1; self.chatTask?.cancel(); self.chatTask = nil
+            self.chatClient.disconnect(); self.chat.reset(); self.chatReducer = LiveChatReducer()
+            self.interactionContext = nil
+            self.ui.retire()
+            let retired = self.interaction.lifetime.retire()
+            await self.interaction.shutdown(lifetimeRevision: retired)
+            guard self.active, current == self.generation, !Task.isCancelled else { return }
+            self.room = room; self.startChat()
+          }
           self.room = room
           if room.status != .live {
             self.markEnded(); return
@@ -301,58 +405,160 @@ import Foundation
 
   // MARK: Chat
 
-  /// One chat loop per room; it reconnects by itself and clears `chatTask` when it gives up.
+  /// Identity changes replace the entire chat session; a finite budget covers endpoint
+  /// failures, fallback hosts and reconnects. Old generations may only clear their own state.
   private func startChat() {
-    guard !usesFixtures, chatTask == nil else { return }
-    chatTask = Task { [weak self] in
-      defer { Task { @MainActor [weak self] in self?.chatTask = nil } }
-      var failures = 0
-      while let self, self.active, !Task.isCancelled {
-        // The chat server needs the real room id; a short id (e.g. 6 for 7734200) authenticates
-        // but never receives that room's messages. Wait until the room has been resolved.
+    guard !usesFixtures, active else { return }
+    if chatIdentityTask == nil {
+      chatIdentityTask = Task { [weak self, service] in
+        let events = await service.identityEvents()
+        for await event in events {
+          guard let self, self.active, !Task.isCancelled else { return }
+          guard let identity = self.chatIdentity else { continue }
+          if identity.epoch != event.epoch || identity.identityRevision != event.identityRevision {
+            self.chatGeneration &+= 1
+            self.chatTask?.cancel(); self.chatTask = nil
+            self.chatClient.disconnect(); self.chat.setConnected(false)
+            self.chatIdentity = nil; self.chatAccountMid = nil
+            self.interactionContext = nil; self.ui.retire()
+            self.chat.reset()
+            let retired = self.interaction.lifetime.retire()
+            await self.interaction.shutdown(lifetimeRevision: retired)
+            guard self.active, !Task.isCancelled else { return }
+            self.chatReducer = LiveChatReducer()
+            self.startChat()
+          }
+        }
+      }
+    }
+    guard chatTask == nil else { return }
+    chatGeneration &+= 1
+    let current = chatGeneration
+    chatTask = Task { [weak self, service] in
+      guard let self else { return }
+      defer {
+        if self.chatGeneration == current { self.chatTask = nil; self.chat.setConnected(false) }
+      }
+      let identity: AuthSnapshot
+      do {
+        identity = try await LiveChatSession.captureIdentity(
+          snapshot: { await service.authSnapshot() },
+          publish: { self.chatIdentity = $0 },
+          isIdentityCurrent: { await Self.matches($0, service: service) },
+          isGenerationCurrent: { self.active && self.chatGeneration == current })
+      } catch { return }
+      guard self.active, !Task.isCancelled, self.chatGeneration == current else { return }
+      let account = await service.accountMid()
+      let accountIdentityMatches = await Self.matches(identity, service: service)
+      guard self.active, !Task.isCancelled, self.chatGeneration == current else { return }
+      guard accountIdentityMatches else {
+        // An event may have been consumed before this task bound its first snapshot.
+        self.chatTask = nil
+        self.startChat()
+        return
+      }
+      self.chatAccountMid = account
+      let budget = LiveChatBudget()
+      while self.active, !Task.isCancelled, self.chatGeneration == current {
         guard let room = self.room?.roomID else {
-          try? await Task.sleep(nanoseconds: 300_000_000)
+          do { try await Task.sleep(for: .milliseconds(300)) } catch { return }
           continue
         }
-        guard let endpoint = try? await self.service.liveChatEndpoint(roomID: room) else {
-          failures += 1
-          if failures > 5 { return }
-          try? await Task.sleep(nanoseconds: UInt64(min(30, 3 * failures)) * 1_000_000_000)
-          continue
+        do {
+          guard let resolved = self.room else { return }
+          let context = LiveInteractionContext(identity: identity, accountMid: account, roomID: resolved.roomID,
+            anchorID: resolved.anchorID, generation: current)
+          self.interactionContext = context
+          let lifetimeRevision = self.interaction.lifetime.revision
+          await self.interaction.bind(context, lifetimeRevision: lifetimeRevision)
+          guard self.active, !Task.isCancelled, self.chatGeneration == current,
+            self.interaction.lifetime.matches(context)
+          else { return }
+          self.ui.anchorName = resolved.anchorName
+          self.ui.bind(context)
+          let endpoint = try await LiveChatSession.endpoint(
+            budget: budget,
+            load: { try await service.liveChatEndpoint(roomID: room, expectedIdentity: identity) },
+            isIdentityCurrent: { await Self.matches(identity, service: service) })
+          let endpointIdentityMatches = await Self.matches(identity, service: service)
+          guard endpointIdentityMatches, self.active, !Task.isCancelled, self.chatGeneration == current else { return }
+          #if DEBUG
+          self.chatHasBuvid = !endpoint.buvid.isEmpty
+          #endif
+          for try await event in self.chatClient.connect(endpoint, budget: budget, isIdentityCurrent: {
+            await Self.matches(identity, service: service)
+          }) {
+            let eventIdentityMatches = await Self.matches(identity, service: service)
+            guard eventIdentityMatches, self.active, !Task.isCancelled, self.chatGeneration == current else { return }
+            await self.handle(event)
+          }
+          return
+        } catch is CancellationError { return }
+        catch {
+          let failureIdentityMatches = await Self.matches(identity, service: service)
+          guard failureIdentityMatches, self.active, !Task.isCancelled, self.chatGeneration == current else { return }
+          let failure = LiveChatFailure.classify(error)
+          self.chat.add(user: "", text: Self.chatMessage(failure), kind: .notice)
+          return
         }
-        #if DEBUG
-        self.chatHasBuvid = !endpoint.buvid.isEmpty
-        #endif
-        for await event in self.chatClient.connect(endpoint) {
-          guard self.active else { break }
-          failures = 0
-          self.handle(event)
-        }
-        self.chat.setConnected(false)
-        guard self.active, !Task.isCancelled else { return }
-        failures += 1
-        if failures > 10 { return }
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
       }
     }
   }
 
-  private func handle(_ event: LiveChatEvent) {
+  nonisolated private static func matches(_ identity: AuthSnapshot, service: BiliService) async -> Bool {
+    let latest = await service.authSnapshot()
+    return identity.epoch == latest.epoch && identity.identityRevision == latest.identityRevision
+  }
+  private static func chatMessage(_ failure: LiveChatFailure) -> String {
+    switch failure {
+    case .riskControl: "聊天遇到风控，已暂停连接。"
+    case .authentication: "聊天认证被拒绝，请检查登录状态。"
+    case .budgetExhausted: "聊天连接多次中断，请稍后手动重新连接。"
+    case .handshakeTimeout: "聊天握手超时。"
+    case .identityChanged: "账号已变化，正在重新连接聊天。"
+    case .network: "聊天网络连接中断。"
+    }
+  }
+
+  private func handle(_ event: LiveChatEvent) async {
+    if let context = interactionContext {
+      do { try await interaction.receive([event], expected: context) } catch { return }
+      guard active, interactionContext == context else { return }
+    }
     #if DEBUG
     chatEvents += 1
     #endif
+    guard let event = chatReducer.ingest(event, now: Date().timeIntervalSince1970) else { return }
+    ui.receive(event)
     switch event {
     case .connected:
       chat.setConnected(true)
-    case .danmaku(let user, let text, let color):
-      chat.add(user: user, text: text, kind: .danmaku)
+    case .danmaku(let message):
+      let text = message.text, color = message.color
+      chat.add(message, accountMid: chatAccountMid)
       // Stamp with the smooth clock the renderer uses, so a new line enters at the right edge
       // (the polled time-pos lags it by up to one poll and one video frame).
       if !ended { player.timeline.append(DanmakuComment(time: player.mediaClock + 0.05, color: color, text: text)) }
-    case .superChat(let user, let text, let price):
-      chat.add(user: user, text: text, kind: .superChat(price))
-    case .gift(let user, let name, let count):
-      chat.add(user: user, text: "赠送 \(name) ×\(count)", kind: .gift)
+    case .superChat(let message):
+      let user = message.user, text = message.text, price = message.price
+      chat.add(user: user, text: text, kind: .superChat(price), serverID: message.id, uid: message.uid)
+    case .gift(let gift):
+      guard interactionSettings.giftMessages else { return }
+      chat.add(user: gift.user, text: "赠送 \(gift.name) ×\(gift.count)", kind: .gift, group: gift.aggregationID, uid: gift.uid, gift: gift)
+    case .guardPurchase(let guardMessage):
+      chat.add(user: guardMessage.user, text: "开通大航海 ×\(guardMessage.count)", kind: .guardPurchase(guardMessage.level))
+    case .superChatDeleted(let ids):
+      chat.removeSuperChats(ids)
+    case .like(let notice):
+      if interactionSettings.interactNotices, let name = notice.data["uname"].string {
+        chat.add(user: "", text: name + " 点了赞", kind: .notice)
+      }
+    case .entrance(let notice):
+      if interactionSettings.interactNotices, let name = notice.data["uname"].string {
+        chat.add(user: "", text: name + " 进入直播间", kind: .notice)
+      }
+    case .moderation, .lottery, .redPocket:
+      if let context = interactionContext { await ui.sync(context) }
     case .watched(let value):
       if watched != value { watched = value }
     case .online(let value):

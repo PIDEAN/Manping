@@ -18,14 +18,16 @@ public final class CDNStore: @unchecked Sendable {
     var resultsNetwork: String?
   }
 
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
   private let key: String
   private let lock = NSLock()
   private var state: State
   public static let learnedLimit = 24
   public static let learnedLifetime: TimeInterval = 30 * 24 * 3600
 
-  public init(defaults: UserDefaults = .standard, key: String = "Manping.cdnStore.v1") {
+  public init(
+    defaults: any PreferencesStore = UserDefaults.standard, key: String = "Manping.cdnStore.v1"
+  ) {
     self.defaults = defaults; self.key = key
     state = (defaults.data(forKey: key)).flatMap { try? JSONDecoder().decode(State.self, from: $0) } ?? State()
   }

@@ -49,8 +49,17 @@ public struct AIRequestBudget: Sendable, Equatable, Codable {
 public enum AIModelCapacity {
   public struct Entry: Sendable, Equatable { public let context: Int; public let output: Int }
   static let table: [String: Entry] = [
-    "claude-opus-5-5": .init(context: 200_000, output: 64_000), "claude-sonnet-5-5": .init(context: 200_000, output: 64_000),
-    "claude-haiku-5-5": .init(context: 200_000, output: 64_000), "claude-fable-5-1": .init(context: 200_000, output: 64_000),
+    // Official model pages verified 2026-10-20; see docs/AIProviders.md.
+    "gpt-6-astra": .init(context: 1_050_000, output: 128_000),
+    "gemini-3.8-flash": .init(context: 1_048_576, output: 65_536),
+    "deepseek-flash": .init(context: 1_048_576, output: 393_216), "deepseek-v4-pro": .init(context: 1_048_576, output: 393_216),
+    "glm-5.3": .init(context: 1_000_000, output: 128_000),
+    "MiniMax-M3.1-Flash": .init(context: 1_000_000, output: 524_288),
+    "mimo-v2.6-pro": .init(context: 1_048_576, output: 131_072),
+    "mimo-v2.6-flash": .init(context: 1_048_576, output: 131_072),
+    "mimo-v2.6-pro-ultraspeed": .init(context: 1_048_576, output: 131_072),
+    "claude-opus-5-5": .init(context: 1_000_000, output: 128_000), "claude-sonnet-5-5": .init(context: 1_000_000, output: 128_000),
+    "claude-haiku-5-5": .init(context: 1_000_000, output: 128_000), "claude-fable-5-1": .init(context: 1_000_000, output: 128_000),
     "gpt-5": .init(context: 400_000, output: 128_000), "gpt-5-mini": .init(context: 400_000, output: 128_000),
     "gpt-5-nano": .init(context: 400_000, output: 128_000), "gpt-5-pro": .init(context: 400_000, output: 128_000),
     "gpt-4.1": .init(context: 1_047_576, output: 32_768), "gpt-4o": .init(context: 128_000, output: 16_384),
@@ -87,7 +96,10 @@ public enum AIModelCapacity {
   public static func isReasoning(_ id: String) -> Bool {
     let lower = id.lowercased()
     let prefixes = ["gpt-5", "o1", "o3", "o4", "gemini-2.5", "deepseek-reasoner", "qwq", "glm-z1", "magistral", "hunyuan-t1", "x1"]
-    return prefixes.contains { lower.hasPrefix($0) } || lower.contains("thinking") || lower.contains("reasoning")
+    let current: Set<String> = ["gpt-6-astra", "gpt-6-sol", "gpt-6.1-sol", "gpt-6-luna", "glm-5.3", "glm-5.3-flash", "glm-5.3-flashx",
+      "minimax-m3.1-flash", "minimax-m3", "mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed", "kimi-k3",
+      "deepseek-flash", "deepseek-v4-pro", "gemini-3.8-flash"]
+    return current.contains(lower) || prefixes.contains { lower.hasPrefix($0) } || lower.contains("thinking") || lower.contains("reasoning")
       || lower.contains("-r1") || lower.contains("/qwq")
   }
   public static func known(modelID: String) -> Entry? {

@@ -5,6 +5,11 @@
 `scripts/import_ai_provider_logos.py` (24×24 size, expanded SVG arc flags). The logos themselves
 are trademarks of their respective owners and are used only to identify each AI service.
 
+Additional imported files: `minimax.svg`, `minimax_plan.svg` (`minimax-color.svg`),
+`xiaomi_mimo.svg`, `mimo_token_plan.svg` (`xiaomimimo.svg`), `opencode_zen.svg`,
+`opencode_go.svg` (`opencode.svg`), and `lm_studio.svg` (`lmstudio.svg`).
+Subscription cards reuse the corresponding provider mark.
+
 MIT License
 
 Copyright (c) 2023 LobeHub

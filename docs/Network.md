@@ -433,3 +433,23 @@ python3 scripts/network_stability_suite.py --app .build/task-b-v3/final-v3/满�
 | 用户搜索 | WBI `search/type?search_type=bili_user` | 独立 order=0/fans/level、order_sort；解析顶层 level/is_upuser/official_verify/is_live/room_id/upic。视频作者优先 owner/upper，再回退顶层 mid/upic。 |
 
 投稿 cursor 绑定完整请求条件与 provider。WBI 在翻页时遇风控会重新从 app 第一页读取，并通知页面替换列表；界面展示实际顺序和分区能力。备用选择仅保留在同一个查询的 120 秒冷却期内，重试完整列表和账号切换会清除。取消、身份、认证与解析错误不作为降级依据。全部播放使用可注入的 cursor 分页收集器，去重、限制 1000 条、防游标循环；后页失败保留已读部分，用户明确点击后才播放。
+
+## Live interaction contracts
+
+Live routes and anonymous diagnostics are documented in [LiveContracts.md](LiveContracts.md).
+`python3 scripts/live_readonly_check.py --dry-run` inspects the separate fixed GET allowlist.
+No login data is loaded and no mutation is sent by this diagnostic.
+
+
+### Live UI capability boundary (Unit 3)
+
+| 能力 | 数据来源与展示 | 生产写入状态 |
+|---|---|---|
+| 富弹幕、礼物聚合、上舰、SC | 现有 WebSocket 解码与有界历史；服务端 ID 回复，实际 total_coin 价值 | 展示可用；不把广播当付款凭据 |
+| 发弹幕、表情、回复、样式 | 共享 Core session；身份／房间／草稿 revision 核对 | 全部 `LiveMutationGate` 默认关闭 |
+| 点赞、勋章佩戴／摘下 | 通过 actor 的手动操作；点赞沿用 Core debounce | 默认关闭，明确显示暂未开放 |
+| 背包／电池送礼 | 整数报价、一次性确认、原交易待核对记录 | 默认关闭；固定价格白名单与 receipt policy 为空 |
+| 免费抽奖／红包 | 仅 fixture 可注入已知条件与副作用并验证 synthetic receipt | 生产条件未知，只提供官方房间链接 |
+| 充值／上舰／SC／消费记录 | 手动打开官方房间或直播个人中心，并提示在页面内选择对应功能 | 不构造未核实的深链接，不自动操作 |
+
+设置只控制展示与用户付费偏好，不会打开任何写接口。纯享模式在特效入队前丢弃，屏蔽送礼同步隐藏按钮、礼物聊天与礼物特效。Unit 3 未执行实网核对、登录、真实账号写入、App 启动或截图；离线场景与交接见 [LiveUIHandoff](LiveUIHandoff.md)。

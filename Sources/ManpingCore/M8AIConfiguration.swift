@@ -27,14 +27,28 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
   case ollama = "ollama"
   case mistral = "mistral"
   case perplexity = "perplexity"
+  case minimax = "minimax"
+  case xiaomiMimo = "xiaomi_mimo"
+  case opencodeZen = "opencode_zen"
+  case lmStudio = "lm_studio"
+  case minimaxPlan = "minimax_plan"
+  case mimoTokenPlan = "mimo_token_plan"
+  case opencodeGo = "opencode_go"
   /// Mac addition: "Sign in with ChatGPT" plan usage (OAuth, not an API key).
   case chatGPTPlan = "chatgpt_plan"
   /// Mac addition: Apple's on-device model (Apple Intelligence), no key or network.
   case appleLocal = "apple_local"
-  /// The 22 providers registered by the fixed upstream UI, in source order.
+  /// Upstream API providers followed by Mac API/plan additions; excludes dedicated local/OAuth cards.
   public static var sourceProviders: [AIProvider] { allCases.filter { $0 != .chatGPTPlan && $0 != .appleLocal } }
   public var title: String {
     switch self {
+    case .minimax: "MiniMax"
+    case .xiaomiMimo: "小米 MiMo"
+    case .opencodeZen: "OpenCode Zen"
+    case .lmStudio: "LM Studio"
+    case .minimaxPlan: "MiniMax M Plan"
+    case .mimoTokenPlan: "小米 MiMo Token Plan"
+    case .opencodeGo: "OpenCode Go"
     case .openAI: "OpenAI"
     case .azureOpenAI: "Azure OpenAI"
     case .azureAI: "Azure AI"
@@ -63,6 +77,12 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
   }
   public var defaultEndpoint: String? {
     switch self {
+    case .minimax, .minimaxPlan: "https://api.minimax.io/v1"
+    case .xiaomiMimo: "https://api.xiaomimimo.com/v1"
+    case .opencodeZen: "https://opencode.ai/inference/v1"
+    case .opencodeGo: "https://opencode.ai/inference/go/v1"
+    case .lmStudio: "http://localhost:1234/v1"
+    case .mimoTokenPlan: "https://token-plan-cn.xiaomimimo.com/v1"
     case .openAI: "https://api.openai.com/v1"
     case .azureOpenAI: nil
     case .azureAI: nil
@@ -84,20 +104,23 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
     case .groq: "https://api.groq.com/openai/v1"
     case .ollama: "http://localhost:11434"
     case .mistral: "https://api.mistral.ai/v1"
-    case .perplexity: "https://api.perplexity.ai"
+    case .perplexity: "https://api.perplexity.ai/router/v1"
     case .chatGPTPlan: "https://api.openai.com/v1"
     case .appleLocal: "on-device"
     }
   }
-  public var supportsEndpoint: Bool { [.openAI, .azureOpenAI, .azureAI, .anthropic, .gemini, .ollama].contains(self) }
+  public var supportsEndpoint: Bool { self != .chatGPTPlan && self != .appleLocal }
+  public var needsKey: Bool { ![.ollama, .lmStudio, .appleLocal].contains(self) }
+  public var subscriptionRisk: Bool { [.minimaxPlan, .mimoTokenPlan, .opencodeGo].contains(self) }
   public var requiresCustomModels: Bool { predefinedModels.isEmpty }
-  /// Exact AgentKernel 0.0.8-preview5 GetPredefinedModels; these are source-parity choices, not a live catalogue.
+  /// Curated starting choices; discovery provides the current account-specific catalogue.
   /// Predefined models carry their known context and output limits.
   public var predefinedModels: [AIModel] { basePredefinedModels.map(\.withKnownCapacity) }
   private var basePredefinedModels: [AIModel] {
     switch self {
     case .openAI:
       [
+        AIModel(id: "gpt-6-astra", name: "GPT-6 Astra", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-5", name: "GPT-5", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-5-mini", name: "GPT-5 mini", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-5-nano", name: "GPT-5 nano", toolSupport: true, visionSupport: true),
@@ -105,13 +128,11 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
         AIModel(id: "gpt-4.1", name: "GPT-4.1", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-4o", name: "GPT-4o", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-4o-mini", name: "GPT-4o Mini", toolSupport: true, visionSupport: true),
-        AIModel(id: "gpt-4.5-preview", name: "GPT-4.5 Preview", toolSupport: true, visionSupport: true),
         AIModel(id: "o4-mini", name: "O4 Mini", toolSupport: true, visionSupport: true),
         AIModel(id: "o3", name: "O3", toolSupport: true, visionSupport: true),
         AIModel(id: "o3-mini", name: "O3 Mini", toolSupport: true),
         AIModel(id: "o1", name: "O1", toolSupport: true, visionSupport: true),
         AIModel(id: "o1-mini", name: "O1 Mini", toolSupport: true, visionSupport: true),
-        AIModel(id: "o1-preview", name: "O1 Preview", toolSupport: true, visionSupport: true),
         AIModel(id: "gpt-4", name: "GPT-4", toolSupport: true),
         AIModel(id: "gpt-3.5-turbo", name: "GPT-3.5 Turbo"),
       ]
@@ -126,12 +147,10 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
         AIModel(id: "grok-4-0709", name: "Grok 4", toolSupport: true, visionSupport: true),
         AIModel(id: "grok-3", name: "Grok 3", toolSupport: true),
         AIModel(id: "grok-3-mini", name: "Grok 3 Mini", toolSupport: true),
-        AIModel(id: "grok-2-latest", name: "Grok 2", toolSupport: true),
-        AIModel(id: "grok-2-vision", name: "Grok 2 Vision", toolSupport: true, visionSupport: true),
-        AIModel(id: "grok-beta", name: "Grok Beta", toolSupport: true),
       ]
     case .zhiPu:
       [
+        AIModel(id: "glm-5.3", name: "GLM-5.3", toolSupport: true),
         AIModel(id: "glm-4.6", name: "GLM-4.6", toolSupport: true),
         AIModel(id: "glm-4.5", name: "GLM-4.5", toolSupport: true),
         AIModel(id: "glm-z1-air", name: "GLM-Z1-Air"),
@@ -165,6 +184,7 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
       ]
     case .moonshot:
       [
+        AIModel(id: "kimi-k3", name: "Kimi K3"),
         AIModel(id: "kimi-k2-turbo-preview", name: "Kimi K2 Turbo Preview"),
         AIModel(id: "kimi-latest", name: "Kimi Latest"),
         AIModel(id: "moonshot-v1-8k", name: "Moonshot V1 8K"),
@@ -174,18 +194,14 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
       ]
     case .gemini:
       [
+        AIModel(id: "gemini-3.8-flash", name: "Gemini 3.8 Flash", toolSupport: true, visionSupport: true),
         AIModel(id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", toolSupport: true, visionSupport: true),
         AIModel(id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", toolSupport: true, visionSupport: true),
-        AIModel(id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", toolSupport: true, visionSupport: true),
-        AIModel(id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", toolSupport: true, visionSupport: true),
-        AIModel(id: "gemini-1.5-flash-8b", name: "Gemini 1.5 Flash-8B", toolSupport: true, visionSupport: true),
-        AIModel(id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", toolSupport: true, visionSupport: true),
       ]
     case .deepSeek:
       [
-        AIModel(id: "deepseek-chat", name: "DeepSeek Chat"),
-        AIModel(id: "deepseek-coder", name: "DeepSeek Coder"),
-        AIModel(id: "deepseek-reasoner", name: "DeepSeek Reasoner"),
+        AIModel(id: "deepseek-flash", name: "DeepSeek Flash"),
+        AIModel(id: "deepseek-v4-pro", name: "DeepSeek V4 Pro"),
       ]
     case .qwen:
       [
@@ -249,8 +265,6 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
     case .openRouter:
       [
         AIModel(id: "deepseek/deepseek-chat", name: "DeepSeek V3"),
-        AIModel(id: "qwen/qvq-72b-preview", name: "Qwen: QVQ 72B Preview"),
-        AIModel(id: "google/gemini-2.0-flash-thinking-exp:free", name: "Google: Gemini 2.0 Flash Thinking Experimental"),
         AIModel(id: "sao10k/l3.3-euryale-70b", name: "Sao10K: Llama 3.3 Euryale 70B"),
         AIModel(id: "openai/o1", name: "OpenAI: o1"),
       ]
@@ -262,11 +276,8 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
       ]
     case .groq:
       [
-        AIModel(id: "gemma2-9b-it", name: "Gemma2 9B"),
         AIModel(id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B"),
         AIModel(id: "llama-3.1-8b-instant", name: "Llama 3.1 8B"),
-        AIModel(id: "llama3-70b-8192", name: "Llama3 70B 8192"),
-        AIModel(id: "mixtral-8x7b-32768", name: "Mixtral 8x7B 32768"),
       ]
     case .ollama:
       []
@@ -280,12 +291,12 @@ public enum AIProvider: String, CaseIterable, Codable, Sendable, Identifiable {
         AIModel(id: "ministral-small-latest", name: "Ministral Small"),
         AIModel(id: "codestral-latest", name: "Codestral"),
       ]
-    case .perplexity:
-      [
-        AIModel(id: "llama-3.1-sonar-small-128k-online", name: "Llama 3.1 Sonar Small 128K Online"),
-        AIModel(id: "llama-3.1-sonar-large-128k-online", name: "Llama 3.1 Sonar Large 128K Online"),
-        AIModel(id: "llama-3.1-sonar-huge-128k-online", name: "Llama 3.1 Sonar Huge 128K Online"),
-      ]
+    case .minimax, .minimaxPlan:
+      [AIModel(id: "MiniMax-M3.1-Flash", name: "MiniMax M3.1 Flash", toolSupport: true)]
+    case .xiaomiMimo, .mimoTokenPlan:
+      ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed"].map { AIModel(id: $0, name: $0) }
+    case .opencodeZen, .opencodeGo, .lmStudio, .perplexity:
+      []
     case .chatGPTPlan:
       // Account-specific list fetched from GET /v1/models after sign-in.
       []
@@ -304,14 +315,16 @@ public struct AIModel: Codable, Equatable, Sendable, Identifiable {
   public var contextTokens: Int?
   /// The model's own output limit in tokens; nil means unknown.
   public var maxOutputTokens: Int?
+  /// Capability names advertised by the discovery API; nil means unknown.
+  public var capabilities: [String]?
   public init(id: String, name: String, toolSupport: Bool = false, visionSupport: Bool = false,
-    contextTokens: Int? = nil, maxOutputTokens: Int? = nil) {
+    contextTokens: Int? = nil, maxOutputTokens: Int? = nil, capabilities: [String]? = nil) {
     self.id = id; self.name = name; self.toolSupport = toolSupport; self.visionSupport = visionSupport
-    self.contextTokens = contextTokens; self.maxOutputTokens = maxOutputTokens
+    self.contextTokens = contextTokens; self.maxOutputTokens = maxOutputTokens; self.capabilities = capabilities
   }
   enum CodingKeys: String, CodingKey {
     case id, name, toolSupport = "tool_support", visionSupport = "vision_support"
-    case contextTokens = "mac_context_tokens", maxOutputTokens = "mac_max_output_tokens"
+    case contextTokens = "mac_context_tokens", maxOutputTokens = "mac_max_output_tokens", capabilities = "mac_capabilities"
   }
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -321,6 +334,7 @@ public struct AIModel: Codable, Equatable, Sendable, Identifiable {
     visionSupport = try container.decodeIfPresent(Bool.self, forKey: .visionSupport) ?? false
     contextTokens = try container.decodeIfPresent(Int.self, forKey: .contextTokens).flatMap { $0 > 0 ? $0 : nil }
     maxOutputTokens = try container.decodeIfPresent(Int.self, forKey: .maxOutputTokens).flatMap { $0 > 0 ? $0 : nil }
+    capabilities = try container.decodeIfPresent([String].self, forKey: .capabilities)
   }
   public func encode(to encoder: any Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
@@ -328,6 +342,7 @@ public struct AIModel: Codable, Equatable, Sendable, Identifiable {
     try container.encode(toolSupport, forKey: .toolSupport); try container.encode(visionSupport, forKey: .visionSupport)
     try container.encodeIfPresent(contextTokens, forKey: .contextTokens)
     try container.encodeIfPresent(maxOutputTokens, forKey: .maxOutputTokens)
+    try container.encodeIfPresent(capabilities, forKey: .capabilities)
   }
   /// This model with the known capacity filled in where none was configured.
   public var withKnownCapacity: AIModel {
@@ -344,6 +359,10 @@ public struct AIModel: Codable, Equatable, Sendable, Identifiable {
 public struct AIProviderConfiguration: Codable, Sendable, Equatable {
   public var endpoint: String?
   public var models: [AIModel]
+  public var fetchedModels: [AIModel] = []
+  public var modelsFetchedAt: Date?
+  /// Discovery data is valid only for the destination that returned it.
+  public var fetchedModelsEndpoint: String?
   public var organization: String?
   public var useCodestral: Bool
   public var apiVersion: String?
@@ -360,6 +379,7 @@ public struct AIProviderConfiguration: Codable, Sendable, Equatable {
     credentialVersion = nil
   }
   enum CodingKeys: String, CodingKey {
+    case fetchedModels, modelsFetchedAt, fetchedModelsEndpoint
     case endpoint, models, organization, useCodestral = "use_codestral", apiVersion = "api_version"
     case keyConfigured = "mac_key_configured", secretConfigured = "mac_secret_configured", codestralKeyConfigured = "mac_codestral_key_configured"
     case credentialVersion = "mac_credential_version"
@@ -368,6 +388,9 @@ public struct AIProviderConfiguration: Codable, Sendable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     endpoint = try container.decodeIfPresent(String.self, forKey: .endpoint)
     models = try container.decodeIfPresent([AIModel].self, forKey: .models) ?? []
+    fetchedModels = try container.decodeIfPresent([AIModel].self, forKey: .fetchedModels) ?? []
+    modelsFetchedAt = try container.decodeIfPresent(Date.self, forKey: .modelsFetchedAt)
+    fetchedModelsEndpoint = try container.decodeIfPresent(String.self, forKey: .fetchedModelsEndpoint)
     organization = try container.decodeIfPresent(String.self, forKey: .organization)
     useCodestral = try container.decodeIfPresent(Bool.self, forKey: .useCodestral) ?? false
     apiVersion = try container.decodeIfPresent(String.self, forKey: .apiVersion)
@@ -379,14 +402,27 @@ public struct AIProviderConfiguration: Codable, Sendable, Equatable {
   public func isConfigured(for provider: AIProvider) -> Bool {
     if provider == .chatGPTPlan { return keyConfigured && !models.isEmpty }
     if provider == .appleLocal { return AppleLocalModel.isAvailable }
-    let hasCredentials = provider == .ollama || (provider == .mistral && useCodestral ? codestralKeyConfigured : keyConfigured)
+    let hasCredentials = !provider.needsKey || (provider == .mistral && useCodestral ? codestralKeyConfigured : keyConfigured)
     return hasCredentials && (provider != .ernie || secretConfigured)
       && !availableModels(for: provider).isEmpty
       && (![AIProvider.azureOpenAI, .azureAI].contains(provider) || !(endpoint ?? "").isEmpty)
   }
   public func availableModels(for provider: AIProvider) -> [AIModel] {
-    var ids = Set<String>()
-    return (provider.predefinedModels + models).filter { ids.insert($0.id).inserted }
+    var result: [AIModel] = []
+    let discovered = provider != .azureOpenAI && fetchedModelsEndpoint == (endpoint ?? provider.defaultEndpoint) ? fetchedModels : []
+    for model in provider.predefinedModels + discovered + models {
+      if let index = result.firstIndex(where: { $0.id == model.id }) {
+        let previous = result[index]
+        var merged = model
+        merged.contextTokens = model.contextTokens ?? previous.contextTokens
+        merged.maxOutputTokens = model.maxOutputTokens ?? previous.maxOutputTokens
+        merged.capabilities = model.capabilities ?? previous.capabilities
+        merged.toolSupport = model.toolSupport || previous.toolSupport
+        merged.visionSupport = model.visionSupport || previous.visionSupport
+        result[index] = merged
+      } else { result.append(model) }
+    }
+    return result
   }
 }
 
@@ -495,6 +531,16 @@ public actor AIConfigurationStore {
     }
   }
   public func secrets(for provider: AIProvider) throws -> AIProviderSecrets? { try credentials.load(provider) }
+  /// Discovery may run before a model exists, but never bypasses destination binding.
+  public func discoverySecrets(for provider: AIProvider) throws -> AIProviderSecrets {
+    try load()
+    let secret = try credentials.load(provider) ?? AIProviderSecrets(key: "")
+    if !secret.key.isEmpty || !(secret.codestralKey ?? "").isEmpty {
+      guard !quarantined.contains(provider), let config = configurations[provider], config.credentialVersion != nil,
+        secret.configurationBinding == Self.binding(config, provider: provider) else { throw AIConfigurationError.credentialsChanged }
+    }
+    return secret
+  }
   public func snapshot(for provider: AIProvider) async throws -> AIConfigurationSnapshot {
     try load()
     guard !quarantined.contains(provider) else { throw AIConfigurationError.credentialsChanged }
@@ -513,10 +559,10 @@ public actor AIConfigurationStore {
         revision: revision)
     }
     let secrets = try credentials.load(provider) ?? AIProviderSecrets(key: "")
-    guard provider == .ollama || (configuration.credentialVersion != nil && secrets.configurationBinding == Self.binding(configuration, provider: provider)) else {
+    guard (!provider.needsKey && secrets.key.isEmpty) || (configuration.credentialVersion != nil && secrets.configurationBinding == Self.binding(configuration, provider: provider)) else {
       throw AIConfigurationError.credentialsChanged
     }
-    guard provider == .ollama || !(configuration.useCodestral && provider == .mistral ? secrets.codestralKey ?? "" : secrets.key).isEmpty,
+    guard !provider.needsKey || !(configuration.useCodestral && provider == .mistral ? secrets.codestralKey ?? "" : secrets.key).isEmpty,
       provider != .ernie || !(secrets.secret ?? "").isEmpty else { throw AIConfigurationError.missingCredentials }
     guard !configuration.availableModels(for: provider).isEmpty else { throw AIConfigurationError.invalidConfiguration }
     return AIConfigurationSnapshot(provider: provider, configuration: configuration, secrets: secrets, revision: revision)
@@ -564,6 +610,16 @@ public actor AIConfigurationStore {
       throw AIConfigurationError.persistence
     }
     configurations = next; quarantined.remove(provider); changed()
+  }
+  public func saveFetchedModels(provider: AIProvider, models: [AIModel], endpoint: String, at date: Date = Date()) throws {
+    try load()
+    var configuration = configurations[provider] ?? AIProviderConfiguration()
+    guard endpoint == (configuration.endpoint ?? provider.defaultEndpoint) else { throw AIConfigurationError.credentialsChanged }
+    configuration.fetchedModels = models; configuration.modelsFetchedAt = date; configuration.fetchedModelsEndpoint = endpoint
+    configuration = try Self.validated(configuration, provider: provider)
+    var next = configurations; next[provider] = configuration
+    do { try persist(next) } catch { throw AIConfigurationError.persistence }
+    configurations = next; changed()
   }
   /// Records whether the ChatGPT plan is signed in and the account's model list (public, non-secret).
   public func setChatGPTPlan(signedIn: Bool, models: [AIModel]) throws {
@@ -617,7 +673,9 @@ public actor AIConfigurationStore {
   }
   public static func encodePublicConfiguration(_ values: [AIProvider: AIProviderConfiguration]) throws -> Data {
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    return try encoder.encode(Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) }))
+    let data = try encoder.encode(Dictionary(uniqueKeysWithValues: values.map { ($0.key.rawValue, $0.value) }))
+    guard data.count <= 2 * 1024 * 1024 else { throw AIConfigurationError.invalidConfiguration }
+    return data
   }
   public static func decodePublicConfiguration(_ data: Data) throws -> [AIProvider: AIProviderConfiguration] {
     guard data.count <= 2 * 1024 * 1024,
@@ -644,6 +702,17 @@ public actor AIConfigurationStore {
   }
   private static func validated(_ configuration: AIProviderConfiguration, provider: AIProvider) throws -> AIProviderConfiguration {
     var result = configuration
+    result.endpoint = trimmed(result.endpoint)
+    if result.fetchedModelsEndpoint != (result.endpoint ?? provider.defaultEndpoint) {
+      result.fetchedModels = []; result.modelsFetchedAt = nil; result.fetchedModelsEndpoint = nil
+    }
+    guard result.fetchedModels.count <= 1000 else { throw AIConfigurationError.invalidConfiguration }
+    // Apply the same identifier/capacity bounds to non-secret discovery metadata.
+    if !result.fetchedModels.isEmpty {
+      var check = AIProviderConfiguration(models: result.fetchedModels)
+      check.endpoint = result.endpoint
+      result.fetchedModels = try validated(check, provider: provider).models
+    }
     result.endpoint = trimmed(result.endpoint); result.organization = trimmed(result.organization); result.apiVersion = trimmed(result.apiVersion)
     if let endpoint = result.endpoint {
       guard endpoint.utf8.count <= 2048, let url = URLComponents(string: endpoint), let host = url.host,
@@ -664,6 +733,9 @@ public actor AIConfigurationStore {
         throw AIConfigurationError.invalidConfiguration
       }
       if result.models[index].name.isEmpty { result.models[index].name = model.id }
+      if let capabilities = model.capabilities {
+        guard capabilities.count <= 100, capabilities.allSatisfy({ $0.utf8.count <= 512 && !$0.unicodeScalars.contains(where: { $0.value < 32 }) }) else { throw AIConfigurationError.invalidConfiguration }
+      }
       // Capacity is optional; an implausible value is a configuration error, not a silent clamp.
       if let context = model.contextTokens, !(1_024...20_000_000).contains(context) { throw AIConfigurationError.invalidConfiguration }
       if let output = model.maxOutputTokens, !(1...2_000_000).contains(output) { throw AIConfigurationError.invalidConfiguration }

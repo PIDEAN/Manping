@@ -14,15 +14,25 @@ struct M8AIProviderDraft {
   var codestralKey = ""
   var newModelID = ""
   var newModelName = ""
+  var newContextTokens = ""
+  var newMaxOutputTokens = ""
+  var fetchedModels: [AIModel] = []
+  var modelsFetchedAt: Date?
+  var fetchedModelsEndpoint: String?
   init(configuration: AIProviderConfiguration? = nil) {
     endpoint = configuration?.endpoint ?? ""; organization = configuration?.organization ?? ""
     apiVersion = configuration?.apiVersion ?? ""; useCodestral = configuration?.useCodestral ?? false
     models = configuration?.models ?? []
+    fetchedModels = configuration?.fetchedModels ?? []; modelsFetchedAt = configuration?.modelsFetchedAt
+    fetchedModelsEndpoint = configuration?.fetchedModelsEndpoint
   }
   var configuration: AIProviderConfiguration {
-    AIProviderConfiguration(endpoint: endpoint.isEmpty ? nil : endpoint, models: models,
+    var value = AIProviderConfiguration(endpoint: endpoint.isEmpty ? nil : endpoint, models: models,
       organization: organization.isEmpty ? nil : organization, useCodestral: useCodestral,
       apiVersion: apiVersion.isEmpty ? nil : apiVersion)
+    value.fetchedModels = fetchedModels; value.modelsFetchedAt = modelsFetchedAt
+    value.fetchedModelsEndpoint = fetchedModelsEndpoint
+    return value
   }
 }
 
@@ -75,8 +85,8 @@ struct M8AIProviderDraft {
       configurations = try await store.allConfigurations()
       chatGPTAccount = account
       chatGPTStatus = models.isEmpty ? "已登录，但此账号当前没有可用模型。" : "已登录，可用模型 \(models.count) 个。"
-      if !UserDefaults.standard.bool(forKey: Self.welcomeShownKey) {
-        UserDefaults.standard.set(true, forKey: Self.welcomeShownKey); chatGPTWelcome = true
+      if !PerformanceEnvironment.defaults.bool(forKey: Self.welcomeShownKey) {
+        PerformanceEnvironment.defaults.set(true, forKey: Self.welcomeShownKey); chatGPTWelcome = true
       }
     } catch {
       chatGPTStatus = Task.isCancelled ? ChatGPTPlanError.cancelled.errorDescription : Self.chatGPTError(error)
@@ -132,7 +142,13 @@ struct M8AIProviderDraft {
   }
   func draft(_ provider: AIProvider) -> M8AIProviderDraft { drafts[provider] ?? M8AIProviderDraft(configuration: configurations[provider]) }
   func update(_ provider: AIProvider, _ edit: (inout M8AIProviderDraft) -> Void) {
-    var value = draft(provider); edit(&value); drafts[provider] = value
+    var value = draft(provider)
+    let previousEndpoint = value.endpoint
+    edit(&value)
+    if value.endpoint != previousEndpoint {
+      value.fetchedModels = []; value.modelsFetchedAt = nil; value.fetchedModelsEndpoint = nil
+    }
+    drafts[provider] = value
   }
   func resetDraft(_ provider: AIProvider) {
     drafts[provider] = M8AIProviderDraft(configuration: configurations[provider]); statuses[provider] = nil
@@ -144,11 +160,45 @@ struct M8AIProviderDraft {
     guard !id.isEmpty, id.utf8.count <= 512, !id.contains("\n"), !id.contains("\r"), !id.contains("\0") else {
       statuses[provider] = "请输入有效的模型标识。"; return
     }
-    guard !(provider.predefinedModels + value.models).contains(where: { $0.id == id }) else {
+    guard !value.models.contains(where: { $0.id == id }) else {
       statuses[provider] = "此模型已在列表中。"; return
     }
-    update(provider) { $0.models.append(AIModel(id: id, name: name.isEmpty ? id : name)); $0.newModelID = ""; $0.newModelName = "" }
+    let context = Int(value.newContextTokens), output = Int(value.newMaxOutputTokens)
+    guard (value.newContextTokens.isEmpty || context.map { (1_024...20_000_000).contains($0) } == true),
+      (value.newMaxOutputTokens.isEmpty || output.map { (1...2_000_000).contains($0) } == true) else {
+      statuses[provider] = "上下文须为 1024…20000000，最大输出须为 1…2000000 的整数。"; return
+    }
+    update(provider) {
+      $0.models.append(AIModel(id: id, name: name.isEmpty ? id : name, contextTokens: context, maxOutputTokens: output))
+      $0.newModelID = ""; $0.newModelName = ""; $0.newContextTokens = ""; $0.newMaxOutputTokens = ""
+    }
     statuses[provider] = "模型已添加到草稿，请保存配置。"
+  }
+  func fetchModels(_ provider: AIProvider) async {
+    guard busy.insert(provider).inserted else { return }
+    defer { busy.remove(provider) }
+    let value = draft(provider)
+    do {
+      // The key this request uses decides between draft and saved: with Codestral on, an edited
+      // Mistral key must not hide the saved Codestral key (and the reverse).
+      let usesCodestral = provider == .mistral && value.useCodestral
+      let draftKey = usesCodestral ? value.codestralKey : value.key
+      var secrets = draftKey.isEmpty ? try await store.discoverySecrets(for: provider) : AIProviderSecrets(key: draftKey)
+      if usesCodestral, draftKey.isEmpty { secrets.key = secrets.codestralKey ?? "" }
+      let configuration = value.configuration
+      let endpoint = configuration.endpoint ?? provider.defaultEndpoint ?? ""
+      let models = try await AIModelListing().models(provider: provider, configuration: configuration, secrets: secrets)
+      let date = Date()
+      // Save discovery alone only when its destination matches saved configuration.
+      // Unsaved endpoint/key/model edits remain in the draft throughout this operation.
+      if endpoint == (configurations[provider]?.endpoint ?? provider.defaultEndpoint) {
+        try await store.saveFetchedModels(provider: provider, models: models, endpoint: endpoint, at: date)
+        configurations[provider] = try await store.configuration(for: provider)
+      }
+      update(provider) { $0.fetchedModels = models; $0.modelsFetchedAt = date; $0.fetchedModelsEndpoint = endpoint }
+      statuses[provider] = "连接成功，已获取 \(models.count) 个模型；未调用生成接口。自定义地址的结果请保存配置。"
+    } catch is CancellationError { statuses[provider] = "获取已取消。" }
+    catch { statuses[provider] = (error as? AIModelListingFailure)?.errorDescription ?? Self.safeError(error) }
   }
   func removeModel(_ provider: AIProvider, id: String) { update(provider) { $0.models.removeAll { $0.id == id } } }
   func save(_ provider: AIProvider) async {

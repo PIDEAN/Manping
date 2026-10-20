@@ -11,6 +11,7 @@ extension MacSettingGroup {
     case .general: "gearshape"
     case .playback: "play.rectangle"
     case .danmaku: "text.bubble"
+    case .live: "dot.radiowaves.left.and.right"
     case .network: "network"
     case .download: "arrow.down.circle"
     case .notifications: "bell.badge"
@@ -60,7 +61,7 @@ final class SettingsSelection: ObservableObject {
 
   private func makeWindow(model: AppModel) -> NSWindow {
     let root = SettingsView(model: model, settings: model.settingsModel, selection: selection, diagnosticTheme: diagnosticTheme)
-      .defaultAppStorage(PerformanceEnvironment.defaults)
+      .persistentAppStorage()
     let hosting = NSHostingController(rootView: root)
     hosting.sizingOptions = []
     let window = NSWindow(contentViewController: hosting)
@@ -79,7 +80,7 @@ final class SettingsSelection: ObservableObject {
     window.isRestorable = false
     window.tabbingMode = .disallowed
     window.center()
-    window.setFrameAutosaveName("SettingsWindow")
+    if !DebugUIFixtures.usesLiveSceneMemory { window.setFrameAutosaveName("SettingsWindow") }
     return window
   }
 }
@@ -191,7 +192,32 @@ private struct SettingsCategoryView: View {
             Section {
               leadingRows(section.title)
               ForEach(section.descriptors.filter { !MacSettingsCatalog.openModeKeys.contains($0.key) }) { descriptor in
-                SettingRow(settings: settings, descriptor: descriptor)
+                if descriptor.key == .livePaidConfirmThreshold {
+                  LabeledContent {
+                    HStack {
+                      TextField(
+                        "额外确认阈值",
+                        value: Binding(
+                          get: { settings.values.number(.livePaidConfirmThreshold) / 100 },
+                          set: { value in
+                            guard value.isFinite else { return }
+                            settings.set(
+                              .livePaidConfirmThreshold,
+                              .number(min(1_000_000_000, max(0, (value * 100).rounded()))))
+                          }), format: .number.precision(.fractionLength(0...2)), prompt: Text("100")
+                      ).labelsHidden().multilineTextAlignment(.trailing).frame(width: 80)
+                      Text("电池")
+                    }
+                  } label: {
+                    Text(descriptor.title)
+                  }
+                  .disabled(!settings.values.bool(.liveAllowPaidGifts))
+                } else {
+                  SettingRow(settings: settings, descriptor: descriptor)
+                    .disabled(
+                      group == .live && descriptor.section == "画面上的特效与横幅"
+                        && settings.values.bool(.livePureMode))
+                }
               }
               trailingRows(section.title)
             } header: {

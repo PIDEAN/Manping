@@ -5,11 +5,13 @@ import SwiftUI
 /// The upstream DownloadPage is empty; Mac task rows expose the native queue and recovery actions.
 struct M7DownloadsPage: View {
   @ObservedObject var model: AppModel
+  @ObservedObject var queue: DownloadCoordinator
+  init(model: AppModel) { self.model = model; queue = model.downloadQueue }
   @Environment(\.colorScheme) private var scheme
   @State private var filter = "全部"
   private let filters = ["全部", "进行中", "已完成", "待恢复"]
   private var records: [DownloadRecord] {
-    model.downloads.filter { record in
+    queue.records.filter { record in
       switch filter {
       case "进行中": return ["queued", "downloading", "merging"].contains(record.state)
       case "已完成": return record.state == "complete"

@@ -81,14 +81,14 @@ struct M3FollowersPage: View {
   }
 }
 
-private enum M3FollowSelection {
+@MainActor private enum M3FollowSelection {
   static func read(mid: Int64) -> Int64? {
     let key = "following.selectedGroup.\(mid)"
-    guard let value = UserDefaults.standard.object(forKey: key) as? NSNumber else { return nil }
+    guard let value = PerformanceEnvironment.defaults.object(forKey: key) as? NSNumber else { return nil }
     return value.int64Value
   }
   static func save(_ group: Int64, mid: Int64) {
-    UserDefaults.standard.set(group, forKey: "following.selectedGroup.\(mid)")
+    PerformanceEnvironment.defaults.set(group, forKey: "following.selectedGroup.\(mid)")
   }
 }
 

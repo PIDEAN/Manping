@@ -321,7 +321,7 @@ import SwiftUI
     guard loadedIdentity != nil, !isMutating, section != selected, valid(selected, folders: folders) else { return }
     section = selected; status = 2
     if let loadedIdentity, let mid = loadedIdentity.token?.mid {
-      UserDefaults.standard.set(selected.key, forKey: "m3FavoriteSection.\(mid)")
+      PerformanceEnvironment.defaults.set(selected.key, forKey: "m3FavoriteSection.\(mid)")
     }
     await reloadEntries()
   }
@@ -483,7 +483,7 @@ import SwiftUI
     return true
   }
   private func restoredSection(identity: AuthSnapshot) -> Section {
-    guard let mid = identity.token?.mid, let key = UserDefaults.standard.string(forKey: "m3FavoriteSection.\(mid)") else { return .anime }
+    guard let mid = identity.token?.mid, let key = PerformanceEnvironment.defaults.string(forKey: "m3FavoriteSection.\(mid)") else { return .anime }
     if key == "cinema" { return .cinema }
     if key == "anime" { return .anime }
     if key.hasPrefix("folder:"), let id = Int64(key.dropFirst(7)), id > 0 { return .folder(id) }

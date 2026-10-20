@@ -12,10 +12,10 @@ struct PinnedUser: Codable, Identifiable, Equatable {
 @MainActor final class PinnedUserStore: ObservableObject {
   static let shared = PinnedUserStore()
   @Published private(set) var users: [PinnedUser] = []
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
   private let key = "pinnedUsers.v1"
 
-  init(defaults: UserDefaults = .standard) {
+  init(defaults: any PreferencesStore = PerformanceEnvironment.defaults) {
     self.defaults = defaults
     if let data = defaults.data(forKey: key),
       let decoded = try? JSONDecoder().decode([PinnedUser].self, from: data) {

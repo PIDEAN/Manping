@@ -28,8 +28,7 @@ struct M3SearchChoice: Identifiable, Equatable {
   private var hotContext: AuthSnapshot?
   init(model: AppModel) {
     service = model.service
-    let installation = UserDefaults.standard.string(forKey: "libraryInstallationID") ?? UUID().uuidString
-    UserDefaults.standard.set(installation, forKey: "libraryInstallationID")
+    let installation = InstallationIdentity.library
     if let transport = model.libraryRPCTransport {
       rpc = LibraryRPCService(auth: model.service, transport: transport, installationID: installation)
     } else { rpc = try? LibraryRPCService(auth: model.service, installationID: installation) }

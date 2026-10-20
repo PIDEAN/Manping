@@ -1,0 +1,5 @@
+{"route": "giftConfig", "code": 0, "data_keys": ["combo_resources", "guard_resources", "list", "naming_gift", "send_disable_msg"], "list_counts": {"list": 966, "combo_resources": 4, "guard_resources": 3}}
+{"route": "roomGiftList", "code": 0, "data_keys": ["gift_config", "gift_data", "global_config"], "list_counts": {}}
+{"route": "dmConfig", "code": 0, "data_keys": ["group", "mode"], "list_counts": {"group": 3, "mode": 3}}
+{"route": "superChatList", "code": -1, "data_keys": ["list"], "list_counts": {}}
+{"route": "lotteryInfo", "code": -352, "data_keys": [], "list_counts": {}}

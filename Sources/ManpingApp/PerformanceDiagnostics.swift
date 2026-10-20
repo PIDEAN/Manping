@@ -164,16 +164,44 @@ enum PerformanceOptions {
   enum Failure: Error { case arguments, timedOut, playbackUnavailable, countersUnavailable }
 }
 
+/// Per-installation device identifiers sent with RPC requests: one key each, created once, in
+/// the same defaults domain as every other preference (so diagnostics and fixtures stay isolated).
+@MainActor enum InstallationIdentity {
+  static var rpc: String { value("Manping.RPCInstallationID") { UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased() } }
+  static var library: String { value("libraryInstallationID") { UUID().uuidString } }
+  /// Written only when missing: a write on every read would re-render views observing defaults.
+  private static func value(_ key: String, make: () -> String) -> String {
+    if let saved = PerformanceEnvironment.defaults.string(forKey: key), !saved.isEmpty { return saved }
+    let created = make()
+    PerformanceEnvironment.defaults.set(created, forKey: key)
+    return created
+  }
+}
+
 @MainActor enum PerformanceEnvironment {
   static let suite = "io.github.pidean.manping.performance.\(ProcessInfo.processInfo.processIdentifier)"
-  static let defaults: UserDefaults = {
-    guard PerformanceOptions.requested else { return .standard }
+  static let defaults: any PreferencesStore = {
+    #if DEBUG
+      // Protect malformed scene arguments too: validation happens after AppModel construction.
+      if DebugUIFixtures.usesLiveSceneMemory {
+        if let scene = DebugUIFixtures.liveScene,
+          let presentation = LiveFixturePresentation(scene: scene)
+        {
+          return presentation.makeDefaults(sidebarKey: PlayerPreferences.sidebarHiddenKey)
+        }
+        return MemoryPreferences()
+      }
+    #endif
+    // The Debug app's bundle identifier is already io.github.pidean.manping.debug, so .standard
+    // is its own domain; a suite named after the app's own identifier is nil.
+    guard PerformanceOptions.requested else { return UserDefaults.standard }
     let defaults = UserDefaults(suiteName: suite)!
     defaults.removePersistentDomain(forName: suite)
     return defaults
   }()
+  static var persistentDefaults: UserDefaults? { defaults as? UserDefaults }
   static func cleanUp() {
-    if PerformanceOptions.requested { defaults.removePersistentDomain(forName: suite) }
+    if PerformanceOptions.requested { persistentDefaults?.removePersistentDomain(forName: suite) }
   }
 }
 

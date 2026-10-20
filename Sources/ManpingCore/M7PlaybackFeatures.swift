@@ -20,6 +20,19 @@ public struct PlaybackChapter: Identifiable, Equatable, Sendable {
   }
 }
 
+extension PlaybackChapter {
+  /// Bilibili's own chapters (the player's `view_points`) when the video has them; otherwise the
+  /// chapters embedded in the media, which Bilibili streams rarely carry.
+  public static func preferred(viewPoints: [AIViewPoint], engine: [PlaybackChapter]) -> [PlaybackChapter] {
+    guard !viewPoints.isEmpty else { return engine }
+    return viewPoints.enumerated().map { PlaybackChapter(index: $0.offset, title: $0.element.title, time: $0.element.start) }
+  }
+  /// The chapter playing at `time` (nil before the first one starts).
+  public static func current(_ chapters: [PlaybackChapter], at time: Double) -> PlaybackChapter? {
+    chapters.last { $0.time <= time }
+  }
+}
+
 public struct VideoDanmakuDraft: Equatable, Sendable {
   public let aid: Int64
   public let cid: Int64

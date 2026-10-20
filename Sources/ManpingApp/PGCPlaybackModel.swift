@@ -86,7 +86,7 @@ import VideoToolbox
         let result = try await service.pgcDetails(selection, expectedIdentity: snapshot)
         try await check(revision, expected: snapshot)
         details = result
-        let restoreHistory = UserDefaults.standard.object(forKey: "autoLoadHistory") as? Bool ?? true
+        let restoreHistory = PerformanceEnvironment.defaults.object(forKey: "autoLoadHistory") as? Bool ?? true
         guard let initial = result.initialEpisode(requested: selection.episodeID, restoreHistory: restoreHistory) else {
           throw BiliError.invalidResponse(result.warning ?? "该剧集没有可播放的分集。")
         }

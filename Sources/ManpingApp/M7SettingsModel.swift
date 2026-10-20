@@ -8,11 +8,13 @@ import SwiftUI
   @Published private(set) var clearing = false
   @Published private(set) var status: String?
   let capabilities: Set<MacSettingKey>
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
   private let apply: (MacSettings) -> Void
   private let clearImages: (() async throws -> Void)?
   private let screenshot: (() -> Void)?
-  init(defaults: UserDefaults = .standard, capabilities: Set<MacSettingKey>,
+  init(
+    defaults: any PreferencesStore = PerformanceEnvironment.defaults,
+    capabilities: Set<MacSettingKey>,
     apply: @escaping (MacSettings) -> Void,
     clearImageCache: (() async throws -> Void)? = nil, takeScreenshot: (() -> Void)? = nil) {
     self.defaults = defaults; self.capabilities = capabilities

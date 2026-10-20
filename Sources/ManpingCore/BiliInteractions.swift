@@ -190,8 +190,13 @@ extension BiliService {
     _ = try await appREST(.favorite, fields: fields, expectedIdentity: expectedIdentity)
   }
   public func setFollowing(mid: Int64, following: Bool, expectedIdentity: AuthSnapshot? = nil) async throws {
+    try await setFollowing(mid: mid, following: following, expectedIdentity: expectedIdentity, beforeSend: {})
+  }
+  func setFollowing(mid: Int64, following: Bool, expectedIdentity: AuthSnapshot?,
+                    beforeSend: @escaping @Sendable () throws -> Void) async throws {
     try positiveIdentifier(mid)
-    _ = try await appREST(.following, fields: ["fid": String(mid), "act": following ? "1" : "2"], expectedIdentity: expectedIdentity)
+    _ = try await appREST(.following, fields: ["fid": String(mid), "act": following ? "1" : "2"],
+      expectedIdentity: expectedIdentity, beforeSend: beforeSend)
   }
   private func positiveIdentifier(_ value: Int64) throws {
     guard value > 0 else { throw BiliError.invalidResponse("Invalid identifier") }

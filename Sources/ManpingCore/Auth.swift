@@ -38,6 +38,10 @@ public struct AuthSnapshot: Sendable {
   public let identityRevision: UInt64
   public let state: AuthorizationState
   public let token: AppToken?
+  /// The same login and the same identity revision: results captured under `other` still apply.
+  public func sameIdentity(as other: AuthSnapshot) -> Bool {
+    epoch == other.epoch && identityRevision == other.identityRevision
+  }
   // Token headers only; BiliRPCMetadata builds the binary gRPC headers from this same snapshot.
   public var tokenHeaders: [String: String] {
     guard let token, state == .appAuthorized else { return [:] }

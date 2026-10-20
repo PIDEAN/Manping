@@ -7,19 +7,37 @@ struct LivePlayerPage: View {
   @ObservedObject var model: AppModel
   @ObservedObject var live: LivePlaybackModel
   @ObservedObject private var player: PlayerModel
+  @ObservedObject private var interaction: LiveInteractionModel
   @StateObject private var chrome = PlayerChromeState()
   @State private var danmakuSettingsShown = false
   @State private var stageWidth: CGFloat = 900
-  @AppStorage(PlayerPreferences.sidebarHiddenKey) private var sidebarHidden = false
+  @AppStorage(PlayerPreferences.sidebarHiddenKey) private var storedSidebarHidden = false
+  @State private var fixtureSidebarHidden = DebugUIFixtures.livePresentation?.sidebarHidden ?? false
+  private var sidebarHidden: Bool {
+    get { DebugUIFixtures.usesLiveSceneMemory ? fixtureSidebarHidden : storedSidebarHidden }
+    nonmutating set {
+      if DebugUIFixtures.usesLiveSceneMemory {
+        fixtureSidebarHidden = newValue
+        PerformanceEnvironment.defaults.set(newValue, forKey: PlayerPreferences.sidebarHiddenKey)
+      } else {
+        storedSidebarHidden = newValue
+      }
+    }
+  }
+  private var sidebarBinding: Binding<Bool> {
+    Binding(get: { sidebarHidden }, set: { sidebarHidden = $0 })
+  }
   /// Full screen: the picture fills the window; the right column's own setting is kept.
   @Environment(\.immersivePlayback) private var immersive
   @State private var volumeShown = false
   @State private var tab: Tab = .chat
+  @State private var fixtureApplied = false
   @Environment(\.colorScheme) private var scheme
 
   init(model: AppModel, live: LivePlaybackModel) {
     self.model = model; self.live = live
     _player = ObservedObject(wrappedValue: live.player)
+    _interaction = ObservedObject(wrappedValue: live.ui)
   }
 
   private enum Tab: String { case chat = "弹幕", info = "主播" }
@@ -30,6 +48,29 @@ struct LivePlayerPage: View {
     } panel: {
       sidePanel
     }
+    .modifier(LiveInteractionHost(model: model, interaction: interaction))
+    .onAppear {
+      #if DEBUG
+        if live.usesFixtures, !fixtureApplied, let scene = DebugUIFixtures.liveScene {
+          fixtureApplied = true
+          sidebarHidden = DebugUIFixtures.livePresentation?.sidebarHidden ?? false
+          if scene == "anchor-tab" { tab = .info }
+          if ["fullscreen", "fullscreen-unknown"].contains(scene) {
+            model.togglePlayerFullScreen()
+          }
+        }
+      #endif
+      updateComposerVisibility()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+      if DebugUIFixtures.usesLiveSceneMemory {
+        fixtureSidebarHidden = PerformanceEnvironment.defaults.bool(
+          forKey: PlayerPreferences.sidebarHiddenKey)
+      }
+    }
+    .onChange(of: sidebarHidden) { _, _ in updateComposerVisibility() }
+    .onChange(of: immersive) { _, _ in updateComposerVisibility() }
+    .onChange(of: tab) { _, _ in updateComposerVisibility() }
     // The one toolbar above the page (the main window's, or the standalone window's).
     // A room that never loaded has no known state; the error card speaks for it.
     .pageToolbar(title: live.room?.title ?? "直播间", subtitle: audienceSubtitle,
@@ -40,7 +81,7 @@ struct LivePlayerPage: View {
             .help("在浏览器中打开").accessibilityLabel("在浏览器中打开")
           ToolbarShareButton(url: url)
         }
-        PlayerToolbarActions(model: model, sidebarHidden: $sidebarHidden, windowToggle: false)
+        PlayerToolbarActions(model: model, sidebarHidden: sidebarBinding, windowToggle: false)
       }
     }
   }
@@ -65,7 +106,16 @@ struct LivePlayerPage: View {
   }
 
   /// Paused or a popover open: the controls stay up.
-  private var controlsPinned: Bool { model.usesUIFixtures || player.paused || volumeShown || danmakuSettingsShown }
+  private var controlsPinned: Bool {
+    model.usesUIFixtures || player.paused || volumeShown || danmakuSettingsShown
+      || interaction.pinned
+  }
+  private func updateComposerVisibility() {
+    interaction.sidebarComposerVisible = !immersive && !sidebarHidden && tab == .chat
+  }
+  private var barInputVisible: Bool {
+    !model.compactPlayer && (immersive || sidebarHidden || tab == .info)
+  }
   private var controlsShown: Bool { chrome.visible || controlsPinned }
 
   private var media: some View {
@@ -83,6 +133,13 @@ struct LivePlayerPage: View {
             .foregroundStyle(.white).padding(.horizontal, 12).frame(height: 30)
             .environment(\.colorScheme, .dark).floatingGlassPanel(radius: Theme.Radius.lg, readingTint: .black.opacity(0.35))
             .padding(16).transition(.opacity)
+        }
+      }
+      .overlay { if !model.compactPlayer { LiveInteractionOverlay(interaction: interaction) } }
+      .overlay(alignment: .bottomTrailing) {
+        if barInputVisible {
+          LiveGiftResultCards(interaction: interaction).frame(width: min(360, stageWidth - 24))
+            .padding(.bottom, 96).padding(.trailing, 12)
         }
       }
       .overlay(alignment: .bottom) { controls.playerChromeFade(controlsShown) }
@@ -126,10 +183,38 @@ struct LivePlayerPage: View {
     return PlayerControlPanel(chrome: chrome) {
       PlayerBarRow(model: model, player: player, layout: layout, page: barPage,
         danmakuShown: $danmakuSettingsShown, networkShown: .constant(false), volumeShown: $volumeShown,
-        composeShown: .constant(false),
+        composeShown: $interaction.composeShown,
+        input: barInputVisible
+          ? {
+            AnyView(
+              HStack(spacing: 6) {
+                LiveComposer(
+                  interaction: interaction, settings: model.settingsModel,
+                  login: { model.showingLogin = true }, compact: true, giftModel: model
+                ).frame(width: 220)
+                if interaction.settings.liveEffective.giftMessages {
+                  Button {
+                    interaction.open(.gifts, from: "bar-gifts")
+                  } label: {
+                    Image(systemName: "gift")
+                  }
+                  .buttonStyle(PlayerControlButtonStyle(size: 28)).help("送礼物")
+                  .modifier(LivePanelPopover(panel: .gifts, anchor: "bar-gifts", model: model, interaction: interaction))
+                }
+                LiveLikeButton(interaction: interaction)
+              }.frame(width: 292))
+          } : nil,
+        externalComposePopover: true, inputWidth: 292,
         extraMenu: {
           AnyView(Group {
-            if let url = webURL { Button("在浏览器中打开") { NSWorkspace.shared.open(url) } }
+              if !model.compactPlayer {
+                Button("发弹幕") { interaction.requestCompose() }
+                if interaction.settings.liveEffective.giftMessages {
+                  Button("送礼物") { interaction.open(.gifts, from: nil) }
+                }
+                Button("点赞") { interaction.like() }
+              }
+              if let url = webURL { Button("在浏览器中打开") { NSWorkspace.shared.open(url) } }
           })
         }) {
         PlayerPlayButton(paused: player.paused) { player.togglePause() }
@@ -187,9 +272,18 @@ struct LivePlayerPage: View {
       Hairline()
       switch tab {
       case .chat:
-        LiveChatStatusRow(chat: live.chat, online: onlineCount, watched: live.watched, unavailable: chatUnavailable)
+        LiveChatStatusRow(
+          chat: live.chat, online: onlineCount, watched: live.watched, likes: interaction.roomLikes,
+          unavailable: chatUnavailable)
         Hairline()
-        LiveChatList(chat: live.chat, unavailable: chatUnavailable)
+        LiveSuperChatStrip(interaction: interaction)
+        LiveChatList(
+          chat: live.chat, unavailable: chatUnavailable, reply: { interaction.reply(to: $0) })
+        LiveGiftResultCards(interaction: interaction)
+        Hairline()
+        LiveComposer(
+          interaction: interaction, settings: model.settingsModel,
+          login: { model.showingLogin = true }, giftModel: model)
       case .info: ScrollView { information.padding(18).frame(maxWidth: .infinity, alignment: .topLeading) }
       }
     }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -200,7 +294,7 @@ struct LivePlayerPage: View {
     VStack(alignment: .leading, spacing: 18) {
       if let room = live.room {
         HStack(spacing: 10) {
-          Button { model.openOverlay(.userSpace(room.anchorID)) } label: {
+          Button { model.openSpaceKeepingPlayback(room.anchorID) } label: {
             CachedImage(url: room.anchorAvatar).frame(width: 40, height: 40).clipShape(Circle())
               .overlay(Circle().strokeBorder(anchorHovered ? Theme.accentText(scheme) : Color.clear, lineWidth: 2))
           }.buttonStyle(.plain).disabled(room.anchorID <= 0).help("进入 UP 主空间")
@@ -211,7 +305,7 @@ struct LivePlayerPage: View {
           }
           Spacer()
           if room.anchorID > 0 {
-            Button("空间") { model.openOverlay(.userSpace(room.anchorID)) }.buttonStyle(AppButtonStyle(size: .small))
+            Button("空间") { model.openSpaceKeepingPlayback(room.anchorID) }.buttonStyle(AppButtonStyle(size: .small))
           }
         }
         Text(room.title).font(.system(size: 16, weight: .bold)).fixedSize(horizontal: false, vertical: true)
@@ -337,6 +431,7 @@ private struct LiveChatStatusRow: View {
   @ObservedObject var chat: LiveChatModel
   let online: Int64?
   let watched: Int64?
+  let likes: Int64?
   var unavailable = false
   @Environment(\.colorScheme) private var scheme
   var body: some View {
@@ -349,10 +444,13 @@ private struct LiveChatStatusRow: View {
       .accessibilityElement(children: .combine)
   }
   private var summary: String {
-    var parts = [chat.connected ? "已连接" : unavailable ? "弹幕未连接" : "正在连接弹幕…"]
+    var parts: [String] = []
     if let online { parts.append("\(LivePlayerPage.people(online)) 在线") }
     if let watched { parts.append("\(LivePlayerPage.people(watched)) 看过") }
-    return parts.joined(separator: " · ")
+    if let likes { parts.append("\(LivePlayerPage.people(likes)) 点赞") }
+    return parts.isEmpty
+      ? (chat.connected ? "已连接" : unavailable ? "弹幕未连接" : "正在连接弹幕…")
+      : parts.joined(separator: " · ")
   }
 }
 
@@ -361,6 +459,7 @@ private struct LiveChatStatusRow: View {
 struct LiveChatList: View {
   @ObservedObject var chat: LiveChatModel
   var unavailable = false
+  var reply: (LiveDanmakuReply) -> Void = { _ in }
   @State private var position = ScrollPosition(edge: .bottom)
   @State private var atBottom = true
   /// Lines that arrived while the reader was away from the bottom.
@@ -426,29 +525,7 @@ struct LiveChatList: View {
       #endif
   }
 
-  @ViewBuilder private func lineView(_ line: LiveChatModel.Line) -> some View {
-    switch line.kind {
-    case .notice:
-      Text(line.text).font(Theme.Font.caption).foregroundStyle(Theme.secondaryText(scheme))
-        .multilineTextAlignment(.center).padding(.vertical, 2).frame(maxWidth: .infinity, alignment: .center)
-    case .superChat(let price):
-      VStack(alignment: .leading, spacing: 4) {
-        HStack {
-          Text("醒目留言 · \(line.user)").lineLimit(1)
-          Spacer(minLength: 8)
-          Text("¥\(price)").monospacedDigit()
-        }.font(Theme.Font.caption2.weight(.semibold)).foregroundStyle(Theme.warning(scheme))
-        Text(line.text).font(Theme.Font.body).foregroundStyle(Theme.text(scheme))
-          .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-      }.padding(.horizontal, 12).padding(.vertical, 10).frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.highlight.opacity(scheme == .dark ? 0.16 : 0.2), in: RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous).strokeBorder(Theme.highlight.opacity(0.45), lineWidth: 0.5))
-    case .gift:
-      Text(line.user.isEmpty ? line.text : line.user + " " + line.text)
-        .font(Theme.Font.caption).foregroundStyle(Theme.tertiaryText(scheme)).fixedSize(horizontal: false, vertical: true)
-    case .danmaku:
-      Text("\(Text(line.user).foregroundStyle(Theme.accentText(scheme)))\(Text("：").foregroundStyle(Theme.tertiaryText(scheme)))\(Text(line.text).foregroundStyle(Theme.text(scheme)))")
-        .font(Theme.Font.body).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+  private func lineView(_ line: LiveChatModel.Line) -> some View {
+    LiveRichChatRow(line: line, reply: reply)
     }
   }
-}

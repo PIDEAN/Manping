@@ -157,7 +157,7 @@ struct AILiveBackend: AIModelBackend {
     if descriptor.provider == .appleLocal { return AppleLocalModel.requestBudget() }
     // Current Claude models and other reasoning models spend thinking out of the output cap;
     // keep a 16K floor (still capped by the model's own limit).
-    let reasoning = (descriptor.provider == .anthropic && AIChatRequestPlanner.isCurrentClaude(descriptor.model.id))
+    let reasoning = (AIChatRequestPlanner.family(descriptor.provider, model: descriptor.model.id) == .anthropic && AIChatRequestPlanner.isCurrentClaude(descriptor.model.id))
       || AIModelCapacity.isReasoning(descriptor.model.id)
     let desired = reasoning ? max(desiredOutput, 16_000) : desiredOutput
     return descriptor.model.requestBudget(desiredOutput: desired)

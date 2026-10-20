@@ -120,7 +120,7 @@ RPC 四项修复及新增5个 fixture见 [RPC.md](RPC.md)。最终全量70 tests
 最终clean source C/Meson build、Swift70tests（2skipped/0fail）、release build、两个C fixtures的-Wall/-Wextra/-Werror、Python py_compile和限定diffcheck通过。release首次XCBuildData I/O/incomplete-target错误在隔离生成缓存后串行构建恢复；磁盘空间充足且SQLite完整性检查正常，保留失败log，不断言磁盘损坏。未改动Auth/RPC，未使用真实账号或联网视频，未commit/push/merge；真实账号联调由主agent另行记录。
 # 暂停时状态补记（2026-10-13）
 
-用户要求在安全节点停止以审查方向，开发／测试队列已经结束。完整恢复记忆与待审方向见根目录 [Ledger.md](../Ledger.md)。本文较早段落保留当时事实，不能作为最新全量状态。
+用户要求在安全节点停止以审查方向，开发／测试队列已经结束。本文较早段落保留当时事实，不能作为最新全量状态。
 
 最新封存 `dist/renderer/Manping.app` 的 signed executable SHA256 为 `1b15972c510761a69d21cbc20a0d5effe2ad325dbe71abd6753204d15dc25865`；[bundle](evidence/bundle-renderer-release.json) 确认44 dylib、46 Mach-O全部arm64／最终hash、strict signature、system PATH运行无Homebrew加载。Swift70tests／2skips／0fail；新renderer独立review尚未开始。
 

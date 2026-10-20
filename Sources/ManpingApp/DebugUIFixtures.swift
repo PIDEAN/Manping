@@ -18,6 +18,36 @@ enum DebugUIFixtures {
     return false
     #endif
   }
+  static var liveScene: String? {
+    #if DEBUG
+      let args = ProcessInfo.processInfo.arguments
+      guard enabled, let index = args.firstIndex(of: "--ui-live-scene"),
+        args.indices.contains(index + 1)
+      else { return nil }
+      return args[index + 1]
+    #else
+      return nil
+    #endif
+  }
+  static var usesLiveSceneMemory: Bool {
+    #if DEBUG
+      LiveFixturePresentation.requiresMemory(arguments: ProcessInfo.processInfo.arguments)
+    #else
+      false
+    #endif
+  }
+  static var livePresentation: LiveFixturePresentation? {
+    liveScene.flatMap { LiveFixturePresentation(scene: $0) }
+  }
+  static var liveIdentity: LiveContractFixture.Identity? {
+    let args = ProcessInfo.processInfo.arguments
+    guard let index = args.firstIndex(of: "--ui-live-scene"), args.indices.contains(index + 1) else { return nil }
+    switch args[index + 1] {
+    case "anonymous": return .anonymous
+    case "web-only": return .webOnly
+    default: return .appAuthorized
+    }
+  }
   static let episodic = enabled && ProcessInfo.processInfo.arguments.contains("--ui-episodic")
   static let bvid = "BV1fixture01"
   static let titles = [
@@ -44,19 +74,35 @@ enum DebugUIFixtures {
 struct DebugUICredentialStore: AuthCredentialStore {
   func save(_ cookies: [HTTPCookie]) {}
   func load() -> [HTTPCookie] {
-    [("SESSDATA", "debug-fixture-session"), ("bili_jct", "debug-fixture-csrf")].compactMap { name, value in
+    if let identity = DebugUIFixtures.liveIdentity { return LiveContractFixture.cookies(identity: identity) }
+    return [("SESSDATA", "fixture-live-session"), ("bili_jct", "fixture-live-csrf"), ("DedeUserID", String(M3Fixture.owner)), ("buvid3", "fixture-live-device")].compactMap { name, value in
       HTTPCookie(properties: [.domain: ".bilibili.com", .path: "/", .name: name, .value: value])
     }
   }
   func saveToken(_ token: AppToken?) {}
   func loadToken() -> AppToken? {
-    AppToken(mid: M3Fixture.owner, accessToken: "debug-fixture-access", refreshToken: "debug-fixture-refresh", expiresAt: 9_999_999_999)
+    if let identity = DebugUIFixtures.liveIdentity { return LiveContractFixture.token(identity: identity) }
+    return AppToken(mid: M3Fixture.owner, accessToken: "debug-fixture-access", refreshToken: "debug-fixture-refresh", expiresAt: 9_999_999_999)
   }
   func clear() {}
 }
 
 actor DebugUITransport: AuthTransport {
+  private static let live = LiveContractFixture(outcome: {
+    let args = ProcessInfo.processInfo.arguments
+    guard let index = args.firstIndex(of: "--ui-live-scene"), args.indices.contains(index + 1) else { return .success }
+      if args[index + 1] == "gift-sending" { return .late }
+      if ["unknown-cross-room", "fullscreen-unknown", "sidebar-unknown"].contains(args[index + 1]) {
+        return .executedResponseLost
+      }
+      return LiveContractFixture.Outcome(rawValue: args[index + 1]) ?? .success
+    }(), scene: DebugUIFixtures.liveScene,
+    delay: {
+      try await Task.sleep(for: .seconds(DebugUIFixtures.liveScene == "gift-sending" ? 30 : 0.2))
+    })
+  static func waitForLiveMutation() async { await live.waitForMutation() }
   func send(_ request: URLRequest) async throws -> AuthHTTPResponse {
+    if LiveContractFixture.route(for: request) != nil { return try await Self.live.send(request) }
     if let url = request.url, request.httpMethod == "POST" {
       let fields = Dictionary((URLComponents(string: "https://fixture.invalid/?" + String(data: request.httpBody ?? Data(), encoding: .utf8)!.replacingOccurrences(of: "+", with: "%20"))?.queryItems ?? [])
         .map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
@@ -88,8 +134,8 @@ actor DebugUITransport: AuthTransport {
     case "/bfs/subtitle/fixture-cn.json", "/bfs/ai_subtitle/fixture-ai.json":
       return response(url, body: try JSONSerialization.data(withJSONObject: ["body": [["from": 0.0, "to": 2.5, "content": "这是本地字幕样本"], ["from": 2.5, "to": 5.0, "content": "字幕导出与账号写操作无关"]]]))
     case "/x/web-interface/nav":
-      data = ["wbi_img": ["img_url": "https://fixture.invalid/7cd084941338484aae1ad9425b84077c.png",
-        "sub_url": "https://fixture.invalid/4932caff0ff746eab6f01bf08b70ac45.png"]]
+      data = ["wbi_img": ["img_url": "https://fixture.invalid/00000000000000000000000000000000.png",
+        "sub_url": "https://fixture.invalid/11111111111111111111111111111111.png"]]
     case "/x/web-interface/popular", "/x/web-interface/ranking/v2":
       let start = (page - 1) * 24
       data = ["list": (start..<min(start + 24, 48)).map(DebugUIFixtures.archive), "no_more": page >= 2]

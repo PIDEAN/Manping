@@ -138,7 +138,7 @@ struct ProxyHealthFetcher: CDNRangeFetching {
   private let pathMonitor = NWPathMonitor()
   private static let poolSize = 4
 
-  init(defaults: UserDefaults = PerformanceEnvironment.defaults) {
+  init(defaults: any PreferencesStore = PerformanceEnvironment.defaults) {
     store = CDNStore(defaults: defaults)
     settings = Settings(MacSettings.load(from: defaults))
     relay = MediaRelay(fetcher: fetcher)

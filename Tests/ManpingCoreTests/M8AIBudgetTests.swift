@@ -21,7 +21,7 @@ final class M8AIBudgetTests: XCTestCase {
 
   func testBudgetAndModelCapacity() {
     let known = AIModel(id: "claude-sonnet-5-5", name: "x").withKnownCapacity.requestBudget(desiredOutput: 6_000)
-    XCTAssertTrue(known.known); XCTAssertEqual(known.contextTokens, 200_000); XCTAssertEqual(known.maxOutputTokens, 6_000)
+    XCTAssertTrue(known.known); XCTAssertEqual(known.contextTokens, 1_000_000); XCTAssertEqual(known.maxOutputTokens, 6_000)
     XCTAssertEqual(AIModel(id: "my-local-model", name: "x").requestBudget(desiredOutput: 6_000).contextTokens, 32_768)
     XCTAssertFalse(AIModel(id: "my-local-model", name: "x").requestBudget(desiredOutput: 6_000).known)
     XCTAssertEqual(AIModel(id: "moonshot-v1-8k", name: "x").requestBudget(desiredOutput: 6_000).contextTokens, 8_192)
@@ -31,7 +31,7 @@ final class M8AIBudgetTests: XCTestCase {
     XCTAssertEqual(unknown.reduced()?.reduced()?.contextTokens, 8_192)
     XCTAssertNil(AIRequestBudget(contextTokens: 4_096, maxOutputTokens: 1_024, known: false).reduced())
     XCTAssertLessThan(unknown.inputLimit, unknown.contextTokens - unknown.maxOutputTokens)
-    XCTAssertEqual(AIProvider.anthropic.predefinedModels.first?.contextTokens, 200_000)
+    XCTAssertEqual(AIProvider.anthropic.predefinedModels.first?.contextTokens, 1_000_000)
     // Capacity survives the public configuration round trip and is validated.
     let model = AIModel(id: "m", name: "m", contextTokens: 50_000, maxOutputTokens: 4_000)
     let decoded = try? JSONDecoder().decode(AIModel.self, from: JSONEncoder().encode(model))

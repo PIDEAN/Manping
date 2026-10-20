@@ -6,7 +6,7 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
   case refused, planUsageLimit, planNotEligible, planUnavailable, planSignInRequired, unsupportedCapability
   case localModelUnavailable, localContextTooLong, localRefused
   /// The provider reported that the request exceeds the model's context window.
-  case contextTooLong
+  case contextTooLong, reasoningHistoryRequired
   public var errorDescription: String? {
     switch self {
     case .missingConfiguration: "请先配置 AI 服务、模型和所需凭据。"
@@ -29,7 +29,8 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
     case .localModelUnavailable: AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
     case .localContextTooLong: "内容超出 Apple 本地模型的上下文长度，请改用其他 AI 服务或缩短问题。"
     case .localRefused: "Apple 本地模型出于安全策略未回答此请求。"
-    case .contextTooLong: "内容超出当前模型的上下文长度，请在 设置 › AI 中填写模型的上下文长度或改用更大的模型。"
+    case .contextTooLong: "内容超出当前模型的上下文长度，请在 设置 › AI › 对应服务 › 自定义模型中填写模型标识、上下文长度和最大输出，再添加并保存。"
+    case .reasoningHistoryRequired: "此模型的多轮对话要求保留完整思考历史，当前仅支持单轮请求；请换用其他模型。"
     }
   }
 }
@@ -39,6 +40,7 @@ public enum AIProtocolFamily: Equatable, Sendable { case openAI, anthropic, gemi
 /// are decoded only after a complete line. SSE data lines form a single event.
 public struct AIStreamParser: Sendable {
   private let family: AIProtocolFamily
+  private let planUsage: Bool
   private var bytes = Data()
   private var eventData: [String] = []
   private var eventName = ""
@@ -46,7 +48,7 @@ public struct AIStreamParser: Sendable {
   public private(set) var finished = false
   private var hasText = false
   private var totalBytes = 0
-  public init(family: AIProtocolFamily) { self.family = family }
+  public init(family: AIProtocolFamily, planUsage: Bool = true) { self.family = family; self.planUsage = planUsage }
   public mutating func append(_ data: Data) throws -> [String] {
     guard !finished else { return [] }
     totalBytes += data.count
@@ -124,13 +126,13 @@ public struct AIStreamParser: Sendable {
       case "response.completed": finished = true
       case "response.failed":
         let error = (object["response"] as? [String: Any])?["error"] as? [String: Any]
-        throw Self.responsesFailure(code: error?["code"] as? String ?? "") ?? AIChatFailure.providerError
+        throw responseFailure(code: error?["code"] as? String ?? "")
       case "response.incomplete":
         let details = (object["response"] as? [String: Any])?["incomplete_details"] as? [String: Any]
         throw details?["reason"] as? String == "max_output_tokens" ? AIChatFailure.outputLimit : AIChatFailure.providerError
       case "error":
         let code = (object["error"] as? [String: Any])?["code"] as? String ?? object["code"] as? String ?? ""
-        throw Self.responsesFailure(code: code) ?? AIChatFailure.providerError
+        throw responseFailure(code: code)
       default: break
       }
     case .openAI:
@@ -189,6 +191,10 @@ public struct AIStreamParser: Sendable {
     }
     return []
   }
+  private func responseFailure(code: String) -> AIChatFailure {
+    if planUsage { return Self.responsesFailure(code: code) ?? .providerError }
+    return code == "rate_limit_exceeded" ? .rateLimited : .providerError
+  }
   /// Structured Responses error codes for ChatGPT plan usage (errors-and-recovery reference).
   static func responsesFailure(code: String) -> AIChatFailure? {
     switch code {
@@ -237,8 +243,10 @@ public struct AIStreamParser: Sendable {
       if let reason = candidate["finishReason"] as? String, reason != "STOP" { throw AIChatFailure.providerError }
       text = geminiText(candidate)
     case .responses:
-      // Plan usage is stream-only; a non-streamed body is never produced for this family.
-      throw AIChatFailure.invalidResponse
+      if object["status"] as? String == "incomplete" { throw AIChatFailure.outputLimit }
+      guard object["status"] as? String == "completed", let output = object["output"] as? [[String: Any]] else { throw AIChatFailure.invalidResponse }
+      text = output.filter { $0["type"] as? String == "message" }.flatMap { $0["content"] as? [[String: Any]] ?? [] }
+        .filter { $0["type"] as? String == "output_text" }.compactMap { $0["text"] as? String }.joined()
     case .ollama:
       guard object["done"] as? Bool == true, let message = object["message"] as? [String: Any],
         let content = message["content"] as? String else { throw AIChatFailure.invalidResponse }

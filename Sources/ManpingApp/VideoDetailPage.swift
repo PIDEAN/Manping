@@ -31,6 +31,7 @@ struct VideoDetailPage: View {
   @State private var fixtureTime = 0.0
   @State private var showingVolume = false
   @State private var composeShown = false
+  @State private var chaptersShown = false
   @State private var videoShot: VideoShot?
 
   init(model: AppModel, player: PlayerModel, video: Video) {
@@ -194,7 +195,7 @@ struct VideoDetailPage: View {
   /// Paused, a popover open, typing a comment or scrubbing: the controls stay up.
   private var controlsPinned: Bool {
     fixturePlayback || PlaybackTimeline.debugHover != nil || displayPaused || showingVolume ||
-      danmakuSettingsShown || networkShown || composeShown || scrubbing || !features.input.isEmpty
+      danmakuSettingsShown || networkShown || composeShown || chaptersShown || scrubbing || !features.input.isEmpty
   }
   private var controlsShown: Bool { chrome.visible || controlsPinned }
   /// The picture's shape, from the stream being played (16:9 until it is known).
@@ -306,6 +307,12 @@ struct VideoDetailPage: View {
           PlayerTimeLabel(clock: player.clock, duration: displayDuration, override: fixturePlayback ? fixtureTime : nil)
             .padding(.horizontal, 4)
         }
+        if layout.showsChapter, !timelineChapters.isEmpty {
+          PlayerChapterButton(clock: player.clock, chapters: timelineChapters, override: fixturePlayback ? fixtureTime : nil,
+            shown: $chaptersShown) { position in
+            if fixturePlayback { fixtureTime = position } else { player.seek(position) }
+          }
+        }
         DanmakuToggleButton(enabled: $player.commentsEnabled) { danmakuSettingsShown = true }
       }
       if let message = features.message {
@@ -349,7 +356,7 @@ struct VideoDetailPage: View {
       }
     }
     #endif
-    return player.chapters
+    return PlaybackChapter.preferred(viewPoints: features.viewPoints, engine: player.chapters)
   }
   private var timelineDensity: [Double] {
     #if DEBUG
@@ -377,7 +384,7 @@ struct VideoDetailPage: View {
   private func detailInformation(_ details: VideoDetails) -> some View {
     VStack(alignment: .leading, spacing: 16) {
       HStack(spacing: 10) {
-        Button { model.openOverlay(.userSpace(details.uploader.mid)) } label: {
+        Button { model.openSpaceKeepingPlayback(details.uploader.mid) } label: {
           HStack(spacing: 10) {
             CachedImage(url: details.uploader.avatar)
               .frame(width: 38, height: 38).clipShape(Circle())
@@ -522,8 +529,8 @@ struct VideoDetailPage: View {
             case .info:
               VStack(alignment: .leading, spacing: 20) {
                 detailInformation(details)
-                if !player.chapters.isEmpty {
-                  PlaybackChapterList(clock: player.clock, chapters: player.chapters,
+                if !timelineChapters.isEmpty {
+                  PlaybackChapterList(clock: player.clock, chapters: timelineChapters,
                     override: fixturePlayback ? fixtureTime : nil) { position in
                     if fixturePlayback { fixtureTime = position } else { player.seek(position) }
                   }

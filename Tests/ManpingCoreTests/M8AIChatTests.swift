@@ -44,7 +44,7 @@ final class M8AIChatTests: XCTestCase {
     return result
   }
   func testAllRegisteredProvidersBuildOneUserPromptWithoutSending() throws {
-    XCTAssertEqual(AIProvider.sourceProviders.count, 22)
+    XCTAssertEqual(AIProvider.sourceProviders.count, 29)
     for provider in AIProvider.sourceProviders {
       let configuration = AIProviderConfiguration(endpoint: provider.defaultEndpoint ?? "https://fixture.example.invalid")
       let request = try AIChatRequestPlanner.request(provider: provider, configuration: configuration,

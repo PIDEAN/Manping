@@ -71,34 +71,34 @@ struct VideoCard: View {
   var menuExtra: AnyView? = nil
   @Environment(\.colorScheme) private var scheme
   var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
-        Color.clear.aspectRatio(16 / 9, contentMode: .fit)
-          .overlay { CachedImage(url: video.cover) }
-          .overlay(alignment: .topLeading) {
-            if let reason = video.recommendationReason, !reason.isEmpty {
-              RecommendBadge(text: reason).padding(8).padding(.trailing, 40)
+    // Cover and title play; the UP 主 name opens their space, as on Bilibili.
+    VStack(alignment: .leading, spacing: 4) {
+      Button(action: action) {
+        VStack(alignment: .leading, spacing: Theme.cardTitleGap) {
+          Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+            .overlay { CachedImage(url: video.cover) }
+            .overlay(alignment: .topLeading) {
+              if let reason = video.recommendationReason, !reason.isEmpty {
+                RecommendBadge(text: reason).padding(8).padding(.trailing, 40)
+              }
             }
-          }
-          .overlay(alignment: .bottomTrailing) {
-            MediaBadge(text: String(format: "%02d:%02d", video.duration / 60, video.duration % 60)).padding(8)
-          }
-          .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
-        VStack(alignment: .leading, spacing: 4) {
+            .overlay(alignment: .bottomTrailing) {
+              MediaBadge(text: String(format: "%02d:%02d", video.duration / 60, video.duration % 60)).padding(8)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
           Text(video.title).font(Theme.Font.headline).foregroundStyle(Theme.text(scheme))
             .lineLimit(2, reservesSpace: true).multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-          Text(metadata).font(Theme.Font.caption.monospacedDigit()).foregroundStyle(Theme.tertiaryText(scheme)).lineLimit(1)
-        }
-      }.contentShape(Rectangle()).cardHover()
-    }.buttonStyle(CardPressStyle()).accessibilityLabel("播放 \(video.title)，\(video.author)")
+        }.contentShape(Rectangle())
+      }.buttonStyle(CardPressStyle()).accessibilityLabel("播放 \(video.title)，\(video.author)")
+      CardMetadataLine(author: video.author, authorID: video.authorID, rest: metadata, action: action)
+    }.cardHover()
       .contextMenu { VideoContextMenu(video: video, extra: menuExtra) }
   }
 
-  /// 「UP 主 · 播放 · 时间」 on one line; the subtitle stands in for the time when the feed gives one.
+  /// 「播放 · 时间」 after the UP 主; the subtitle stands in for the time when the feed gives one.
   private var metadata: String {
     var parts: [String] = []
-    if !video.author.isEmpty { parts.append(video.author) }
     parts.append(video.viewsText ?? Self.plays(video.views))
     if let subtitle = video.subtitle, !subtitle.isEmpty {
       parts.append(subtitle)
@@ -119,6 +119,51 @@ struct VideoCard: View {
     formatter.unitsStyle = .short
     return formatter
   }()
+}
+
+/// A card's 「UP 主 · 播放 · 时间」 line. The name opens the UP 主's space (when the card knows
+/// who it is and the main window can open spaces); the rest of the line plays like the card.
+struct CardMetadataLine: View {
+  let author: String
+  let authorID: Int64?
+  let rest: String
+  let action: () -> Void
+  @Environment(\.cardActions) private var actions
+  @Environment(\.colorScheme) private var scheme
+  var body: some View {
+    HStack(spacing: 0) {
+      if !author.isEmpty {
+        if let actions, let mid = authorID, mid > 0 {
+          Button(author) { actions.openSpace(mid) }.buttonStyle(CardAuthorLinkStyle())
+            .help("进入 \(author) 的空间").accessibilityLabel("进入 UP 主空间：\(author)")
+        } else {
+          Text(author).foregroundStyle(Theme.tertiaryText(scheme))
+        }
+      }
+      Button(action: action) {
+        Text((author.isEmpty || rest.isEmpty ? "" : " · ") + rest).foregroundStyle(Theme.tertiaryText(scheme))
+          .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+      }.buttonStyle(.plain).accessibilityHidden(true)
+    }.font(Theme.Font.caption.monospacedDigit()).lineLimit(1)
+  }
+}
+
+/// The UP 主 name on a card: card metadata colour, accent with an underline while hovered.
+struct CardAuthorLinkStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View { AuthorLink(configuration: configuration) }
+  private struct AuthorLink: View {
+    let configuration: Configuration
+    @State private var hovered = false
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+      configuration.label
+        .foregroundStyle(hovered ? Theme.accentText(scheme) : Theme.tertiaryText(scheme))
+        .underline(hovered)
+        .opacity(configuration.isPressed ? 0.7 : 1)
+        .onHover { hovered = $0 }
+        .layoutPriority(1)
+    }
+  }
 }
 
 /// Cards dim slightly while pressed; hover lift comes from `cardHover()`.

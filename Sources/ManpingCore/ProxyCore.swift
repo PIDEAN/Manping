@@ -103,12 +103,12 @@ public struct ProxySettings: Codable, Equatable, Sendable {
   public var isConfigured: Bool { kind != .none && Self.validHost(host) && (1...65535).contains(port) }
   public var needsSecret: Bool { kind == .shadowsocks }
 
-  public static func load(from defaults: UserDefaults) -> ProxySettings {
+  public static func load(from defaults: any PreferencesStore) -> ProxySettings {
     guard let data = defaults.data(forKey: defaultsKey),
       let value = try? JSONDecoder().decode(ProxySettings.self, from: data) else { return ProxySettings() }
     return value
   }
-  public func save(to defaults: UserDefaults) {
+  public func save(to defaults: any PreferencesStore) {
     if let data = try? JSONEncoder().encode(self) { defaults.set(data, forKey: Self.defaultsKey) }
   }
 

@@ -3,9 +3,22 @@ import Foundation
 // Synthetic layout and protocol samples. Never contact a real room or account.
 public enum M5LiveFixture {
   public static func response(path: String, parameters: [String: String] = [:]) -> Data? {
+    if let route = LiveRoute.allCases.first(where: { $0.path == path && !$0.isMutation }) {
+      return try? LiveContractFixture.sample(route)
+    }
     let page = Int(parameters["page"] ?? "1") ?? 1
     let data: [String: Any]
     switch path {
+    case "/room/v1/Room/room_init":
+      data = ["room_id": 5000, "short_id": 5, "uid": 900010, "live_status": 1]
+    case "/room/v1/Room/get_info":
+      data = ["room_id": 5000, "uid": 900010, "live_status": 1, "title": "本地直播互动样本",
+        "description": "虚构房间，用于本地验证", "area_name": "音乐", "parent_area_name": "娱乐", "online": 1234]
+    case "/live_user/v1/Master/info":
+      data = ["info": ["uid": 900010, "uname": "示例主播", "face": "https://fixture.invalid/avatar/0"]]
+    case "/xlive/web-room/v2/index/getRoomPlayInfo":
+      data = ["room_id": 5000, "live_status": 1]
+
     case "/xlive/app-interface/v2/index/getAreaList":
       data = ["list": [(1, "娱乐", ["视频聊天", "唱见", "舞见"]), (2, "网游", ["英雄联盟", "绝地求生", "综合游戏"]),
         (3, "手游", ["王者荣耀", "原神", "综合手游"]), (4, "单机游戏", ["动作游戏", "独立游戏", "怀旧游戏"]),

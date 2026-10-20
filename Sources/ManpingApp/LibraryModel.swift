@@ -60,8 +60,7 @@ import SwiftUI
 
 
   convenience init(model: AppModel) {
-    let installationID = PerformanceEnvironment.defaults.string(forKey: "libraryInstallationID") ?? UUID().uuidString
-    PerformanceEnvironment.defaults.set(installationID, forKey: "libraryInstallationID")
+    let installationID = InstallationIdentity.library
     let rpc: LibraryRPCService?
     if let transport = model.libraryRPCTransport {
       rpc = LibraryRPCService(auth: model.service, transport: transport, installationID: installationID)

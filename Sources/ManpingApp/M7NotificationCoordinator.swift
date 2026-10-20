@@ -8,7 +8,7 @@ import Foundation
   private let fetch: Fetch
   /// Followed rooms that are live right now, as `page: "live"` notifications keyed by room.
   private let liveFetch: Fetch?
-  private let defaults: UserDefaults
+  private let defaults: any PreferencesStore
   private let didOpen: ((String, String) -> Void)?
   private let report: ((String) -> Void)?
   private var adapter: (any M7NotificationDeliveryAdapter)?
@@ -18,7 +18,7 @@ import Foundation
   private var configuration: M7NotificationConfiguration?
   private enum PollError: Error { case timeout }
 
-  init(defaults: UserDefaults = .standard, adapter: (any M7NotificationDeliveryAdapter)? = nil,
+  init(defaults: any PreferencesStore = PerformanceEnvironment.defaults, adapter: (any M7NotificationDeliveryAdapter)? = nil,
     fetch: @escaping Fetch, liveFetch: Fetch? = nil, didOpen: ((String, String) -> Void)? = nil,
     report: ((String) -> Void)? = nil) {
     self.defaults = defaults; self.adapter = adapter; self.fetch = fetch; self.liveFetch = liveFetch
@@ -124,7 +124,7 @@ import Foundation
         return try await group.next() ?? []
       }
       guard isCurrent(expected) else { return }
-      let plan = M7LiveNotificationPolicy.plan(rooms, previousIDs: defaults.stringArray(forKey: key))
+      let plan = M7LiveNotificationPolicy.plan(rooms, previousIDs: (defaults.object(forKey: key) as? [String]))
       for (index, room) in plan.notifications.enumerated() {
         guard isCurrent(expected) else { return }
         if index > 0 { try await Task.sleep(for: .seconds(1)); guard isCurrent(expected) else { return } }
@@ -149,7 +149,7 @@ import Foundation
         return try await group.next() ?? []
       }
       guard isCurrent(expected) else { return }
-      let plan = M7MomentNotificationPolicy.plan(moments, previousIDs: defaults.stringArray(forKey: key) ?? [])
+      let plan = M7MomentNotificationPolicy.plan(moments, previousIDs: (defaults.object(forKey: key) as? [String]) ?? [])
       for (index, moment) in plan.notifications.enumerated() {
         guard isCurrent(expected) else { return }
         if index > 0 { try await Task.sleep(for: .seconds(1)); guard isCurrent(expected) else { return } }

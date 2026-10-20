@@ -1,0 +1,5 @@
+# Third-party upscaling shaders bundled as resources, and code generated from protobuf
+# definitions: kept out of GitHub's language statistics and collapsed in diffs.
+Sources/ManpingApp/Resources/Shaders/** linguist-vendored
+Sources/BiliProtocol/*.pb.swift linguist-generated
+Sources/BiliProtocol/*.grpc.swift linguist-generated

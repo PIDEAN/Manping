@@ -1,0 +1,23 @@
+name: build
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  build-and-test:
+    # The package targets macOS 27, so the runner needs an Xcode with the macOS 27 SDK.
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use the newest installed Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+          swift --version
+      - name: Build
+        run: swift build
+      - name: Swift tests (Core and App; offline fixtures only)
+        run: swift test
+      - name: Script tests
+        run: |
+          python3 scripts/diagnostic_checks_test.py
+          python3 scripts/live_check_test.py
