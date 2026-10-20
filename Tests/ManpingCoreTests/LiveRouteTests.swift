@@ -76,7 +76,7 @@ final class LiveRouteTests: XCTestCase, @unchecked Sendable {
       "/xlive/app-ucenter/v1/fansMedal/panel", "/xlive/web-room/v1/index/getDanmuInfo", "/msg/send",
       "/xlive/web-room/v1/dM/AjaxSetConfig", "/xlive/revenue/v2/gift/sendBagMultiUser",
       "/xlive/revenue/v1/gift/sendGold", "/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3",
-      "/xlive/web-room/v1/fansMedal/wear", "/xlive/web-room/v1/fansMedal/take_off",
+      "/xlive/app-ucenter/v1/fansMedal/wear", "/xlive/web-room/v1/fansMedal/take_off",
       "/xlive/lottery-interface/v1/Anchor/Join",
       "/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw",
     ]
@@ -100,15 +100,16 @@ final class LiveRouteTests: XCTestCase, @unchecked Sendable {
     let expectedBody: [LiveRoute: Set<String>] = [
       .sendDanmaku: [
         "bubble", "msg", "color", "mode", "room_type", "jumpfrom", "statistics", "fontsize", "rnd",
-        "roomid", "csrf", "csrf_token",
+        "roomid", "csrf", "csrf_token", "data_extend", "reply_mid", "reply_attr", "replay_dmid",
+        "reply_type", "reply_uname",
       ],
-      .setDMConfig: ["room_id", "color", "csrf"],
+      .setDMConfig: ["room_id", "color", "csrf", "csrf_token", "visit_id"],
       .sendGold: [
         "uid", "gift_id", "ruid", "send_ruid", "gift_num", "coin_type", "bag_id", "platform",
         "biz_code", "biz_id", "storm_beat_id", "metadata", "price", "receive_users",
         "live_statistics", "statistics", "csrf", "csrf_token",
       ],
-      .wearMedal: ["medal_id", "csrf", "csrf_token"], .takeOffMedal: ["csrf", "csrf_token"],
+      .wearMedal: ["medal_id", "csrf", "csrf_token", "visit_id"], .takeOffMedal: ["csrf", "csrf_token"],
       .joinLottery: ["room_id", "id", "platform", "csrf"],
       .drawRedPocket: ["uid", "room_id", "ruid", "lot_id", "ts"],
     ]
@@ -385,5 +386,50 @@ extension LiveRouteTests {
     XCTAssertTrue(body[1].contains("dm_type=1"))
     XCTAssertFalse(body[1].contains("reply_mid"))
     XCTAssertEqual(requests[0].url, requests[1].url, "Body variants must not enter WBI query scope")
+  }
+}
+
+/// The production switches follow docs/LiveContracts.md: only routes captured from the web page
+/// with a successful response are open, and only a backpack gift has a verified receipt.
+final class LiveProductionContractTests: XCTestCase {
+  func testProductionGateOpensOnlyCapturedWrites() {
+    let open = Set(LiveRoute.allCases.filter { $0.isMutation && LiveMutationGate.production.allows($0) })
+    XCTAssertEqual(open, [.sendDanmaku, .setDMConfig, .like, .wearMedal, .sendBag])
+    XCTAssertTrue(LiveRoute.allCases.filter { !$0.isMutation }.allSatisfy(LiveMutationGate.production.allows))
+  }
+
+  func testProductionReceiptsAcceptOnlyASuccessfulBackpackGift() throws {
+    let ok = try LiveEnvelope.parse(Data(#"{"code":0,"message":"OK","data":{}}"#.utf8))
+    let refused = try LiveEnvelope.parse(Data(#"{"code":200013,"message":"余额不足","data":{}}"#.utf8))
+    XCTAssertTrue(LiveReceiptPolicy.production.accepts(.sendBag, ok))
+    XCTAssertFalse(LiveReceiptPolicy.production.accepts(.sendBag, refused))
+    XCTAssertFalse(LiveReceiptPolicy.production.accepts(.sendGold, ok))
+  }
+
+  func testDanmakuFieldsMatchTheCapturedWebRequests() throws {
+    let plain = try LiveRoute.sendDanmaku.fields(["msg": "hi", "roomid": "1", "rnd": "1"], timestamp: 1).body
+    XCTAssertEqual(plain["data_extend"], #"{"trackid":"-99998"}"#)
+    XCTAssertEqual(plain["reply_mid"], "0")
+    XCTAssertEqual(plain["replay_dmid"], "")
+    let reply = try LiveRoute.sendDanmaku.fields(
+      ["msg": "hi", "roomid": "1", "rnd": "1", "reply_mid": "42", "reply_uname": "someone"], timestamp: 1
+    ).body
+    XCTAssertEqual(reply["reply_mid"], "42", "a reply keeps its own target")
+    XCTAssertEqual(reply["reply_uname"], "someone")
+    let emoticon = try LiveRoute.sendDanmaku.fields(
+      ["msg": "official_1", "roomid": "1", "rnd": "1", "dm_type": "1", "emoticonOptions": "[object Object]"],
+      timestamp: 1
+    ).body
+    XCTAssertNil(emoticon["reply_mid"], "an emoticon carries no reply fields")
+    XCTAssertEqual(emoticon["data_extend"], #"{"trackid":"-99998"}"#)
+  }
+
+  func testMedalWearAndBackpackGiftMatchTheCapturedWebRequests() throws {
+    XCTAssertEqual(LiveRoute.wearMedal.path, "/xlive/app-ucenter/v1/fansMedal/wear")
+    let wear = try LiveRoute.wearMedal.fields(["medal_id": "7", "target_id": "9"], timestamp: 1).body
+    XCTAssertEqual(wear["target_id"], "9")
+    XCTAssertEqual(wear["visit_id"], "")
+    let style = try LiveRoute.setDMConfig.fields(["room_id": "1", "color": "0xffffff"], timestamp: 1).body
+    XCTAssertEqual(style["visit_id"], "")
   }
 }

@@ -6,7 +6,7 @@
 // Usage: node docs/media/test-timeline.mjs [screenshot dir]
 // The directory needs popular.png and video.png (main window, 2× and without shadow), settings-network.png
 // (settings window) and video-mini.png (the mini panel, captured with its shadow) — e.g. the output of
-// `scripts/live_check.py --fixture --mini`. When .out/demo-media.mp4 exists (docs/media/demo-media.sh), the
+// `scripts/live_check.py --fixture --mini`. When .assets/vod.mp4 exists (docs/media/fetch_assets.py), the
 // mini window shows recorded-style frames from it instead of the still. Each file is looked up first under the path on the right of
 // `fallback` below (fixture screenshots kept in .build/live-private), then by its own name, in that directory
 // and then in this checkout's .build/live-private.
@@ -34,7 +34,7 @@ for (const [name, alt] of Object.entries(fallback)) {
 }
 // A recorded-style window too: 4.9 s of the demo video at 25 fps stands in for the mini window's frames, so
 // the frame-sequence path (and the cost of moving pictures in the GIF) is checked as well.
-const media = join(OUT, 'demo-media.mp4');
+const media = join(HERE, '.assets', 'vod.mp4');
 const recorded = existsSync(media);
 if (recorded) {
   rmSync(join(OUT, 'test/mini'), { recursive: true, force: true });

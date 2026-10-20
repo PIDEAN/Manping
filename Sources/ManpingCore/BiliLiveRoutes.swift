@@ -25,7 +25,8 @@ public enum LiveRoute: String, CaseIterable, Sendable {
     case .sendBag: "/xlive/revenue/v2/gift/sendBagMultiUser"
     case .sendGold: "/xlive/revenue/v1/gift/sendGold"
     case .like: "/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3"
-    case .wearMedal: "/xlive/web-room/v1/fansMedal/wear"
+    // Captured 2026-10-20 (docs/LiveContracts.md): the web page wears medals through app-ucenter.
+    case .wearMedal: "/xlive/app-ucenter/v1/fansMedal/wear"
     case .takeOffMedal: "/xlive/web-room/v1/fansMedal/take_off"
     case .joinLottery: "/xlive/lottery-interface/v1/Anchor/Join"
     case .drawRedPocket: "/xlive/lottery-interface/v1/popularityRedPocket/RedPocketDraw"
@@ -44,8 +45,8 @@ public enum LiveRoute: String, CaseIterable, Sendable {
   public enum CSRF: Sendable { case none, form, formBoth, query }
   public var csrf: CSRF {
     switch self {
-    case .sendDanmaku, .sendGold, .wearMedal, .takeOffMedal: .formBoth
-    case .setDMConfig, .joinLottery: .form
+    case .sendDanmaku, .sendGold, .wearMedal, .takeOffMedal, .setDMConfig: .formBoth
+    case .joinLottery: .form
     case .sendBag, .like, .drawRedPocket: .query
     default: .none
     }
@@ -68,7 +69,7 @@ public enum LiveRoute: String, CaseIterable, Sendable {
     case .bagList: ["t", "room_id", "mobi_app", "receive_users", "web_location"]
     case .superChatList: ["room_id"]
     case .lotteryInfo: ["roomid"]
-    case .medalPanel: ["page", "page_size"]
+    case .medalPanel: ["page", "page_size", "room_id", "target_id"]
     case .danmuInfo: ["id", "type", "web_location"]
     case .sendDanmaku, .sendGold: ["web_location"]
     case .sendBag:
@@ -89,14 +90,14 @@ public enum LiveRoute: String, CaseIterable, Sendable {
         "replay_dmid", "reply_type", "reply_uname", "statistics", "data_extend", "fontsize", "rnd",
         "roomid", "dm_type", "emoticonOptions",
       ]
-    case .setDMConfig: ["room_id", "color", "mode"]
+    case .setDMConfig: ["room_id", "color", "mode", "visit_id"]
     case .sendGold:
       [
         "uid", "gift_id", "ruid", "send_ruid", "gift_num", "coin_type", "bag_id", "platform",
         "biz_code", "biz_id", "storm_beat_id", "metadata", "price", "receive_users",
         "live_statistics", "statistics",
       ]
-    case .wearMedal: ["medal_id"]
+    case .wearMedal: ["medal_id", "target_id", "visit_id"]
     case .joinLottery: ["room_id", "id", "platform"]
     case .drawRedPocket: ["uid", "room_id", "ruid", "lot_id", "ts"]
     default: []
@@ -160,12 +161,22 @@ public enum LiveRoute: String, CaseIterable, Sendable {
       values = [
         "bubble": "0", "color": "16777215", "mode": "1", "room_type": "0", "jumpfrom": "0",
         "fontsize": "25", "statistics": "{\"appId\":100,\"platform\":5}", "web_location": "444.8",
+        "data_extend": "{\"trackid\":\"-99998\"}",
       ]
+      // A plain or reply danmaku carries the reply fields (empty when not replying), as the web
+      // page sends them; an emoticon danmaku carries none.
+      if input["dm_type"] != "1" {
+        values.merge(
+          ["reply_mid": "0", "reply_attr": "0", "replay_dmid": "", "reply_type": "0", "reply_uname": ""],
+          uniquingKeysWith: { old, _ in old })
+      }
+    case .setDMConfig, .wearMedal: values = ["visit_id": ""]
     case .sendBag, .sendGold:
       values = [
         "send_ruid": "0", "platform": "pc", "biz_code": "Live", "storm_beat_id": "0",
         "metadata": "", "receive_users": "[{\"uid\":\(input["ruid"] ?? "0")}]",
-        "live_statistics": "",
+        "live_statistics":
+          "{\"pc_client\":\"pcWeb\",\"jumpfrom\":\"-99998\",\"room_category\":\"0\",\"source_event\":0,\"trackid\":\"-99998\"}",
         "statistics": "{\"platform\":5,\"pc_client\":\"pcWeb\",\"appId\":100}",
         "web_location": "444.8",
       ]
@@ -184,6 +195,9 @@ public enum LiveRoute: String, CaseIterable, Sendable {
 public struct LiveMutationGate: Sendable {
   private let enabled: Set<LiveRoute>
   public init(enabled: Set<LiveRoute> = []) { self.enabled = enabled }
+  /// Routes whose request and success response were captured from the web page on 2026-10-20
+  /// (docs/LiveContracts.md). Battery gifts, taking a medal off and activities stay closed.
+  public static let production = LiveMutationGate(enabled: [.sendDanmaku, .setDMConfig, .like, .wearMedal, .sendBag])
   public func allows(_ route: LiveRoute) -> Bool { !route.isMutation || enabled.contains(route) }
 }
 public enum LiveRouteError: Error, Equatable {

@@ -257,6 +257,7 @@ struct DanmakuSettingsPopover: View {
         }
       }
       .controlSize(.small).tint(Theme.accent).accessibilityLabel(title).accessibilityValue(value)
+      .demoAnchor("slider.\(title)")
     }
   }
 

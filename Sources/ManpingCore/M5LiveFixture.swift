@@ -57,11 +57,18 @@ public enum M5LiveFixture {
     }
     return try? JSONSerialization.data(withJSONObject: ["code": 0, "data": data])
   }
+  /// A sample room's title, anchor name and anchor uid, for the README demo's offline room.
+  public static func sampleRoom(_ roomID: Int64) -> (title: String, anchor: String, anchorID: Int64)? {
+    guard roomID >= 5000, roomID < 5064 else { return nil }
+    let data = room(Int(roomID - 5000))
+    guard let title = data["title"] as? String, let anchor = data["uname"] as? String, let uid = data["uid"] as? Int else { return nil }
+    return (title, anchor, Int64(uid))
+  }
   private static func room(_ index: Int, area: Int = 101) -> [String: Any] {
     ["roomid": 5000 + index, "uid": 10001 + index,
       "title": ["傍晚音乐会｜一起听首歌", "把今天的小事分享给你", "游戏时间：快乐是第一位", "周末慢生活，边做饭边聊天",
         "一场放松的深夜电台", "从城市街头看看世界", "今天也在练习新曲子", "让我们一起探索新的故事"][index % 8],
-      "cover": "https://fixture.invalid/cover/\(index % 8)", "face": "https://fixture.invalid/avatar/\(index % 4)",
+      "cover": "https://fixture.invalid/cover/\(8 + index % 8)", "face": "https://fixture.invalid/avatar/\(index % 4)",
       "uname": ["音乐现场", "日常记录", "游戏伙伴", "慢生活频道"][index % 4],
       "online": 8600 + index * 720, "area_v2_id": area,
       "area_v2_name": ["视频聊天", "唱见", "综合游戏", "生活日常"][index % 4]]

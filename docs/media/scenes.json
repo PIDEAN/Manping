@@ -1,7 +1,8 @@
 {
-  "hero": { "title": "首页到播放", "page": "popular", "media": true, "windowSize": [1280, 800], "timeout": 60 },
-  "danmaku": { "title": "弹幕", "page": "popular", "media": true, "windowSize": [1280, 800], "timeout": 60 },
-  "mini": { "title": "小窗", "page": "popular", "media": true, "windowSize": [1280, 800], "timeout": 60 },
-  "live": { "title": "直播", "page": "live", "media": true, "windowSize": [1280, 800], "timeout": 60 },
-  "settings": { "title": "设置与致谢", "page": "popular", "media": false, "windowSize": [1280, 800], "timeout": 60 }
+  "hero": { "title": "首页到播放", "page": "popular", "media": "vod", "windowSize": [1280, 800], "timeout": 60 },
+  "danmaku": { "title": "弹幕", "page": "popular", "media": "vod", "windowSize": [1280, 800], "timeout": 60 },
+  "mini": { "title": "小窗", "page": "popular", "media": "vod", "windowSize": [1280, 800], "timeout": 60 },
+  "live": { "title": "直播", "page": "live", "media": "live", "windowSize": [1280, 800], "timeout": 60 },
+  "ai": { "title": "AI", "page": "popular", "media": "vod", "windowSize": [1280, 800], "timeout": 60 },
+  "settings": { "title": "设置与致谢", "page": "popular", "windowSize": [1280, 800], "timeout": 60 }
 }

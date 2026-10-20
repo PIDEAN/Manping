@@ -350,7 +350,7 @@ public actor LiveInteractionSession {
     if let id, id <= 0 { throw LiveRouteError.invalidFields(.wearMedal) }
     try await simple(
       .medal, route: id == nil ? .takeOffMedal : .wearMedal,
-      fields: id.map { ["medal_id": String($0)] } ?? [:], expected: expected)
+      fields: id.map { ["medal_id": String($0), "target_id": String(expected.anchorID)] } ?? [:], expected: expected)
   }
   private func simple(
     _ action: LiveAction, route: LiveRoute, fields: [String: String],

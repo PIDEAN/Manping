@@ -513,7 +513,7 @@ struct LiveChatList: View {
             }.font(Theme.Font.caption.weight(.semibold)).foregroundStyle(Theme.onAccent).padding(.horizontal, 12).frame(height: 28)
               .background(Theme.accent, in: Capsule())
               .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 7, y: 4)
-          }.buttonStyle(.plain).padding(.bottom, 14).transition(.opacity.combined(with: .scale(scale: 0.96)))
+          }.buttonStyle(.plain).demoAnchor("live.newLines").padding(.bottom, 14).transition(.opacity.combined(with: .scale(scale: 0.96)))
         }
       }
       .animation(.easeOut(duration: 0.16), value: atBottom)

@@ -28,7 +28,7 @@ for arg in "$@"; do
     *) scenes+=("$arg") ;;
   esac
 done
-[[ ${#scenes[@]} -gt 0 ]] || scenes=(hero danmaku mini live settings)
+[[ ${#scenes[@]} -gt 0 ]] || scenes=(hero danmaku mini live ai settings)
 
 for tool in ffmpeg node pnpm; do
   command -v "$tool" >/dev/null || { echo "$tool is required (see docs/media/README.md)" >&2; exit 1; }
@@ -41,10 +41,10 @@ fi
 
 if [[ $record == 1 ]]; then
   [[ -x "$APP/Contents/MacOS/Manping" ]] || { echo "No Debug app at $APP; run without --no-build" >&2; exit 1; }
-  [[ -f "$OUT/demo-media.mp4" ]] || "$MEDIA/demo-media.sh" "$OUT/demo-media.mp4"
+  python3 "$MEDIA/fetch_assets.py"
   swiftc -O -swift-version 5 "$MEDIA/record.swift" -o "$OUT/record"
   for scene in "${scenes[@]}"; do
-    "$OUT/record" --app "$APP" --scenes "$MEDIA/scenes.json" --out "$OUT" --media "$OUT/demo-media.mp4" "$scene"
+    "$OUT/record" --app "$APP" --scenes "$MEDIA/scenes.json" --out "$OUT" --assets "$MEDIA/.assets" "$scene"
   done
 fi
 

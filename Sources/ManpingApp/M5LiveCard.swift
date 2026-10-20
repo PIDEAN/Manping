@@ -28,6 +28,7 @@ struct M5LiveCard: View {
           }
           .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.md, style: .continuous))
       }.buttonStyle(.plain).accessibilityLabel("打开直播间：\(room.title)")
+        .demoAnchor("live.\(room.id)")
       HStack(alignment: .top, spacing: 10) {
         if room.avatar != nil || !recommendation {
           Button { if let mid = room.authorID, mid > 0 { openUser(mid) } } label: {

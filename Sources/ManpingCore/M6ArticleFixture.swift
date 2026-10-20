@@ -25,7 +25,7 @@ public enum M6ArticleFixture {
       var read = article(id: id, category: 2)
       read["title"] = "读懂一段旅程：在日常中发现新的风景"
       read["tags"] = [["tid": 1, "name": "摄影"], ["tid": 2, "name": "旅行"]]
-      read["content"] = #"<h2>从一条小路开始</h2><p>城市的节奏总让人忘记观察。<strong>慢下来</strong>，看看光线如何穿过树叶，也听听街角的声音。</p><p>这是原生阅读器的合成样本：正文、图片与链接都在同一个阅读空间。</p><figure><img data-src="https://fixture.invalid/cover/3" alt="午后的小路"></figure><h2>把片刻留在纸上</h2><p>无需走得很远，日常也能成为旅程。先记下一段声音，再画出它让你想起的颜色。</p><blockquote><p>记录不是为了留住一切，而是为了记得自己曾经认真看过。</p></blockquote><p><a href="https://www.bilibili.com/video/BV1fixture01">观看相关视频</a> · <a href="https://space.bilibili.com/701">作者空间</a> · <a href="https://www.bilibili.com/read/cv101">下一篇专栏</a></p><hr><p>谢谢阅读，欢迎在评论区分享你身边的风景。</p>"#
+      read["content"] = #"<h2>从一条小路开始</h2><p>城市的节奏总让人忘记观察。<strong>慢下来</strong>，看看光线如何穿过树叶，也听听街角的声音。</p><p>这个周末，我带上一台旧相机，沿着家门口的小路走了一个下午。</p><figure><img data-src="https://fixture.invalid/cover/3" alt="午后的小路"></figure><h2>把片刻留在纸上</h2><p>无需走得很远，日常也能成为旅程。先记下一段声音，再画出它让你想起的颜色。</p><blockquote><p>记录不是为了留住一切，而是为了记得自己曾经认真看过。</p></blockquote><p><a href="https://www.bilibili.com/video/BV1fixture01">观看相关视频</a> · <a href="https://space.bilibili.com/701">作者空间</a> · <a href="https://www.bilibili.com/read/cv101">下一篇专栏</a></p><hr><p>谢谢阅读，欢迎在评论区分享你身边的风景。</p>"#
       let state: [String: Any] = ["readInfo": read, "dynamicId": "synthetic"]
       guard let json = try? JSONSerialization.data(withJSONObject: state), let text = String(data: json, encoding: .utf8) else { return nil }
       return Data("<!doctype html><html><body><script>window.__INITIAL_STATE__ = \(text);</script></body></html>".utf8)

@@ -41,6 +41,9 @@ import ManpingCore
   }
   @Published private(set) var gifts: [LiveGift] = []
   @Published private(set) var bag: [LiveBagItem] = []
+  /// Set when a bag re-read failed; the bag stays empty (never quoted from old counts) until
+  /// the person reads it again.
+  @Published private(set) var bagReadFailed = false
   @Published private(set) var emotes: [LiveEmoticonPackage] = []
   @Published private(set) var medals: [LiveJSON] = []
   @Published private(set) var config = LiveDMConfig(.null)
@@ -70,6 +73,8 @@ import ManpingCore
   private(set) var context: LiveInteractionContext?
   let session: LiveInteractionSession
   let fixtures: Bool
+  /// The same gate the session enforces; the interface uses it only to say up front what is closed.
+  let gate: LiveMutationGate
   private var revision: UInt64 = 0
   private var draftTask: Task<Void, Never>?
   private var poll: Task<Void, Never>?
@@ -84,13 +89,18 @@ import ManpingCore
   private var activityReads = LiveActivitySnapshot()
   @Published private(set) var moderation = LiveModerationState()
   private var sawPaidLock = false
+  /// Bumped by every medal operation; a user/medal read applies only if no newer operation began.
+  private var medalRevision: UInt64 = 0
+  /// A medal change and its follow-up read are in flight; further medal clicks wait for it.
+  @Published private(set) var medalBusy = false
 
   init(
-    session: LiveInteractionSession, fixtures: Bool,
+    session: LiveInteractionSession, fixtures: Bool, gate: LiveMutationGate,
     fixturePolicySource: LiveGiftPolicySource? = nil
   ) {
     self.session = session
     self.fixtures = fixtures
+    self.gate = gate
     self.fixturePolicySource = fixturePolicySource
     settings = MacSettings.load(from: PerformanceEnvironment.defaults)
     observation = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
@@ -113,7 +123,7 @@ import ManpingCore
     if let pausedUntil, pausedUntil > Date().timeIntervalSince1970 {
       return "操作太频繁，B 站暂时限制了发送；不会自动补发"
     }
-    return status ?? (fixtures ? nil : "发弹幕暂未开放 · 在浏览器中打开直播间可以发送")
+    return status ?? (gate.allows(.sendDanmaku) ? nil : "发弹幕暂未开放 · 在浏览器中打开直播间可以发送")
   }
   var canSend: Bool {
     canInteract && muted == nil && !sending && !(draft.text.isEmpty && draft.emoticon == nil)
@@ -144,6 +154,7 @@ import ManpingCore
   func retire() {
     context = nil
     revision &+= 1
+    medalBusy = false
     draftTask?.cancel()
     poll?.cancel()
     draft = LiveDanmakuDraft()
@@ -266,7 +277,7 @@ import ManpingCore
   }
   func like() {
     perform { session, captured in try await session.like(expected: captured) }
-    if fixtures && canInteract { likes += 1 } else if !fixtures { status = "点赞暂未开放" }
+    if !gate.allows(.like) { status = "点赞暂未开放" } else if canInteract { likes += 1 }
   }
   func setStyle(color: UInt32? = nil, mode: Int? = nil) {
     perform { session, captured in
@@ -274,14 +285,27 @@ import ManpingCore
     }
   }
   func wearMedal(_ id: Int64?) {
-    perform { session, captured in try await session.wearMedal(id, expected: captured) }
+    guard !medalBusy, let captured = context, current(captured) else { return }
+    medalBusy = true
+    medalRevision &+= 1
+    perform(
+      refreshing: [.infoByUser, .medalPanel], medalVersion: medalRevision,
+      finished: { [weak self] in if self?.context == captured { self?.medalBusy = false } }
+    ) { session, captured in
+      try await session.wearMedal(id, expected: captured)
+    }
   }
+  /// `refreshing` re-reads those routes once the operation finishes, whatever its outcome, so the
+  /// interface shows what the server now holds (for example the medal just worn).
   private func perform(
+    refreshing routes: [LiveRoute] = [], medalVersion: UInt64? = nil,
+    finished: (@MainActor () -> Void)? = nil,
     _ operation:
       @escaping @Sendable (LiveInteractionSession, LiveInteractionContext) async throws -> Void
   ) {
     guard let captured = context, current(captured) else { return }
     Task { [weak self] in
+      defer { finished?() }
       guard let self else { return }
       do { try await operation(self.session, captured) } catch {
         guard self.current(captured) else { return }
@@ -289,6 +313,9 @@ import ManpingCore
       }
       guard self.current(captured) else { return }
       await self.sync(captured)
+      if !routes.isEmpty, self.current(captured) {
+        await self.loadMetadata(captured, medalVersion: medalVersion, routes: routes)
+      }
     }
   }
   func select(_ gift: LiveGift, bag: LiveBagItem? = nil) {
@@ -311,7 +338,7 @@ import ManpingCore
       paidLockedNotice = true
       return
     }
-    guard fixtures else {
+    guard gate.allows(bagTab ? .sendBag : .sendGold) else {
       result = .closed
       return
     }
@@ -393,7 +420,22 @@ import ManpingCore
       }
       guard self.current(captured), self.giftAttempt == attempt else { return }
       await self.sync(captured)
+      // A backpack attempt, whatever its outcome, re-reads the bag so a spent or expired item
+      // cannot be quoted again from the old count. This only displays; it never resends.
+      if value.bagID != nil, self.current(captured) { await self.rereadBag(captured) }
     }
+  }
+  /// Drops the bag (and any selection or quote built on it) before reading it again, so a failed
+  /// read can never leave old counts quotable.
+  private func rereadBag(_ captured: LiveInteractionContext) async {
+    bag = []
+    selectedBag = nil
+    await loadMetadata(captured, routes: [.bagList])
+  }
+  func refreshBag() {
+    guard let captured = context, current(captured) else { return }
+    bagReadFailed = false
+    Task { [weak self] in await self?.rereadBag(captured) }
   }
   func acknowledge(_ nonce: UUID) {
     let captured = context
@@ -479,18 +521,28 @@ import ManpingCore
   private func didJoin(_ value: LiveInteractionContext, activity expected: LiveActivity) {
     if matchesForActivity(value, activity: expected) { activityJoined = true }
   }
-  private func loadMetadata(_ captured: LiveInteractionContext) async {
-    for route: LiveRoute in [
+  private func loadMetadata(
+    _ captured: LiveInteractionContext, medalVersion: UInt64? = nil,
+    routes: [LiveRoute] = [
       .infoByUser, .dmConfig, .emoticons, .roomGiftList, .giftConfig, .bagList, .medalPanel,
       .superChatList,
-    ] {
+    ]
+  ) async {
+    let medalVersion = medalVersion ?? medalRevision
+    for route in routes {
       guard current(captured) else { return }
       do {
         let key = route == .lotteryInfo ? "roomid" : "room_id"
-        let fields = route == .medalPanel ? [:] : [key: String(captured.roomID)]
+        // The medal panel takes the room and its anchor, as the web page sends them, so the
+        // current room's medal comes first.
+        let fields =
+          route == .medalPanel
+          ? ["room_id": String(captured.roomID), "target_id": String(captured.anchorID)]
+          : [key: String(captured.roomID)]
         let envelope = try await session.read(route, fields: fields, expected: captured)
         guard current(captured) else { return }
         let data = envelope.data
+        if route == .infoByUser || route == .medalPanel, medalVersion != medalRevision { continue }
         switch route {
         case .infoByUser: user = LiveUserInfo(data)
         case .dmConfig: config = LiveDMConfig(data)
@@ -501,7 +553,12 @@ import ManpingCore
           gifts = LiveGift.roomAvailable(panel: roomGiftPanel, config: data)
           updateFixturePolicy()
           selectedGift = gifts.first?.id
-        case .bagList: bag = (data["list"].array ?? []).compactMap(LiveBagItem.init)
+        case .bagList:
+          bag = (data["list"].array ?? []).compactMap(LiveBagItem.init)
+          bagReadFailed = false
+          if let selectedBag, !bag.contains(where: { $0.bagID == selectedBag }) {
+            self.selectedBag = nil
+          }
         case .medalPanel: medals = data["list"].array ?? []
         case .superChatList:
           try await session.mergeSuperChats(
@@ -511,6 +568,7 @@ import ManpingCore
         }
       } catch {
         guard current(captured) else { return }
+        if route == .bagList, bag.isEmpty { bagReadFailed = true }
         if case LiveInteractionError.paused = error {
           status = Self.message(error)
           break

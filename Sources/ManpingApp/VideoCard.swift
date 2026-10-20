@@ -91,6 +91,7 @@ struct VideoCard: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }.contentShape(Rectangle())
       }.buttonStyle(CardPressStyle()).accessibilityLabel("播放 \(video.title)，\(video.author)")
+        .demoAnchor("card.\(video.title)")
       CardMetadataLine(author: video.author, authorID: video.authorID, rest: metadata, action: action)
     }.cardHover()
       .contextMenu { VideoContextMenu(video: video, extra: menuExtra) }

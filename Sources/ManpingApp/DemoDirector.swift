@@ -20,25 +20,49 @@ enum DemoConfig {
   static let output: URL? = environment["MANPING_DEMO_OUT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
   static let media: URL? = environment["MANPING_DEMO_MEDIA"].map { URL(fileURLWithPath: $0) }
     .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+  /// `MANPING_DEMO_ASSETS` (docs/media/fetch_assets.py): CC0 photos the samples' covers and avatars
+  /// show instead of their drawn placeholders, `covers/<n>.jpg` and `avatars/<n>.jpg`.
+  static let assets: URL? = environment["MANPING_DEMO_ASSETS"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+  @MainActor private static var photos: [String: NSImage] = [:]
+  @MainActor static func photo(_ index: Int, avatar: Bool) -> NSImage? {
+    guard DebugUIFixtures.enabled, let assets else { return nil }
+    let folder = avatar ? "avatars" : "covers"
+    let count = (try? FileManager.default.contentsOfDirectory(atPath: assets.appendingPathComponent(folder).path))?
+      .filter { $0.hasSuffix(".jpg") }.count ?? 0
+    guard count > 0 else { return nil }
+    let name = "\(folder)/\(abs(index) % count).jpg"
+    if let photo = photos[name] { return photo }
+    let photo = NSImage(contentsOf: assets.appendingPathComponent(name))
+    photos[name] = photo
+    return photo
+  }
   /// Only over the offline samples: a scene never shows an account or online content.
   static var active: Bool { scene != nil && output != nil && DebugUIFixtures.enabled }
   /// Scenes on a playing video or live room load the local file into the real player.
-  static var playsLocalMedia: Bool { active && media != nil && ["hero", "danmaku", "mini", "live"].contains(scene ?? "") }
+  static var playsLocalMedia: Bool { active && media != nil && ["hero", "danmaku", "mini", "live", "ai"].contains(scene ?? "") }
 
   /// Synthetic danmaku (list.so XML) for the local file: made-up lines, a few top, bottom and
-  /// coloured ones, about three a second over the first minute.
+  /// coloured ones, two a second over the 70 s video.
   static func danmakuXML() -> Data? {
     guard playsLocalMedia else { return nil }
+    // Each line names one thing the app does, so the README's danmaku double as its feature list.
     let lines = [
-      "前排围观", "这段画面好治愈", "原生播放器真顺滑", "120Hz 下弹幕一点都不抖", "打卡打卡", "配乐好舒服",
-      "山间的风好温柔", "这个转场绝了", "已三连", "收藏了周末再看", "弹幕护体", "好想去这里走走",
-      "镜头好稳", "第一次来，路过", "颜色好好看", "慢下来真好", "这里可以当壁纸", "小窗边看边写代码",
-      "画质好清楚", "节奏刚刚好", "求背景音乐", "看完心情变好了", "每一帧都好看", "光影绝了",
+      "Metal 渲染弹幕，跟着屏幕刷新率走", "120Hz 下弹幕一点都不抖", "先描边再填充，白底画面也看得清", "同一行弹幕绝不重叠",
+      "显示区域、字号、速度随时调", "关键词和正则都能屏蔽", "同步你在 B 站设的屏蔽词", "⇧⌘D 一键开关弹幕",
+      "mpv + VideoToolbox 硬件解码", "8K、杜比视界、HDR10 都能放", "进度条按官方章节分段", "悬停进度条看预览和章节名",
+      "琥珀色曲线就是高能进度", "按住画面临时倍速", "⇧⌘P 小窗，边看边干活", "小窗拖到哪个角就吸在哪个角",
+      "⌃⌘F 沉浸全屏，只剩画面", "控制条图标可以自由排", "Anime4K、FSRCNNX 画面增强", "番剧自动跳过片头片尾",
+      "合集和收藏夹连续播放", "节点测速，卡了自动换线", "支持 HTTP、SOCKS5 和 Shadowsocks", "AI 一键总结章节",
+      "只看 3 分钟：挑出最值得看的片段", "AI 回答里的时间点一点就跳", "29 个 AI 服务任你选", "Apple 智能可以完全本机处理",
+      "直播里发弹幕、点赞、送背包礼物", "纯享模式：一键关掉所有特效", "付费礼物默认锁定，送前再确认", "醒目留言按金额配色",
+      "登录信息本地加密，不进钥匙串", "没配置 AI 就不会发送任何内容", "控制中心和媒体键都能用", "聚焦搜索能找到看过的视频",
+      "⌘L 直接打开 B 站链接", "实况文本：暂停后选取画面文字", "原生 SwiftUI，为 Mac 而做", "满屏，开源免费",
     ]
     let colors: [UInt32] = [0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x6FD0F5, 0xFFB13B, 0xFF4F95]
     var body = #"<?xml version="1.0" encoding="UTF-8"?><i>"#
-    for index in 0..<180 {
-      let time = Double(index) / 3 + Double(index % 5) * 0.07
+    // Two a second: denser danmaku would make every GIF frame change across the whole picture.
+    for index in 0..<140 {
+      let time = Double(index) / 2 + Double(index % 5) * 0.07
       let mode = index % 23 == 7 ? 5 : index % 31 == 11 ? 4 : 1
       let color = mode == 1 ? colors[index % colors.count] : 0xFFB13B
       body += #"<d p="\#(String(format: "%.2f", time)),\#(mode),25,\#(color),1760000000,0,demo\#(index),\#(index),5">\#(lines[(index * 7) % lines.count])</d>"#
@@ -60,10 +84,73 @@ enum DemoSignal {
   case miniActivity
   /// The reader scrolled the live chat up a little.
   case chatScrollUp
+  /// The video page's side panel shows the tab with this title.
+  case videoSection(String)
 }
 
 @MainActor enum DemoStage {
   static let signals = PassthroughSubject<DemoSignal, Never>()
+}
+
+// MARK: - Anchors
+
+/// The controls a scene points at. A view marked `.demoAnchor(id)` registers its backing NSView;
+/// the director reads that view's on-screen frame at the moment it points, so the drawn pointer
+/// lands exactly on the control in the recording (popovers and other windows included).
+@MainActor enum DemoAnchors {
+  private final class Entry { weak var view: NSView? }
+  private static var entries: [String: [Entry]] = [:]
+
+  static func register(_ view: NSView, as id: String, replacing old: String? = nil) {
+    if let old { entries[old]?.removeAll { $0.view == nil || $0.view === view } }
+    entries[id, default: []].removeAll { $0.view == nil || $0.view === view }
+    let entry = Entry()
+    entry.view = view
+    entries[id, default: []].append(entry)
+  }
+
+  /// Registered ids that start with `prefix` and are on screen now.
+  static func ids(prefix: String) -> [String] { entries.keys.filter { $0.hasPrefix(prefix) && frame($0) != nil }.sorted() }
+
+  /// Global points with a top-left origin (as CGWindowList) of the largest visible instance.
+  static func frame(_ id: String) -> CGRect? {
+    let screenHeight = NSScreen.screens.first?.frame.height ?? 0
+    return (entries[id] ?? []).compactMap { entry -> CGRect? in
+      guard let view = entry.view, let window = view.window, window.isVisible, !view.isHiddenOrHasHiddenAncestor,
+        !view.visibleRect.isEmpty else { return nil }
+      let rect = window.convertToScreen(view.convert(view.bounds, to: nil))
+      guard rect.width > 1, rect.height > 1 else { return nil }
+      return CGRect(x: rect.minX, y: screenHeight - rect.maxY, width: rect.width, height: rect.height)
+    }.max { $0.width * $0.height < $1.width * $1.height }
+  }
+}
+
+private struct DemoAnchorView: NSViewRepresentable {
+  let id: String
+  func makeNSView(context: Context) -> DemoAnchorNSView {
+    let view = DemoAnchorNSView()
+    view.id = id
+    return view
+  }
+  func updateNSView(_ view: DemoAnchorNSView, context: Context) { view.id = id }
+}
+
+final class DemoAnchorNSView: NSView {
+  var id = "" {
+    didSet { if window != nil, id != oldValue { DemoAnchors.register(self, as: id, replacing: oldValue) } }
+  }
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if window != nil { DemoAnchors.register(self, as: id) }
+  }
+  override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+extension View {
+  /// Names this control for the README director (docs/media/README.md). Does nothing outside a scene.
+  @ViewBuilder func demoAnchor(_ id: String) -> some View {
+    if DemoConfig.active { background(DemoAnchorView(id: id)) } else { self }
+  }
 }
 
 // MARK: - View hooks (each one line at its view, inside `#if DEBUG`)
@@ -150,6 +237,18 @@ struct DemoChatScroll: ViewModifier {
   }
 }
 
+/// The video page's side tabs (简介, 评论, AI…).
+struct DemoVideoSection: ViewModifier {
+  let select: (String) -> Void
+  @ViewBuilder func body(content: Content) -> some View {
+    if DemoConfig.active {
+      content.onReceive(DemoStage.signals) { signal in
+        if case .videoSection(let title) = signal { select(title) }
+      }
+    } else { content }
+  }
+}
+
 // MARK: - Director
 
 @MainActor final class DemoDirector {
@@ -208,9 +307,12 @@ struct DemoChatScroll: ViewModifier {
 
   /// Set-up before recording starts.
   private func prepare() async throws {
+    // Video scenes start with the right panel folded, the live room with its chat shown (it is the
+    // viewer's last choice otherwise).
+    PerformanceEnvironment.defaults.set(scene != "live", forKey: PlayerPreferences.sidebarHiddenKey)
     switch scene {
     case "hero", "live", "settings": break
-    case "danmaku":
+    case "danmaku", "ai":
       try await openSampleVideo()
       model.player.setDanmakuArea(0.5)
       await pause(3)
@@ -229,41 +331,42 @@ struct DemoChatScroll: ViewModifier {
     case "danmaku": try await danmaku()
     case "mini": try await mini()
     case "live": try await live()
+    case "ai": try await ai()
     case "settings": try await settings()
     default: break
     }
   }
 
-  /// 首页 → hover a card → open it → playing with danmaku → hover the progress bar → controls fade.
+  /// The first card of the home grid, which every video scene opens.
+  private static let sampleTitle = M3FixtureRPCTransport.popularTitles[0]
+
+  /// 首页 → hover a card → open it → playing with danmaku → hover the chapter-segmented progress bar → controls fade.
   private func hero() async throws {
     guard let window = mainWindow else { return }
-    caption("原生 SwiftUI 界面，首页网格悬停浮起")
-    await pause(0.5)
-    let card = target(["本地热门 · 1"], in: window, fallback: CGPoint(x: 0.29, y: 0.18))
+    caption("原生 SwiftUI 界面，首页卡片悬停浮起")
+    await pause(0.6)
+    let card = try await target("card.\(Self.sampleTitle)")
     await move(to: card.point)
     DemoStage.signals.send(.hoverPoint(local(card.point, in: window)))
-    await pause(0.9)
+    await pause(1.0)
     click()
     DemoStage.signals.send(.hoverPoint(nil))
-    if !(card.element?.accessibilityPerformPress() ?? false) {
-      model.open(Video(bvid: DebugUIFixtures.bvid, title: "本地热门 · 1", aid: 100))
-    }
+    model.open(Video(bvid: DebugUIFixtures.bvid, title: Self.sampleTitle, aid: 100))
     try await waitForPlayback()
-    caption("Metal 弹幕跟随屏幕刷新率匀速滚动，液态玻璃控制面板")
-    let picture = point(fraction: CGPoint(x: 0.42, y: 0.42), of: window)
-    await move(to: picture)
-    for _ in 0..<4 { DemoStage.signals.send(.playerActivity); await pause(0.45) }
-    let bar = target(["播放进度"], in: window, fallback: CGPoint(x: 0.44, y: 0.905))
-    let track = bar.frame ?? CGRect(x: bar.point.x - 300, y: bar.point.y - 8, width: 600, height: 16)
-    caption("悬停进度条：预览画面与「时间 · 章节名」")
-    let start = 0.32, end = 0.6
+    caption("Metal 弹幕跟随屏幕刷新率匀速滚动，玻璃控制面板浮在画面上")
+    await move(to: point(fraction: CGPoint(x: 0.4, y: 0.4), of: window))
+    for _ in 0..<5 { DemoStage.signals.send(.playerActivity); await pause(0.45) }
+    let bar = try await target("seek")
+    let track = bar.frame
+    caption("进度条按章节分段，悬停显示预览与「时间 · 章节名」")
+    let start = 0.12, end = 0.62
     await move(to: CGPoint(x: track.minX + track.width * start, y: track.midY))
     DemoStage.signals.send(.seekHover(start))
     await pause(0.6)
-    // Slide along the track; the preview follows.
-    let slide = 1.2
+    // Slide along the track; the preview and the chapter name follow.
+    let slide = 1.8
     log(["type": "move", "x": track.minX + track.width * end, "y": track.midY, "dur": slide * 1000])
-    let steps = 24
+    let steps = 36
     for step in 1...steps {
       DemoStage.signals.send(.playerActivity)
       DemoStage.signals.send(.seekHover(start + (end - start) * glide(Double(step) / Double(steps))))
@@ -272,69 +375,63 @@ struct DemoChatScroll: ViewModifier {
     pointer = CGPoint(x: track.minX + track.width * end, y: track.midY)
     await pause(1.0)
     caption("指针停下 2.5 秒后，控件自动淡出")
-    await move(to: point(fraction: CGPoint(x: 0.46, y: 0.3), of: window))
+    await move(to: point(fraction: CGPoint(x: 0.42, y: 0.3), of: window))
     DemoStage.signals.send(.seekHover(nil))
     DemoStage.signals.send(.playerActivity)
     await pause(3.6)
   }
 
-  /// Danmaku close-up → the danmaku panel: display area 半屏 → 全屏, larger text → danmaku off and on.
+  /// Danmaku → 更多 › 弹幕设置: display area 半屏 → 全屏, larger text → danmaku off and on.
   private func danmaku() async throws {
-    guard let window = mainWindow else { return }
-    caption("弹幕由 Metal 绘制，随屏幕刷新率匀速滚动")
-    let picture = window.frame
-    let band = globalRect(NSRect(x: picture.minX + picture.width * 0.18, y: picture.minY + picture.height * 0.55,
-      width: picture.width * 0.45, height: picture.height * 0.33))
-    zoom(band, for: 3.6)
-    await pause(4.2)
-    caption("弹幕面板：显示区域、字号即时生效")
-    let gear = target(["播放器设置"], in: window, fallback: CGPoint(x: 0.638, y: 0.949))
+    // No push-in: a zoom changes every pixel of every frame, which a GIF cannot afford over a photo.
+    caption("弹幕由 Metal 绘制，先描边再填充，同一行不重叠")
+    await pause(2.4)
+    caption("更多 › 弹幕设置：显示区域、字号即时生效")
+    DemoStage.signals.send(.playerActivity)
+    // The default bar keeps 弹幕设置 in 「更多」, and its panel opens from that button.
+    let gear = try await target(DemoAnchors.frame("bar.danmakuSettings") != nil ? "bar.danmakuSettings" : "bar.more")
     await move(to: gear.point)
     DemoStage.signals.send(.playerActivity)
     await pause(0.3)
     click()
     DemoStage.signals.send(.danmakuPanel(true))
     await pause(1.0)
-    let panel = popoverWindow()
-    let full = panel.map { target(["全屏"], in: $0, fallback: CGPoint(x: 0.82, y: 0.66)) }
-    if let full {
-      await move(to: full.point)
-      await pause(0.25)
-      click()
-      DemoStage.signals.send(.danmakuAppearance(fontSize: nil, area: 1))
-      await pause(1.2)
-    } else { notes.append("danmaku panel window not found") }
-    if let panel {
-      let slider = target(["字号"], in: panel, fallback: CGPoint(x: 0.5, y: 0.2))
-      let track = slider.frame ?? CGRect(x: slider.point.x - 120, y: slider.point.y - 6, width: 240, height: 12)
-      let range = MacSettingsCatalog.descriptor(.danmakuFontSize).numberRange?.range ?? 12...48
-      let from = model.settingsModel.values.number(.danmakuFontSize), to = min(range.upperBound, from + 10)
-      let x = { (size: Double) in track.minX + track.width * (size - range.lowerBound) / (range.upperBound - range.lowerBound) }
-      await move(to: CGPoint(x: x(from), y: track.midY))
-      log(["type": "move", "x": x(to), "y": track.midY, "dur": 900])
-      for step in 1...10 {
-        DemoStage.signals.send(.danmakuAppearance(fontSize: (from + (to - from) * Double(step) / 10).rounded(), area: nil))
-        await pause(0.09)
-      }
-      pointer = CGPoint(x: x(to), y: track.midY)
-      await pause(1.4)
-      DemoStage.signals.send(.danmakuAppearance(fontSize: from, area: nil))
+    let full = try await target("tab.全屏")
+    await move(to: full.point)
+    await pause(0.25)
+    click()
+    DemoStage.signals.send(.danmakuAppearance(fontSize: nil, area: 1))
+    await pause(1.2)
+    let slider = try await target("slider.字号")
+    let track = slider.frame.insetBy(dx: 8, dy: 0)
+    let range = MacSettingsCatalog.descriptor(.danmakuFontSize).numberRange?.range ?? 12...48
+    let from = model.settingsModel.values.number(.danmakuFontSize), to = min(range.upperBound, from + 10)
+    let x = { (size: Double) in track.minX + track.width * (size - range.lowerBound) / (range.upperBound - range.lowerBound) }
+    await move(to: CGPoint(x: x(from), y: track.midY))
+    log(["type": "move", "x": x(to), "y": track.midY, "dur": 900])
+    for step in 1...10 {
+      DemoStage.signals.send(.danmakuAppearance(fontSize: (from + (to - from) * Double(step) / 10).rounded(), area: nil))
+      await pause(0.09)
     }
+    pointer = CGPoint(x: x(to), y: track.midY)
+    await pause(1.0)
+    DemoStage.signals.send(.danmakuAppearance(fontSize: from, area: nil))
     DemoStage.signals.send(.danmakuPanel(false))
-    caption("一键关闭、再打开弹幕")
-    let toggle = target(["弹幕"], in: window, fallback: CGPoint(x: 0.331, y: 0.949), exact: true)
+    caption("⇧⌘D 或点一下，关闭、再打开弹幕")
+    DemoStage.signals.send(.playerActivity)
+    let toggle = try await target("bar.danmaku")
     await move(to: toggle.point)
     DemoStage.signals.send(.playerActivity)
     await pause(0.3)
     click(); model.player.commentsEnabled = false
-    await pause(1.4)
+    await pause(1.1)
+    DemoStage.signals.send(.playerActivity)
     click(); model.player.commentsEnabled = true
-    await pause(1.6)
+    await pause(1.2)
   }
 
   /// ⇧⌘P → the mini window in the bottom-right corner; the main window browses on; hover → drag → snap.
   private func mini() async throws {
-    guard let window = mainWindow else { return }
     caption("⇧⌘P 打开小窗，画面浮在屏幕一角")
     await pause(0.6)
     keys(["⇧", "⌘", "P"])
@@ -342,11 +439,11 @@ struct DemoChatScroll: ViewModifier {
     try await wait(5) { self.miniPanel != nil }
     await pause(1.4)
     caption("主窗口继续浏览首页和专栏，播放不中断")
-    let home = target(["首页"], in: window, fallback: CGPoint(x: 0.07, y: 0.155), exact: true)
+    let home = try await target("sidebar.\(AppModel.Destination.page(.popular).title)")
     await move(to: home.point)
     click(); model.navigate(to: .popular)
     await pause(1.3)
-    let articles = target(["专栏"], in: window, fallback: CGPoint(x: 0.07, y: 0.405), exact: true)
+    let articles = try await target("sidebar.\(AppModel.Destination.page(.article).title)")
     await move(to: articles.point)
     click(); model.navigate(to: .article)
     await pause(1.5)
@@ -379,54 +476,122 @@ struct DemoChatScroll: ViewModifier {
     await pause(1.6)
   }
 
-  /// 直播 grid → a room → the chat scrolls, a 醒目留言 → scrolled up, 「N 条新弹幕」 → back down.
+  /// 直播 grid → a room → chat with a 醒目留言 and a gift → send a danmaku → like.
   private func live() async throws {
     guard let window = mainWindow else { return }
     if model.page != .live { model.navigate(to: .live) }
     caption("直播：分区网格，悬停浮起")
-    await pause(0.6)
-    let room = target(["傍晚音乐会"], in: window, fallback: CGPoint(x: 0.29, y: 0.24))
+    await pause(0.8)
+    let roomID: Int64 = 5005
+    let room = try await target("live.\(roomID)")
     await move(to: room.point)
     DemoStage.signals.send(.hoverPoint(local(room.point, in: window)))
     await pause(0.9)
     click()
     DemoStage.signals.send(.hoverPoint(nil))
-    if !(room.element?.accessibilityPerformPress() ?? false) { model.openLive(5000) }
+    model.openLive(roomID)
     try await wait(8) { self.model.livePlayback != nil }
-    await pause(1.0)
-    guard let chat = model.livePlayback?.chat else { throw Failure.missing("live chat") }
-    caption("聊天实时滚动，醒目留言单独标出")
-    let names = ["样本观众 12", "晚风", "小林同学", "路过的猫", "今天也要早睡", "山野记录粉丝", "一只企鹅", "阿青"]
-    let texts = ["晚上好呀", "这首歌好好听", "来了来了", "打卡", "主播今天状态好好", "前奏一响就爱了", "再来一首！", "声音好温柔",
-      "从首页点进来的", "好治愈", "第一次看直播，好热闹", "背景好好看", "点歌点歌", "明天还播吗", "坐等下一首", "已关注"]
+    await pause(1.2)
+    guard let live = model.livePlayback else { throw Failure.missing("live room") }
+    try await wait(8) { live.room != nil }
+    await live.bindDemoInteraction()
+    try await wait(8) { live.ui.canInteract }
+    let chat = live.chat
+    caption("实时弹幕同时上屏，醒目留言和礼物单独标出")
+    let names = ["晚风", "小林同学", "路过的猫", "今天也要早睡", "山野记录粉丝", "一只企鹅", "阿青", "北岸"]
+    let texts = [
+      "直播弹幕也是 Metal 渲染", "从首页点进来的", "城市夜景好治愈", "醒目留言按金额配色", "纯享模式可以关掉所有特效",
+      "画面好稳", "小窗挂着边看边写代码", "付费礼物默认锁定", "直播里也能发弹幕点赞了", "节点卡了会自动换",
+    ]
     var line = 0
     func say(_ count: Int, every seconds: Double) async {
       for _ in 0..<count {
-        chat.add(user: names[line % names.count], text: texts[(line * 5) % texts.count], kind: .danmaku)
+        let text = texts[line % texts.count]
+        chat.add(user: names[line % names.count], text: text, kind: .danmaku)
+        model.player.timeline.append(DanmakuComment(time: model.player.mediaClock + 0.05, color: 0xFFFFFF, text: text))
         line += 1
         await pause(seconds)
       }
     }
-    await say(10, every: 0.3)
-    chat.add(user: "晚风", text: "谢谢今晚的歌，祝大家周末愉快！", kind: .superChat(30))
+    await say(6, every: 0.35)
+    chat.add(user: "晚风", text: "满屏的直播弹幕和醒目留言都在侧栏，翻看历史也不打断", kind: .superChat(30))
+    live.ui.enqueue(LiveEffect(kind: .superChat, title: "醒目留言 ¥30", detail: "满屏的直播弹幕和醒目留言都在侧栏", user: "晚风", price: 30))
+    await pause(1.0)
+    await say(3, every: 0.35)
+    chat.add(user: "小林同学", text: "赠送 小心心 ×5", kind: .gift)
+    live.ui.enqueue(LiveEffect(kind: .gift, title: "小林同学", detail: "赠送 小心心", user: "小林同学", giftName: "小心心", count: 5))
     await pause(1.2)
-    await say(4, every: 0.3)
-    caption("往上翻看时，新消息收进「N 条新弹幕」")
-    let list = point(fraction: CGPoint(x: 0.86, y: 0.5), of: window)
-    await move(to: list)
-    DemoStage.signals.send(.chatScrollUp)
-    await pause(0.6)
-    await say(9, every: 0.32)
-    let pill = target(["条新弹幕"], in: window, fallback: CGPoint(x: 0.86, y: 0.9))
-    await move(to: pill.point)
-    await pause(0.3)
+    await say(2, every: 0.35)
+    caption("在侧栏发弹幕、点赞，和官方直播间一样")
+    let composer = try await target("live.composer")
+    await move(to: composer.point)
     click()
-    if !(pill.element?.accessibilityPerformPress() ?? false) { notes.append("new-lines pill not pressed") }
-    await say(4, every: 0.3)
+    await pause(0.3)
+    let message = "满屏发的第一条弹幕"
+    for count in 1...message.count {
+      live.ui.setText(String(message.prefix(count)))
+      await pause(0.08)
+    }
+    await pause(0.3)
+    let send = try await target("live.send")
+    await move(to: send.point)
+    click()
+    live.ui.setText("")
+    chat.add(user: "我", text: message, kind: .danmaku)
+    model.player.timeline.append(DanmakuComment(time: model.player.mediaClock + 0.05, color: 0xFFFFFF, text: message))
+    await pause(0.8)
+    await say(2, every: 0.35)
+    let like = try await target("live.like")
+    await move(to: like.point)
+    for _ in 0..<3 { click(); live.ui.like(); await pause(0.28) }
+    chat.add(user: "", text: "我 点了赞", kind: .notice)
+    await pause(0.6)
+    await say(3, every: 0.35)
     await pause(0.8)
   }
 
-  /// ⌘, → the settings window → 网络 → 致谢.
+  /// The video page's AI tab → 章节总结 streams in → a time in the answer jumps the player.
+  private func ai() async throws {
+    caption("AI 面板：预设一键生成，只在你点按时发送")
+    let toggle = try await target("toolbar.sidebar")
+    await move(to: toggle.point)
+    await pause(0.2)
+    click()
+    withAnimation(.snappy(duration: 0.25)) { PerformanceEnvironment.defaults.set(false, forKey: PlayerPreferences.sidebarHiddenKey) }
+    await pause(1.0)
+    // A narrow panel keeps AI behind the tabs' 「⋯」.
+    let tab = try await target(DemoAnchors.frame("tab.AI") != nil ? "tab.AI" : "tab.more")
+    await move(to: tab.point)
+    await pause(0.2)
+    click()
+    DemoStage.signals.send(.videoSection("AI"))
+    await pause(1.0)
+    let preset = try await target("ai.章节总结", within: 6)
+    await move(to: preset.point)
+    await pause(0.3)
+    click()
+    guard let video = model.videoDetails else { throw Failure.missing("video details") }
+    let panel = model.ai.panel(for: model.aiVideoSource(video))
+    if let chapters = panel.panelPresets.first(where: { $0.name == "章节总结" }) { panel.run(chapters) }
+    try await wait(15) { !panel.busy && !panel.turns.isEmpty }
+    await pause(1.6)
+    caption("回答里的时间点一点就跳到那一刻")
+    let times = DemoAnchors.ids(prefix: "ai.time.").compactMap { id -> (String, Double)? in
+      let parts = id.dropFirst("ai.time.".count).split(separator: ":").compactMap { Double($0) }
+      guard parts.count == 2 else { return nil }
+      return (id, parts[0] * 60 + parts[1])
+    }.filter { $0.1 > 5 && $0.1 < 60 }.sorted { $0.1 < $1.1 }
+    guard let jump = times.dropFirst().first ?? times.first else { throw Failure.missing("a time link under 01:00") }
+    let pill = try await target(jump.0)
+    await move(to: pill.point)
+    await pause(0.3)
+    click()
+    model.player.seek(jump.1)
+    DemoStage.signals.send(.playerActivity)
+    await pause(2.4)
+  }
+
+  /// ⌘, → the settings window → 直播 (纯享模式) → 网络 → 致谢.
   private func settings() async throws {
     guard let window = mainWindow else { return }
     caption("⌘, 打开设置窗口")
@@ -438,22 +603,24 @@ struct DemoChatScroll: ViewModifier {
     // Over the middle of the main window, wherever it was left last time.
     settings.setFrameOrigin(NSPoint(x: window.frame.midX - settings.frame.width / 2, y: window.frame.midY - settings.frame.height / 2))
     await pause(1.4)
+    caption("直播：纯享模式、逐项关闭特效、付费礼物默认锁定")
+    let liveGroup = try await target("settings.\(MacSettingGroup.live.rawValue)")
+    await move(to: liveGroup.point)
+    await pause(0.2)
+    click(); model.openSettings(.live)
+    await pause(2.4)
     caption("网络：节点优选、代理与连接状态")
-    let network = target(["网络"], in: settings, fallback: CGPoint(x: 0.12, y: 0.33), exact: true)
+    let network = try await target("settings.\(MacSettingGroup.network.rawValue)")
     await move(to: network.point)
     await pause(0.2)
     click(); model.openSettings(.network)
-    await pause(1.0)
-    await move(to: point(fraction: CGPoint(x: 0.6, y: 0.45), of: settings))
-    await pause(1.8)
+    await pause(2.0)
     caption("致谢：用到的开源项目与许可证")
-    let thanks = target(["致谢"], in: settings, fallback: CGPoint(x: 0.12, y: 0.9), exact: true)
+    let thanks = try await target("settings.致谢")
     await move(to: thanks.point)
     await pause(0.2)
     click()
-    if !(thanks.element?.accessibilityPerformPress() ?? false) {
-      SettingsWindowController.shared.show(model: model, page: .acknowledgements)
-    }
+    SettingsWindowController.shared.show(model: model, page: .acknowledgements)
     await pause(1.2)
     await move(to: point(fraction: CGPoint(x: 0.62, y: 0.55), of: settings))
     await pause(2.0)
@@ -510,7 +677,7 @@ struct DemoChatScroll: ViewModifier {
 
   /// Opens the sample video and plays the local file in the real player.
   private func openSampleVideo() async throws {
-    model.open(Video(bvid: DebugUIFixtures.bvid, title: "本地热门 · 1", aid: 100))
+    model.open(Video(bvid: DebugUIFixtures.bvid, title: Self.sampleTitle, aid: 100))
     try await waitForPlayback()
   }
   private func waitForPlayback() async throws {
@@ -532,35 +699,21 @@ struct DemoChatScroll: ViewModifier {
 
   struct Target {
     var point: CGPoint
-    var frame: CGRect?
-    var element: NSAccessibilityProtocol?
+    var frame: CGRect
   }
 
-  /// The first accessibility element in `window` labelled with one of `labels` (buttons first), or
-  /// `fallback` as a fraction of the window. Positions are global points, top-left origin.
-  private func target(_ labels: [String], in window: NSWindow, fallback: CGPoint, exact: Bool = false) -> Target {
-    var matches: [(NSAccessibilityProtocol, NSRect, Bool)] = []
-    var queue: [Any] = [window.contentView as Any]
-    var visited = 0
-    while !queue.isEmpty, visited < 8000 {
-      let item = queue.removeFirst()
-      visited += 1
-      guard let element = item as? NSAccessibilityProtocol else { continue }
-      let texts = [element.accessibilityLabel(), element.accessibilityTitle(), element.accessibilityValue() as? String].compactMap { $0 }
-      if texts.contains(where: { text in labels.contains { exact ? text == $0 : text.contains($0) } }) {
-        let frame = element.accessibilityFrame()
-        if frame.width > 1, frame.height > 1, window.frame.intersects(frame) {
-          matches.append((element, frame, element.accessibilityRole() == .button))
-        }
+  /// The control marked `.demoAnchor(id)`, where it is on screen now. Waits a moment for one that
+  /// appears after a navigation or popover; a scene never guesses, so a missing anchor stops it and
+  /// the recorder refuses to render that scene.
+  private func target(_ id: String, within seconds: Double = 3) async throws -> Target {
+    let deadline = CACurrentMediaTime() + seconds
+    while true {
+      if let frame = DemoAnchors.frame(id) { return Target(point: CGPoint(x: frame.midX, y: frame.midY), frame: frame) }
+      guard CACurrentMediaTime() < deadline else {
+        throw Failure.missing("anchor \(id); on screen: \(DemoAnchors.ids(prefix: "").joined(separator: ", "))")
       }
-      queue.append(contentsOf: element.accessibilityChildren() ?? [])
+      await pause(0.05)
     }
-    if let best = matches.first(where: { $0.2 }) ?? matches.min(by: { $0.1.width * $0.1.height < $1.1.width * $1.1.height }) {
-      let frame = globalRect(best.1)
-      return Target(point: CGPoint(x: frame.midX, y: frame.midY), frame: frame, element: best.0)
-    }
-    notes.append("\(labels.joined(separator: "/")): not found, fallback \(fallback)")
-    return Target(point: point(fraction: fallback, of: window))
   }
 
   private func point(fraction: CGPoint, of window: NSWindow) -> CGPoint {
@@ -577,5 +730,10 @@ struct DemoChatScroll: ViewModifier {
     let frame = globalRect(window.frame)
     return CGPoint(x: point.x - frame.minX, y: point.y - frame.minY)
   }
+}
+#else
+import SwiftUI
+extension View {
+  func demoAnchor(_ id: String) -> some View { self }
 }
 #endif

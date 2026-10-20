@@ -175,7 +175,7 @@ private struct AIPanelContent: View {
         EmptyView()
       default:
         Button(preset.name) { panel.run(preset) }
-          .buttonStyle(AIPresetChipStyle(selected: selected)).disabled(panel.busy)
+          .buttonStyle(AIPresetChipStyle(selected: selected)).disabled(panel.busy).demoAnchor("ai.\(preset.name)")
       }
     }
   }

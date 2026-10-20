@@ -759,7 +759,7 @@ import WebKit
       try? await service.restoreCookies()
       let identity = await service.authSnapshot()
       accountDisplayIdentity = (epoch: identity.epoch, revision: identity.identityRevision)
-      account = "本地样本"
+      account = "满屏体验官"
       accountAvatar = URL(string: "https://fixture.invalid/avatar/1"); accountLevel = 6
       accountMID = M3Fixture.owner
       configureNotifications()

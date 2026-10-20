@@ -21,7 +21,7 @@ struct AITimestampPill: View {
           .background(Capsule().fill(highlight ? Theme.highlight.opacity(0.18) : Theme.accent.opacity(0.16)))
           .contentShape(Capsule())
       }.buttonStyle(.plain).help("跳到 \(text)")
-        .accessibilityLabel("跳到 \(text)")
+        .accessibilityLabel("跳到 \(text)").demoAnchor("ai.time.\(text)")
     } else {
       Text(text).font(Theme.Font.caption2.weight(.semibold).monospacedDigit())
         .padding(.horizontal, 8).frame(height: 22)

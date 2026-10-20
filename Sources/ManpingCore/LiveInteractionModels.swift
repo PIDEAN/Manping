@@ -236,8 +236,10 @@ public struct LiveSuperChatStore: Sendable {
 }
 
 /// Receipt validators must be backed by captured route-specific business evidence.
-/// No production gift/activity validator has been verified yet.
 public struct LiveReceiptPolicy: Sendable {
+  /// Production: a backpack gift succeeded when the server answered code 0 (captured
+  /// 2026-10-20, "OK"). Battery gifts and activities have no captured receipt and never succeed.
+  public static let production = LiveReceiptPolicy(verify: { route, _, _ in route == .sendBag })
   private let verify: @Sendable (LiveRoute, LiveEnvelope, LiveGiftQuote?) -> Bool
   private let verifyActivity: @Sendable (LiveRoute, LiveEnvelope, LiveActivityConfirmation) -> Bool
   public init(

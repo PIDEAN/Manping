@@ -204,7 +204,7 @@ struct DanmakuToggleButton: View {
       DanmakuSymbol().fill(.foreground).frame(width: 18, height: 18)
     }.buttonStyle(PlayerControlButtonStyle(size: size, active: enabled))
       .help(enabled ? "隐藏弹幕（⇧⌘D）" : "显示弹幕（⇧⌘D）")
-      .accessibilityLabel("弹幕").accessibilityValue(enabled ? "显示" : "隐藏")
+      .accessibilityLabel("弹幕").accessibilityValue(enabled ? "显示" : "隐藏").demoAnchor("bar.danmaku")
       .contextMenu {
         Button(enabled ? "隐藏弹幕" : "显示弹幕") { enabled.toggle() }
         if let openSettings { Button("弹幕设置…", action: openSettings) }
@@ -525,8 +525,8 @@ struct PlayerBarRow<Leading: View>: View {
         if fit.compactInput { composeButton(input) } else { input().padding(.leading, 2) }
       }
       Spacer(minLength: 6)
-      ForEach(fit.visible, id: \.self) { item in control(item) }
-      moreMenu(fit: fit, onBar: Set(items))
+      ForEach(fit.visible, id: \.self) { item in control(item).demoAnchor("bar.\(item.rawValue)") }
+      moreMenu(fit: fit, onBar: Set(items)).demoAnchor("bar.more")
         #if DEBUG
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { PlayerBarDebug.openMoreMenu(at: $0) }
         #endif
@@ -793,7 +793,7 @@ struct PlayerToolbarActions: View {
         .accessibilityLabel(model.playbackDetached ? "回到主窗口" : "在独立窗口播放")
     }
     Button { withAnimation(.snappy(duration: 0.25)) { sidebarHidden.toggle() } } label: { ToolbarGroupIcon("sidebar.right") }
-      .help(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏").accessibilityLabel(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏")
+      .help(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏").accessibilityLabel(sidebarHidden ? "显示右侧栏" : "隐藏右侧栏").demoAnchor("toolbar.sidebar")
   }
 }
 

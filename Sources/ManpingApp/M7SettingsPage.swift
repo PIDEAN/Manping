@@ -117,6 +117,7 @@ private struct SettingsLayout: View {
               Spacer(minLength: 0)
             }.padding(.horizontal, 10).frame(height: 32).contentShape(Rectangle())
           }.buttonStyle(SidebarRowStyle(selected: selection.page == nil && selection.group == group))
+            .demoAnchor("settings.\(group.rawValue)")
           if group == .playback {
             Button { selection.page = .playerBar } label: {
               HStack(spacing: 10) {
@@ -135,7 +136,8 @@ private struct SettingsLayout: View {
             Text("致谢").font(Theme.Font.body)
             Spacer(minLength: 0)
           }.padding(.horizontal, 10).frame(height: 32).contentShape(Rectangle())
-        }.buttonStyle(SidebarRowStyle(selected: selection.page == .acknowledgements)).padding(.bottom, 8)
+        }.buttonStyle(SidebarRowStyle(selected: selection.page == .acknowledgements)).demoAnchor("settings.致谢")
+          .padding(.bottom, 8)
       }
       .padding(.horizontal, 8)
       .foregroundStyle(Theme.text(scheme))

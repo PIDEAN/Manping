@@ -8,6 +8,7 @@ export const SCENES = [
   { id: 'danmaku', title: '弹幕' },
   { id: 'mini', title: '小窗' },
   { id: 'live', title: '直播' },
+  { id: 'ai', title: 'AI' },
   { id: 'settings', title: '设置与致谢' },
   // A hand-made timeline over still screenshots, for checking the composition and the encoder offline.
   { id: 'test', title: '合成测试' },

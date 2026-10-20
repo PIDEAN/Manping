@@ -519,6 +519,11 @@ struct VideoDetailPage: View {
       AdaptiveSegmentedTabs(options: availableSections.map { ($0, sectionTitle($0)) },
         selection: Binding(get: { section }, set: { section = $0; userPickedSection = true }))
         .padding(.horizontal, 16).frame(maxWidth: .infinity, alignment: .leading).frame(height: Theme.pageHeaderHeight)
+        #if DEBUG
+        .modifier(DemoVideoSection { title in
+          if let match = availableSections.first(where: { sectionTitle($0) == title }) { section = match; userPickedSection = true }
+        })
+        #endif
       Hairline()
       ScrollView {
         Group {

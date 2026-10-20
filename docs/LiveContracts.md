@@ -1,10 +1,12 @@
 # Live contracts
 
-Unit 1 provides read models, candidate request contracts and synthetic fixtures. No authenticated
-request has been captured, no production mutation is enabled. `LiveMutationGate()` denies every
-POST before preparation or transport. Injected gates are for contract fixtures and, after captured
-evidence, the independently reviewed interaction session in Unit 2. A route is not a payment
-confirmation, authorization credential or replay mechanism.
+Unit 1 provides read models, candidate request contracts and synthetic fixtures. On 2026-10-20 the
+user performed each write by hand in the official web room while the requests were read from the
+browser (see "Authenticated capture" below). `LiveMutationGate.production` opens exactly the
+captured writes — sendDanmaku (plain, reply, emoticon), setDMConfig, like, wearMedal, sendBag —
+and denies every other POST before preparation or transport. `LiveReceiptPolicy.production`
+accepts only a code-0 backpack gift; battery gifts and activities stay closed and never succeed.
+A route is not a payment confirmation, authorization credential or replay mechanism.
 
 Evidence date: 2026-10-20. User-provided research in `live-interaction/research/report.md`,
 BLTH `blth_api.ts`, PiliPlus `pp_live.dart`, and BAC documents are community evidence only.
@@ -30,15 +32,15 @@ transport; mutations are never retried.
 | bagList | GET | t, room_id, mobi_app, receive_users, web_location; WBI | none | community; code 0 |
 | superChatList | GET | room_id | none | prior anonymous verification; code 0 |
 | lotteryInfo | GET | roomid | none | community; code 0 |
-| medalPanel | GET | page, page_size | none | community; code 0 |
+| medalPanel | GET | page, page_size, room_id, target_id | none | **captured**; code 0 |
 | danmuInfo | GET | id, type, web_location; WBI | none | existing playback + community; code 0 |
-| sendDanmaku | POST | web_location; WBI; message/style/reply fields in form | form csrf + csrf_token | community; code 0 AND empty message |
-| setDMConfig | POST | room_id + exactly one of color/mode in form | form csrf | community; code 0 |
-| sendBag | POST | all fields in WBI query; empty body | query csrf | BLTH community; code 0; Unit 2 needs business receipt |
+| sendDanmaku | POST | web_location; WBI; message/style/reply/data_extend fields in form | form csrf + csrf_token | **captured**; code 0 AND empty message |
+| setDMConfig | POST | room_id, visit_id + exactly one of color/mode in form; no WBI | form csrf + csrf_token | **captured**; code 0 |
+| sendBag | POST | all fields in WBI query; empty body | query csrf | **captured**; receipt: code 0 ("OK") |
 | sendGold | POST | web_location WBI; gift fields in form | form csrf + csrf_token | **conjectural**; code 0 + total_coin and gift_list still requires Unit 2 receipt checks |
-| like | POST | all fields in WBI query; empty body | query csrf | **conflicting sources**: BLTH query chosen for fixture; PiliPlus form; code 0 |
-| wearMedal | POST | medal_id in form | form csrf + csrf_token | community; code 0 |
-| takeOffMedal | POST | no user fields | form csrf + csrf_token | community; code 0 |
+| like | POST | all fields in WBI query; empty body | query csrf | **captured** (query, as BLTH); code 0 |
+| wearMedal | POST | `/xlive/app-ucenter/v1/fansMedal/wear`; medal_id, target_id, visit_id in form | form csrf + csrf_token | **captured** (path differs from community `web-room`); code 0 |
+| takeOffMedal | POST | no user fields | form csrf + csrf_token | community; not captured, closed |
 | joinLottery | POST | room_id, id, platform in form | form csrf | community; business success unknown, accepts() always false |
 | drawRedPocket | POST | uid, room_id, ruid, lot_id, ts in form | query csrf | community; business success unknown, accepts() always false |
 
@@ -322,32 +324,30 @@ review-fix commit's full results are reported by hash in the final handoff. No o
 changed for these review fixes.
 
 
-## Authenticated capture worksheet — empty, not verified
+## Authenticated capture (2026-10-20)
 
-下面只列候选 route；所有采集字段故意留空。既有社区候选契约与单元 1／2 测试证据保留在上文。
-只有用户本人手动操作后的脱敏字段名与业务凭据可填入；不保存 Cookie、csrf 值、完整 HAR 或私人消息。
+用户本人在 Chrome 的官方直播间（`live.bilibili.com/blanc/<room>`）手动操作，页面内只记录方法、
+路径、字段名、非敏感取值、响应 code/message 与 data 结构；Cookie、csrf、`w_rid` 等值在记录时
+即被去除。账号 uid 写作 `<uid>`，主播 uid 写作 `<anchor>`。Origin / Referer 与上文一致。
 
-| Route | 采集日期 | Method | URL / path | Query 字段名 | Body 字段名 | CSRF 位置 | 签名输入字段 | Headers | 成功 envelope / receipt | 审核结论 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| `infoByUser` | | | | | | | | | | |
-| `dmConfig` | | | | | | | | | | |
-| `emoticons` | | | | | | | | | | |
-| `roomGiftList` | | | | | | | | | | |
-| `giftConfig` | | | | | | | | | | |
-| `bagList` | | | | | | | | | | |
-| `superChatList` | | | | | | | | | | |
-| `lotteryInfo` | | | | | | | | | | |
-| `medalPanel` | | | | | | | | | | |
-| `danmuInfo` | | | | | | | | | | |
-| `sendDanmaku` | | | | | | | | | | |
-| `setDMConfig` | | | | | | | | | | |
-| `sendBag` | | | | | | | | | | |
-| `sendGold` | | | | | | | | | | |
-| `like` | | | | | | | | | | |
-| `wearMedal` | | | | | | | | | | |
-| `takeOffMedal` | | | | | | | | | | |
-| `joinLottery` | | | | | | | | | | |
-| `drawRedPocket` | | | | | | | | | | |
+| Route | Method / path | Query | Body | CSRF | 成功 / 失败样本 | 结论 |
+|---|---|---|---|---|---|---|
+| `sendDanmaku`（文字） | POST `/msg/send` | `web_location=444.8`, `wts`, `w_rid` | `bubble, msg, color, mode, room_type, jumpfrom, reply_mid, reply_attr, replay_dmid, statistics, reply_type, reply_uname, data_extend, fontsize, rnd, roomid` | form `csrf` + `csrf_token` | 成功 code 0、message 为空、`data.mode_info`；命中主播屏蔽词时 code 0 但 message 非空（未发出） | 开放；message 非空视为失败 |
+| `sendDanmaku`（回复） | 同上 | 同上 | 同上；`reply_mid=<对方 uid>`，`replay_dmid=<对方弹幕 id>` | 同上 | code 0 | 开放 |
+| `sendDanmaku`（大表情） | 同上 | 同上 | `dm_type=1`，`msg=<表情 unique id>`，`emoticonOptions=[object Object]`，无回复字段 | 同上 | code 0 | 开放 |
+| `setDMConfig` | POST `/xlive/web-room/v1/dM/AjaxSetConfig` | 无，不带 WBI | `room_id, color(0xRRGGBB), csrf, csrf_token, visit_id` | form `csrf` + `csrf_token` | 成功 code 0；无权限 -500 附原因（如需成为船员） | 开放 |
+| `emoticons`、`dmConfig` | GET | 同上文 | — | — | code 0 | 读接口已核实 |
+| `like` | POST `/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3` | `click_time, room_id, uid=<uid>, anchor_id=<anchor>, web_location, csrf`，WBI | 空 | query `csrf` | code 0、message "OK"、data 为空 | 开放 |
+| `bagList` | GET `/xlive/web-room/v1/gift/bag_list` | `t`（毫秒）, `room_id`, `mobi_app=web`, `receive_users=[]`，WBI | — | — | code 0 | 读接口已核实 |
+| `sendBag` | POST `/xlive/revenue/v2/gift/sendBagMultiUser` | 全部字段 + `live_statistics`（pcWeb JSON）+ `csrf`，WBI | 空 | query `csrf` | 成功（他人房间送免费道具）code 0、message "OK"；送给自己 200005 | 开放；receipt = code 0 |
+| `medalPanel` | GET `/xlive/app-ucenter/v1/fansMedal/panel` | `page, page_size, room_id, target_id=<anchor>` | — | — | code 0 | 读接口已核实 |
+| `wearMedal` | POST `/xlive/app-ucenter/v1/fansMedal/wear` | 无 | `medal_id, target_id=<anchor>, csrf, csrf_token, visit_id` | form `csrf` + `csrf_token` | code 0、"OK" | 开放（路径与社区资料不同） |
+| `takeOffMedal` | — | — | — | — | 未采集 | 保持关闭 |
+| `sendGold` | — | — | — | — | 未采集（需要真实花费电池） | 保持关闭 |
+| `joinLottery`、`drawRedPocket` | — | — | — | — | 未遇到免费活动，未采集 | 保持关闭，只展示 |
+
+只有 `sendBag` 的成功响应体结构没有保留（页面在读取前刷新），因此 receipt 只依据 code 0；
+WebSocket 礼物广播仍只用于展示，不作为送达凭据。
 
 ### Unit 3 UI handoff
 

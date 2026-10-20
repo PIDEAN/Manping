@@ -54,7 +54,7 @@ enum DebugUIFixtures {
     "走进山野：记录一段慢下来的旅程", "从零搭建桌面工作空间｜整理与收纳",
     "城市的声音：雨后的街道与夜色", "用镜头发现日常里的光影",
     "聊聊经典游戏背后的设计", "一周读书分享：故事与想象力",
-    "在家做一碗热气腾腾的面", "小小实验室：看见科学的乐趣",
+    "在家做一碗热气腾腾的面", "周末去划船：和狗狗一起看湖",
   ]
   static func archive(_ index: Int) -> [String: Any] {
     ["aid": index == 0 ? 100 : 100 + index, "bvid": index == 0 ? bvid : "BV1sample\(String(format: "%03d", index))",
@@ -252,6 +252,15 @@ struct DebugFixtureImage: View {
   var avatar = false
   private var color: Color { [Color.teal, .indigo, .orange, .purple, .mint, .blue, .pink, .brown][abs(index) % 8] }
   var body: some View {
+    #if DEBUG
+    if let photo = DemoConfig.photo(index, avatar: avatar) {
+      Color.clear.overlay { Image(nsImage: photo).resizable().scaledToFill() }.clipped()
+    } else { drawn }
+    #else
+    drawn
+    #endif
+  }
+  private var drawn: some View {
     GeometryReader { geometry in
       ZStack {
         LinearGradient(colors: [color, color.opacity(0.55), .black.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -261,9 +270,9 @@ struct DebugFixtureImage: View {
           Circle().fill(.white.opacity(0.12)).frame(width: geometry.size.width * 0.8)
             .offset(x: geometry.size.width * 0.3, y: geometry.size.height * 0.4)
           VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: ["mountain.2.fill", "desktopcomputer", "building.2.fill", "camera.fill", "gamecontroller.fill", "book.fill", "fork.knife", "atom"][abs(index) % 8])
+            Image(systemName: ["mountain.2.fill", "desktopcomputer", "building.2.fill", "camera.fill", "gamecontroller.fill", "book.fill", "fork.knife", "sailboat.fill"][abs(index) % 8])
               .font(.system(size: min(48, geometry.size.width * 0.2)))
-            Text(["山野之间", "桌面计划", "城市漫游", "日常光影", "游戏设计", "故事时间", "一餐一饭", "科学现场"][abs(index) % 8])
+            Text(["山野之间", "桌面计划", "城市漫游", "日常光影", "游戏设计", "故事时间", "一餐一饭", "湖上时光"][abs(index) % 8])
               .font(.system(size: min(22, geometry.size.width * 0.08), weight: .semibold))
           }.foregroundStyle(.white).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).padding(20)
         }

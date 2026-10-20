@@ -64,7 +64,7 @@ struct LiveComposer: View {
           text: Binding(
             get: { interaction.draft.text }, set: interaction.setText)
         )
-        .textFieldStyle(.plain).font(Theme.Font.body).focused($focused)
+        .textFieldStyle(.plain).font(Theme.Font.body).focused($focused).demoAnchor("live.composer")
         .onSubmit { interaction.send() }.disabled(
           !interaction.canInteract || interaction.muted != nil)
         if let limit = interaction.limit {
@@ -81,7 +81,7 @@ struct LiveComposer: View {
           Image(systemName: "paperplane.fill").frame(width: 24, height: 24)
         }
         .buttonStyle(.plain).foregroundStyle(Theme.accent).disabled(!interaction.canSend).help(
-          "发送弹幕")
+          "发送弹幕").demoAnchor("live.send")
       }.padding(.horizontal, 9).frame(height: compact ? 34 : 40)
         .background(Theme.card(scheme), in: RoundedRectangle(cornerRadius: Theme.Radius.md))
         .overlay(
@@ -96,7 +96,7 @@ struct LiveComposer: View {
         }
         HStack(spacing: 5) {
           if interaction.settings.liveEffective.giftMessages {
-            toolbarPill("礼物", "gift") { interaction.open(.gifts, from: "sidebar-gifts") }
+            toolbarPill("礼物", "gift") { interaction.open(.gifts, from: "sidebar-gifts") }.demoAnchor("live.gifts")
               .modifier(LivePanelPopover(panel: .gifts, anchor: "sidebar-gifts", model: giftModel, interaction: interaction))
           }
           LiveLikeButton(interaction: interaction, compact: false)
@@ -175,7 +175,7 @@ struct LiveLikeButton: View {
       }.padding(.horizontal, compact ? 0 : 8).frame(minWidth: 24, minHeight: compact ? 24 : 28)
         .background(compact ? Color.clear : Theme.fill(scheme), in: Capsule())
         .overlay(Capsule().strokeBorder(compact ? .clear : Theme.separator(scheme), lineWidth: 0.5))
-    }.buttonStyle(.plain).foregroundStyle(Theme.live).help("点赞").accessibilityLabel("点赞")
+    }.buttonStyle(.plain).foregroundStyle(Theme.live).help("点赞").accessibilityLabel("点赞").demoAnchor("live.like")
       .animation(
         LiveEffectMotion.animates(reduceMotion: reduceMotion, saving: power.level)
           ? .easeOut(duration: 0.2) : nil, value: interaction.likes)
@@ -289,7 +289,12 @@ private struct LiveGiftPanel: View {
             ForEach(interaction.gifts) { giftCell($0) }
           }
         }
-        if interaction.bagTab && interaction.bag.isEmpty {
+        if interaction.bagTab && interaction.bag.isEmpty && interaction.bagReadFailed {
+          HStack {
+            Text("没能读取背包").font(Theme.Font.caption)
+            Button("重新读取背包") { interaction.refreshBag() }.font(Theme.Font.caption)
+          }.padding()
+        } else if interaction.bagTab && interaction.bag.isEmpty {
           Text("背包为空或尚未取得背包信息").font(Theme.Font.caption).padding()
         }
         if !interaction.bagTab && interaction.gifts.isEmpty {
@@ -479,9 +484,14 @@ private struct LiveMedalPanel: View {
             Text(!lighted ? "未点亮" : entry["wearing_status"].int64 == 1 ? "佩戴中" : "佩戴").font(
               Theme.Font.caption)
           }
-        }.buttonStyle(.plain).disabled(!lighted || medal["medal_id"].int64 == nil)
+        }.buttonStyle(.plain).disabled(!lighted || medal["medal_id"].int64 == nil || interaction.medalBusy)
       }
-      Button("摘下勋章") { interaction.wearMedal(nil) }
+      if interaction.gate.allows(.takeOffMedal) {
+        Button("摘下勋章") { interaction.wearMedal(nil) }.disabled(interaction.medalBusy)
+      } else {
+        Text("摘下勋章暂未开放 · 可以改戴其他勋章，或在官方直播间摘下").font(Theme.Font.caption)
+          .foregroundStyle(.secondary)
+      }
       if let status = interaction.status {
         Text(status).font(Theme.Font.caption).foregroundStyle(.secondary)
       }

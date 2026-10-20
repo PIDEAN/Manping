@@ -183,7 +183,7 @@ private struct ShellContent: View {
         if rail && unread > 0 { Circle().fill(Theme.live).frame(width: 7, height: 7).offset(x: -10, y: 6) }
       }
       .contentShape(Rectangle())
-    }.buttonStyle(SidebarRowStyle(selected: selected))
+    }.buttonStyle(SidebarRowStyle(selected: selected)).demoAnchor("sidebar.\(destination.title)")
       .help(destination.title)
       .accessibilityLabel(unread > 0 ? "\(destination.title)，\(unread) 条未读" : destination.title)
   }

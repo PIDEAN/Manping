@@ -280,20 +280,31 @@ public actor M3FixtureRPCTransport: BiliRPCTransport {
     } else { throw BiliRPCError.invalidArgument }
     return try Response(serializedBytes: payload)
   }
+  /// Made-up videos for the 热门 grid, one per sample cover (`cover/0`…`cover/15`).
+  public static let popularTitles = [
+    "走进山野：记录一段慢下来的旅程", "从零搭建桌面工作空间｜整理与收纳", "城市的声音：雨后的街道与夜色", "用镜头发现日常里的光影",
+    "聊聊经典游戏背后的设计", "一周读书分享：故事与想象力", "在家做一碗热气腾腾的面", "周末去划船：和狗狗一起看湖",
+    "小型 Live 现场｜木吉他与一束暖光", "一杯拿铁的早晨：咖啡拉花入门", "手柄横评：握感、延迟与续航", "后厨一日：备菜的节奏",
+    "老式麦克风的声音为什么好听", "夜晚的城市漫步｜街头灯光", "旧钢琴修复记录：从走音到重新开口", "沿着小路往森林深处走",
+  ]
+  private static let popularAuthors = ["山野记录", "桌面研究所", "城市漫游者", "光影日记", "游戏设计笔记", "周末读书会", "一人食厨房", "湖边的狗狗"]
   private static func popularCard(_ index: Int) -> Bilibili_App_Card_V1_Card {
     var card = Bilibili_App_Card_V1_Card()
     var video = Bilibili_App_Card_V1_SmallCoverV5()
+    let slot = index % popularTitles.count
     video.base.cardGoto = "av"; video.base.param = String(100 + index)
-    video.base.title = "本地热门 · \(index + 1)"; video.base.idx = Int64(index + 1)
-    video.base.cover = "https://fixture.invalid/cover/\(index)"
+    video.base.title = popularTitles[slot]; video.base.idx = Int64(index + 1)
+    video.base.cover = "https://fixture.invalid/cover/\(slot)"
     video.base.uri = "https://www.bilibili.com/video/av\(100 + index)"
-    video.base.playerArgs.cid = Int64(1000 + index); video.base.playerArgs.duration = 180
-    video.base.threePointV4.sharePlane.author = "本地样本"
-    video.base.threePointV4.sharePlane.authorID = 10001
-    video.base.threePointV4.sharePlane.playNumber = "12万次"
-    video.up.avatar.cover = "https://fixture.invalid/avatar/1"
-    video.coverRightText1 = "03:00"; video.rightDesc2 = "UP 主 · 8小时前"
-    video.rcmdReasonStyle.text = "很多人点赞"
+    let seconds = 186 + (index * 437) % 1260
+    video.base.playerArgs.cid = Int64(1000 + index); video.base.playerArgs.duration = Int64(seconds)
+    video.base.threePointV4.sharePlane.author = popularAuthors[index % popularAuthors.count]
+    video.base.threePointV4.sharePlane.authorID = 10001 + Int64(index % popularAuthors.count)
+    video.base.threePointV4.sharePlane.playNumber = "\(Double(38 + (index * 53) % 460) / 10)万次"
+    video.up.avatar.cover = "https://fixture.invalid/avatar/\(index % 8)"
+    video.coverRightText1 = String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    video.rightDesc2 = "UP 主 · \([3, 8, 12, 20, 1, 6][index % 6])小时前"
+    video.rcmdReasonStyle.text = index % 3 == 0 ? "很多人点赞" : ""
     card.smallCoverV5 = video
     return card
   }

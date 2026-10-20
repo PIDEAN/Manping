@@ -650,6 +650,7 @@ struct SegmentedTabs<Value: Hashable>: View {
             }
             .contentShape(Capsule())
         }.buttonStyle(.plain).accessibilityAddTraits(selected ? .isSelected : [])
+          .demoAnchor("tab.\(title)")
       }
       if !overflow.isEmpty {
         Menu {
@@ -660,7 +661,7 @@ struct SegmentedTabs<Value: Hashable>: View {
           Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Theme.secondaryText(scheme)).frame(width: 34, height: 26).contentShape(Capsule())
         }.menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-          .help(overflow.map(\.1).joined(separator: "、")).accessibilityLabel("更多分段")
+          .help(overflow.map(\.1).joined(separator: "、")).accessibilityLabel("更多分段").demoAnchor("tab.more")
       }
     }.padding(2).glassEffect(.regular, in: Capsule())
   }

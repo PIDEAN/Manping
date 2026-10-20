@@ -278,6 +278,7 @@ struct PlaybackTimeline: View {
     #if DEBUG
     .modifier(DemoSeekHover(fraction: $hoverFraction))
     #endif
+    .demoAnchor("seek")
     .accessibilityElement()
     .accessibilityLabel("播放进度")
     .accessibilityValue(Self.format(time) + " / " + Self.format(duration))
@@ -409,7 +410,7 @@ struct PlayerChapterButton: View {
       .font(Theme.Font.caption).foregroundStyle(.white.opacity(0.9)).frame(maxWidth: 200, alignment: .leading).fixedSize(horizontal: false, vertical: true)
     }
     .buttonStyle(PlayerControlButtonStyle(size: 28, horizontalPadding: 10))
-    .help("章节").accessibilityLabel("章节：" + title)
+    .help("章节").accessibilityLabel("章节：" + title).demoAnchor("chapters")
     .popover(isPresented: $shown, arrowEdge: .top) {
       ScrollView {
         PlaybackChapterList(clock: clock, chapters: chapters, override: override) { seek($0); shown = false }.padding(14)

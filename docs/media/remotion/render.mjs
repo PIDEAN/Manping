@@ -11,13 +11,13 @@ import { browserArgs } from './browser.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const IMAGES = join(HERE, '../../images');
 const OUT = join(HERE, '../.out');
-const SCENES = ['hero', 'danmaku', 'mini', 'live', 'settings'];
+const SCENES = ['hero', 'danmaku', 'mini', 'live', 'ai', 'settings'];
 const GIF_WIDTH = 1280;
 /** Dense scenes (scrolling danmaku) fall back to narrower GIFs; 880 is the width the README shows. */
 const WIDTHS = [GIF_WIDTH, 1080, 960, 880];
 /** Budget per animation; above it the GIF is re-encoded at a lower frame rate (holds stay as they are). */
-const LIMIT = 2.5 * 1024 * 1024;
-const RATES = [25, 20, 15, 12.5];
+const LIMIT = 5 * 1024 * 1024;
+const RATES = [25, 20, 15, 12.5, 10];
 
 const only = process.argv.slice(2);
 let total = 0;
@@ -36,11 +36,12 @@ for (const id of only.length ? only : SCENES) {
   let width = WIDTHS[0];
   const attempts = [...RATES.map((r) => [r, WIDTHS[0]]), ...WIDTHS.slice(1).map((w) => [RATES.at(-1), w])];
   for ([rate, width] of attempts) {
-    // Repeated frames (holds) collapse into longer delays; flat UI colours need no dithering.
+    // Repeated frames (holds) collapse into longer delays; an ordered dither keeps the photos and
+    // footage free of banding and still compresses (error diffusion would change every pixel).
     const step = rate < 25 ? `fps=${rate},` : '';
     execFileSync('ffmpeg', [
       '-v', 'error', '-y', '-framerate', '25', '-i', join(frames, `element-%0${digits}d.png`),
-      '-vf', `${step}mpdecimate=hi=64:lo=32:frac=0,scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=none:diff_mode=rectangle`,
+      '-vf', `${step}mpdecimate=hi=64:lo=32:frac=0,scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
       '-fps_mode', 'vfr', '-loop', '0', gif,
     ], { stdio: 'inherit' });
     if (statSync(gif).size <= LIMIT) break;

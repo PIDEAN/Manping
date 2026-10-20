@@ -2,7 +2,7 @@
 //
 //   swiftc -O docs/media/record.swift -o docs/media/.out/record
 //   docs/media/.out/record --app ".build/ui/满屏 Debug.app" --scenes docs/media/scenes.json \
-//     --out docs/media/.out [--media docs/media/.out/demo-media.mp4] hero
+//     --out docs/media/.out [--assets docs/media/.assets] hero
 //
 // It launches the app on its offline samples with `MANPING_DEMO_SCENE` (DemoDirector.swift), then records
 // every window of that process with ScreenCaptureKit, one desktop-independent window stream each (so the
@@ -30,7 +30,7 @@ do {
   }
 }
 guard let appPath = options["app"], let scenesPath = options["scenes"], let outPath = options["out"], let sceneName = positional.first else {
-  FileHandle.standardError.write(Data("usage: record --app <满屏 Debug.app> --scenes <scenes.json> --out <dir> [--media <file>] [--theme dark] <scene>\n".utf8))
+  FileHandle.standardError.write(Data("usage: record --app <满屏 Debug.app> --scenes <scenes.json> --out <dir> [--assets <dir>] [--theme dark] <scene>\n".utf8))
   exit(2)
 }
 let out = URL(fileURLWithPath: outPath, isDirectory: true)
@@ -66,6 +66,8 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
   private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
   private var segmentStart: Double?
   private var scale: CGFloat = 2
+  /// The size the running stream was set up for (points).
+  private(set) var streamSize = CGSize.zero
   private var lastBuffer: CVPixelBuffer?
   private var lastTime = CMTime.zero
   private let lock = NSLock()
@@ -76,13 +78,41 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     queue = DispatchQueue(label: "record.window.\(window.windowID)")
   }
 
-  func start(_ window: SCWindow) async throws {
-    let filter = SCContentFilter(desktopIndependentWindow: window)
+  func start(_ window: SCWindow, displays: [SCDisplay]) async throws {
+    // A popover (no title) captured as a desktop-independent window comes out as its parent window,
+    // scaled down. It is recorded instead from the screen, with only itself composited and a clear
+    // background; the others keep their own transparent corners this way too.
+    let display = (window.title ?? "").isEmpty ? displays.first(where: { $0.frame.intersects(window.frame) }) : nil
+    let filter = display.map { SCContentFilter(display: $0, including: [window]) } ?? SCContentFilter(desktopIndependentWindow: window)
     scale = CGFloat(filter.pointPixelScale)
-    let stream = SCStream(filter: filter, configuration: configuration(size: window.frame.size), delegate: self)
+    let config = configuration(size: window.frame.size)
+    if let display {
+      config.sourceRect = window.frame.offsetBy(dx: -display.frame.minX, dy: -display.frame.minY)
+      config.backgroundColor = CGColor.clear
+    }
+    let stream = SCStream(filter: filter, configuration: config, delegate: self)
     try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
     try await stream.startCapture()
     self.stream = stream
+    streamSize = window.frame.size
+  }
+
+  /// A window that settled at a new size gets a new stream from a fresh `SCWindow`. Only changing the
+  /// configuration of the old one kept the old size. The next frame's new size starts a new movie.
+  func restart(_ window: SCWindow, displays: [SCDisplay]) async {
+    if let stream { try? await stream.stopCapture() }
+    stream = nil
+    do { try await start(window, displays: displays) } catch { print("restart \(id): \(error)") }
+  }
+
+  /// Whether the window has kept a size other than the stream's for two samples.
+  var settledAtNewSize: Bool {
+    lock.lock(); defer { lock.unlock() }
+    guard bounds.count >= 2, let last = bounds.last?.rect else { return false }
+    let previous = bounds[bounds.count - 2].rect
+    let stable = abs(previous.width - last.width) < 0.5 && abs(previous.height - last.height) < 0.5
+    let different = abs(last.width - streamSize.width) > 1 || abs(last.height - streamSize.height) > 1
+    return different && (stable || now() - bounds[bounds.count - 1].t > 0.15)
   }
 
   private func configuration(size: CGSize) -> SCStreamConfiguration {
@@ -99,18 +129,13 @@ final class WindowCapture: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
     return config
   }
 
-  /// A bounds sample from the window list; a size change starts a new segment.
+  /// A bounds sample from the window list (a size change restarts the stream, see `restart`).
   func observe(_ rect: CGRect, at time: Double) {
     lock.lock(); defer { lock.unlock() }
     lastSeen = time
     if let last = bounds.last?.rect, abs(last.minX - rect.minX) < 0.5, abs(last.minY - rect.minY) < 0.5,
       abs(last.width - rect.width) < 0.5, abs(last.height - rect.height) < 0.5 { return }
-    let resized = bounds.last.map { abs($0.rect.width - rect.width) > 1 || abs($0.rect.height - rect.height) > 1 } ?? false
     bounds.append((time, rect))
-    guard resized, let stream else { return }
-    // The stream's output takes the new size; its first frame at that size starts a new movie.
-    let id = id
-    stream.updateConfiguration(configuration(size: rect.size)) { error in if let error { print("resize \(id): \(error)") } }
   }
 
   func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -235,8 +260,13 @@ process.arguments = ["--ui-fixture", "--skip-auth", "--ui-page", sceneConfig["pa
 var environment = ProcessInfo.processInfo.environment
 environment["MANPING_DEMO_SCENE"] = sceneName
 environment["MANPING_DEMO_OUT"] = director.path
-if let media = options["media"], sceneConfig["media"] as? Bool == true {
-  environment["MANPING_DEMO_MEDIA"] = URL(fileURLWithPath: media).standardizedFileURL.path
+// docs/media/fetch_assets.py: the photos for every scene, and the scene's own video (`"media": "vod"`).
+if let assets = options["assets"] {
+  let folder = URL(fileURLWithPath: assets, isDirectory: true).standardizedFileURL
+  environment["MANPING_DEMO_ASSETS"] = folder.path
+  if let media = sceneConfig["media"] as? String {
+    environment["MANPING_DEMO_MEDIA"] = folder.appendingPathComponent("\(media).mp4").path
+  }
 }
 process.environment = environment
 process.standardOutput = FileHandle.nullDevice
@@ -257,14 +287,20 @@ do {
     let listed = windows(of: pid).filter { $0.layer >= 0 && $0.layer < 200 && $0.alpha > 0.01 && $0.rect.width >= 60 && $0.rect.height >= 40 }
     for window in listed { captures[window.id]?.observe(window.rect, at: time) }
     let fresh = listed.filter { captures[$0.id] == nil }
-    guard !fresh.isEmpty else { return }
+    let resized = listed.compactMap { captures[$0.id] }.filter(\.settledAtNewSize)
+    guard !fresh.isEmpty || !resized.isEmpty else { return }
     let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+    for capture in resized {
+      guard let scWindow = content.windows.first(where: { $0.windowID == capture.id }) else { continue }
+      await capture.restart(scWindow, displays: content.displays)
+      log("window \(capture.id) settled at \(Int(scWindow.frame.width))×\(Int(scWindow.frame.height)); new stream")
+    }
     for window in fresh {
       guard let scWindow = content.windows.first(where: { $0.windowID == window.id }) else { continue }
       let capture = WindowCapture(window: scWindow, layer: window.layer, order: appeared, directory: raw, seen: time)
       appeared += 1
       do {
-        try await capture.start(scWindow)
+        try await capture.start(scWindow, displays: content.displays)
         captures[window.id] = capture
         capture.observe(window.rect, at: time)
         log("recording window \(window.id) (layer \(window.layer), \(Int(window.rect.width))×\(Int(window.rect.height)))")
@@ -298,7 +334,13 @@ guard exitCode == 0 else { exit(exitCode) }
 let report = try JSONSerialization.jsonObject(with: Data(contentsOf: director.appendingPathComponent("events.json"))) as? [String: Any] ?? [:]
 let origin = report["origin"] as? Double ?? 0
 let duration = report["duration"] as? Double ?? 0
-for note in report["notes"] as? [String] ?? [] { log("director: \(note)") }
+let notes = report["notes"] as? [String] ?? []
+for note in notes { log("director: \(note)") }
+// A scene that stopped (a missing anchor, a timeout) would draw the pointer at the wrong place.
+if notes.contains(where: { $0.hasPrefix("FAIL") }) {
+  log("the director did not finish the scene; nothing is rendered")
+  exit(1)
+}
 let ms = { (time: Double) in ((time - origin) * 10000).rounded() / 10 }
 var tracks: [[String: Any]] = []
 for capture in captures.values.sorted(by: { $0.order < $1.order }) {

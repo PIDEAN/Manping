@@ -106,11 +106,11 @@ import Foundation
     let settings = MacSettings.load(from: PerformanceEnvironment.defaults)
     interactionSettings = settings.liveEffective
     let fixturePolicy = usesFixtures ? LiveGiftPolicySource(settings.liveGiftPolicy()) : nil
-    let interaction = LiveInteractionSession(service: service,
-      gate: usesFixtures ? LiveMutationGate(enabled: Set(LiveRoute.allCases)) : LiveMutationGate(),
-      policy: settings.liveGiftPolicy(), policySource: fixturePolicy ?? LiveInteractionPreferences.shared.policySource, receipts: usesFixtures ? LiveContractFixture.receiptPolicy : LiveReceiptPolicy())
+    let gate = usesFixtures ? LiveMutationGate(enabled: Set(LiveRoute.allCases)) : LiveMutationGate.production
+    let interaction = LiveInteractionSession(service: service, gate: gate,
+      policy: settings.liveGiftPolicy(), policySource: fixturePolicy ?? LiveInteractionPreferences.shared.policySource, receipts: usesFixtures ? LiveContractFixture.receiptPolicy : .production)
     self.interaction = interaction
-    ui = LiveInteractionModel(session: interaction, fixtures: usesFixtures, fixturePolicySource: fixturePolicy)
+    ui = LiveInteractionModel(session: interaction, fixtures: usesFixtures, gate: gate, fixturePolicySource: fixturePolicy)
     interactionSettingsObservation = LiveInteractionPreferences.shared.$effective.sink { [weak self] effective in
       guard let self else { return }
       self.interactionSettings = effective
@@ -129,6 +129,23 @@ import Foundation
     guard let stream else { return nil }
     return playback?.qualities.first { $0.qn == stream.currentQuality }
   }
+
+  #if DEBUG
+  /// README demo (DemoDirector): the offline room has no chat connection, so the interaction is
+  /// bound to the sample account here, as a connected chat would bind it.
+  func bindDemoInteraction() async {
+    guard usesFixtures, let room else { return }
+    let identity = await service.authSnapshot()
+    let account = await service.accountMid()
+    guard active, self.room?.roomID == room.roomID else { return }
+    let context = LiveInteractionContext(identity: identity, accountMid: account, roomID: room.roomID,
+      anchorID: room.anchorID, generation: chatGeneration)
+    interactionContext = context
+    await interaction.bind(context, lifetimeRevision: interaction.lifetime.revision)
+    guard active, interactionContext == context else { return }
+    ui.bind(context)
+  }
+  #endif
 
   func start() {
     guard room == nil, loadTask == nil else { return }
@@ -249,6 +266,10 @@ import Foundation
         #if DEBUG
         // The README demo shows the offline sample room playing its local file (the samples have no room API).
         if DemoConfig.playsLocalMedia, let media = DemoConfig.media {
+          if let sample = M5LiveFixture.sampleRoom(self.roomID) {
+            self.room = LiveRoomInfo(roomID: self.roomID, anchorID: sample.anchorID, anchorName: sample.anchor,
+              status: .live, title: sample.title)
+          }
           let stream = LiveStream(protocolName: "http_stream", formatName: "flv", codecName: "avc",
             currentQuality: 10000, acceptedQualities: [10000], urls: [media])
           self.stream = stream; self.lineIndex = 0

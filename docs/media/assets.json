@@ -1,0 +1,203 @@
+{
+ "_comment": "README demo assets (docs/media/README.md). Downloaded by docs/media/fetch_assets.py into docs/media/.assets/; never committed. Every file is CC0 (mostly Unsplash photos imported to Wikimedia Commons). The demo videos are made from still photos: real footage would not fit a GIF budget.",
+ "covers": [
+  {
+   "file": "Kayaks on a mountain lake (Unsplash).jpg",
+   "artist": "Matheus Bandoch",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Kayaks_on_a_mountain_lake_(Unsplash).jpg"
+  },
+  {
+   "file": "Desktop after work (Unsplash).jpg",
+   "artist": "Luca Bravo",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Desktop_after_work_(Unsplash).jpg"
+  },
+  {
+   "file": "NYC rain (Unsplash).jpg",
+   "artist": "Jason Edwards",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:NYC_rain_(Unsplash).jpg"
+  },
+  {
+   "file": "Camera on stack of books (Unsplash).jpg",
+   "artist": "Markus Spiske",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Camera_on_stack_of_books_(Unsplash).jpg"
+  },
+  {
+   "file": "Pawel Kadysz 2013 (Unsplash).jpg",
+   "artist": "Pawel Kadysz",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Pawel_Kadysz_2013_(Unsplash).jpg"
+  },
+  {
+   "file": "Andrew Branch 2016-12-26 (Unsplash YU3c2bg7QHw).jpg",
+   "artist": "Andrew Branch",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Andrew_Branch_2016-12-26_(Unsplash_YU3c2bg7QHw).jpg"
+  },
+  {
+   "file": "Pho for Dinner (Unsplash).jpg",
+   "artist": "Matthew Hamilton",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Pho_for_Dinner_(Unsplash).jpg"
+  },
+  {
+   "file": "Dog Adventures in Nature (Unsplash).jpg",
+   "artist": "Teddy Kelley",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Dog_Adventures_in_Nature_(Unsplash).jpg"
+  },
+  {
+   "file": "Bearded guitar concert (Unsplash).jpg",
+   "artist": "Austin Neill",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Bearded_guitar_concert_(Unsplash).jpg"
+  },
+  {
+   "file": "Blue coffee cup (Unsplash).jpg",
+   "artist": "rawpixel.com",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Blue_coffee_cup_(Unsplash).jpg"
+  },
+  {
+   "file": "Gamer Controller.jpg",
+   "artist": "Ugur Akdemir",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Gamer_Controller.jpg"
+  },
+  {
+   "file": "Chef's Station (Unsplash).jpg",
+   "artist": "Todd Quackenbush",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Chef%27s_Station_(Unsplash).jpg"
+  },
+  {
+   "file": "Elegant steel microphone (Unsplash).jpg",
+   "artist": "Claus Grünstäudl",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Elegant_steel_microphone_(Unsplash).jpg"
+  },
+  {
+   "file": "Bogotá city and street lights (Unsplash).jpg",
+   "artist": "AltaGamba",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Bogot%C3%A1_city_and_street_lights_(Unsplash).jpg"
+  },
+  {
+   "file": "Broken Keys (Unsplash).jpg",
+   "artist": "Ryan Holloway",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Broken_Keys_(Unsplash).jpg"
+  },
+  {
+   "file": "Cutting a path (Unsplash).jpg",
+   "artist": "Gordon Williams",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Cutting_a_path_(Unsplash).jpg"
+  }
+ ],
+ "avatars": [
+  {
+   "file": "Cat (Unsplash).jpg",
+   "artist": "Marko Blažević",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Cat_(Unsplash).jpg"
+  },
+  {
+   "file": "Barlow Ganj dog (Unsplash).jpg",
+   "artist": "Akshay Madan",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Barlow_Ganj_dog_(Unsplash).jpg"
+  },
+  {
+   "file": "Cherry Bloom (Unsplash).jpg",
+   "artist": "Redd Angelo",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Cherry_Bloom_(Unsplash).jpg"
+  },
+  {
+   "file": "Bird Alone (Unsplash).jpg",
+   "artist": "Matías Guerrero Gatica",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Bird_Alone_(Unsplash).jpg"
+  },
+  {
+   "file": "Colorful House Plants (Unsplash).jpg",
+   "artist": "Tina Floersch",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Colorful_House_Plants_(Unsplash).jpg"
+  },
+  {
+   "file": "Leigh-on-Sea beach sunset (Unsplash).jpg",
+   "artist": "Joshua Fuller",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Leigh-on-Sea_beach_sunset_(Unsplash).jpg"
+  },
+  {
+   "file": "Bicycle (Unsplash).jpg",
+   "artist": "Adrian Flores",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Bicycle_(Unsplash).jpg"
+  },
+  {
+   "file": "Athena Lam 2016 (Unsplash).jpg",
+   "artist": "Athena Lam",
+   "license": "CC0",
+   "page": "https://commons.wikimedia.org/wiki/File:Athena_Lam_2016_(Unsplash).jpg"
+  }
+ ],
+ "videos": {
+  "vod": {
+   "duration": 70,
+   "stills": [
+    {
+     "file": "Kayaks on a mountain lake (Unsplash).jpg",
+     "artist": "Matheus Bandoch",
+     "license": "CC0",
+     "page": "https://commons.wikimedia.org/wiki/File:Kayaks_on_a_mountain_lake_(Unsplash).jpg",
+     "chapter": "出发：湖边",
+     "start": 0
+    },
+    {
+     "file": "Half-frozen mountain lake (Unsplash).jpg",
+     "artist": "Erik Ringsmuth",
+     "license": "CC0",
+     "page": "https://commons.wikimedia.org/wiki/File:Half-frozen_mountain_lake_(Unsplash).jpg",
+     "chapter": "林间与雪山",
+     "start": 16
+    },
+    {
+     "file": "Large mountain lake (Unsplash).jpg",
+     "artist": "Robert Magnusson",
+     "license": "CC0",
+     "page": "https://commons.wikimedia.org/wiki/File:Large_mountain_lake_(Unsplash).jpg",
+     "chapter": "登上山脊",
+     "start": 36
+    },
+    {
+     "file": "Clouds mirrored in a mountain lake (Unsplash).jpg",
+     "artist": "Ales Krivec",
+     "license": "CC0",
+     "page": "https://commons.wikimedia.org/wiki/File:Clouds_mirrored_in_a_mountain_lake_(Unsplash).jpg",
+     "chapter": "云下倒影",
+     "start": 56
+    }
+   ]
+  },
+  "live": {
+   "duration": 30,
+   "stills": [
+    {
+     "file": "Bogotá city and street lights (Unsplash).jpg",
+     "artist": "AltaGamba",
+     "license": "CC0",
+     "page": "https://commons.wikimedia.org/wiki/File:Bogotá_city_and_street_lights_(Unsplash).jpg",
+     "chapter": "",
+     "start": 0
+    }
+   ]
+  }
+ }
+}
