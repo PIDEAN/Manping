@@ -14,6 +14,21 @@
 
 > 满屏与哔哩哔哩（上海宽娱数码科技有限公司）没有任何关联，不是官方客户端。视频、弹幕、评论等内容的版权归原作者和平台所有。请遵守哔哩哔哩用户协议与当地法律。
 
+<details>
+<summary><b>English</b></summary>
+
+Manping (满屏, "full screen") is a native, unofficial Bilibili client for macOS, ported from the open-source Windows client [Bili.Copilot](https://github.com/Richasy/Bili.Copilot) and rebuilt in SwiftUI and AppKit.
+
+- **Playback**: mpv with VideoToolbox hardware decoding, up to 8K, Dolby Vision and HDR10; a progress bar split by the video's official chapters, with previews on hover.
+- **Danmaku**: drawn with Metal at the display's refresh rate (120 Hz on ProMotion), outlined so it stays readable on bright scenes, with keyword, regex and account-synced filters.
+- **Mini player**: a floating window above every Space that snaps to the nearest screen corner while you keep browsing.
+- **Live**: live rooms inside the app with chat, super chats and gift effects; send danmaku, like, wear a fan medal or send backpack gifts. Paid gifts are locked by default, and every interaction is manual.
+- **AI** (optional): chapter summaries, highlights and Q&A whose timestamps jump the player. Nothing is sent until you ask; use your own provider or Apple Intelligence on device.
+
+The interface is in Simplified Chinese. Requires macOS 27 on Apple silicon; download from [Releases](https://github.com/PIDEAN/Manping/releases). Manping is not affiliated with Bilibili; content belongs to its creators and the platform. Licensed under GPL-3.0.
+
+</details>
+
 满屏由 Windows 上的开源客户端 [Bili.Copilot（哔哩助理）](https://github.com/Richasy/Bili.Copilot) 移植而来：沿用它的功能范围与界面结构，按 Mac 的习惯重新设计和实现。感谢原作者 [Richasy](https://github.com/Richasy) 和所有贡献者，完整致谢见文末。
 
 | | 做什么 |
