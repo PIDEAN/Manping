@@ -377,6 +377,6 @@ python3 scripts/performance_check.py --only playback \
 
 ### 持续验证与后续打磨顺序
 
-`.github/workflows/build.yml` 新增 Linux `portable-core` 作业，直接复制并编译四个生产源文件，不使用重新实现的算法或业务 mock。`MANPING_PORTABLE_CORE` 仅隔离 Apple 本地模型的系统不可用原因查询；正常 Mac App 仍使用原实现。原来的完整 Mac 构建与测试作业保留，但仍取决于 runner 是否安装 Xcode 27。
+`.github/workflows/build.yml` 新增 Linux `portable-core` 作业，直接复制并编译四个生产源文件，不使用重新实现的算法或业务 mock。`MANPING_PORTABLE_CORE` 仅隔离 Apple 本地模型的系统不可用原因查询；正常 Mac App 仍使用原实现。原来的完整 Mac 构建与测试作业保留，但仍取决于 runner 是否安装 Xcode 27。 隐私 CI 在 PR 事件下检出实际提交 SHA，避免把 GitHub 临时合并提交的系统 committer 身份误报为项目作者；仍扫描实际提交的完整历史，校验规则不放宽。
 
 后续优先在 Apple Silicon Mac 上复验 [KnownIssues](KnownIssues.md) 已记录的热门页滚动长尾、播放器反复起停后的 RSS 趋势、真实弱网下的首帧时间与恢复。密集弹幕的 CPU／帧率应单独取样后再决定优化点。本轮未改动 mpv、shader、Metal 渲染算法或画质，也不将这些尚未实测的项目标为通过。
