@@ -26,7 +26,12 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
     case .planUnavailable: "ChatGPT 套餐用量暂时无法确认，请稍后重试。"
     case .planSignInRequired: "ChatGPT 登录已失效，请在 设置 › AI 中重新使用 ChatGPT 账号登录。"
     case .unsupportedCapability: "ChatGPT 套餐暂不支持此请求中的模型或参数。"
-    case .localModelUnavailable: AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
+    case .localModelUnavailable:
+      #if os(macOS) && !MANPING_PORTABLE_CORE
+      AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
+      #else
+      "Apple 本地模型仅适用于受支持的 Mac。"
+      #endif
     case .localContextTooLong: "内容超出 Apple 本地模型的上下文长度，请改用其他 AI 服务或缩短问题。"
     case .localRefused: "Apple 本地模型出于安全策略未回答此请求。"
     case .contextTooLong: "内容超出当前模型的上下文长度，请在 设置 › AI › 对应服务 › 自定义模型中填写模型标识、上下文长度和最大输出，再添加并保存。"
@@ -42,31 +47,53 @@ public struct AIStreamParser: Sendable {
   private let family: AIProtocolFamily
   private let planUsage: Bool
   private var bytes = Data()
+  /// Bytes already searched in the incomplete line. A tiny network chunk must not rescan it.
+  private var scannedBytes = 0
+  /// CR ends a line immediately; swallow a following LF even when it arrives in another chunk.
+  private var skipLF = false
   private var eventData: [String] = []
+  private var eventBytes = 0
   private var eventName = ""
   private var firstLine = true
   public private(set) var finished = false
   private var hasText = false
   private var totalBytes = 0
+  private static let maximumBufferedBytes = 1_048_576
+  private static let maximumTotalBytes = 16_777_216
   public init(family: AIProtocolFamily, planUsage: Bool = true) { self.family = family; self.planUsage = planUsage }
   public mutating func append(_ data: Data) throws -> [String] {
     guard !finished else { return [] }
+    guard data.count <= Self.maximumTotalBytes - totalBytes else { throw AIChatFailure.invalidResponse }
     totalBytes += data.count
-    guard totalBytes <= 16_777_216 else { throw AIChatFailure.invalidResponse }
     bytes.append(data)
     var result: [String] = []
-    while let end = bytes.firstIndex(where: { $0 == 10 || $0 == 13 }) {
-      if bytes[end] == 13, end == bytes.index(before: bytes.endIndex) { break }
-      let line = Data(bytes[..<end])
-      var next = bytes.index(after: end)
-      if bytes[end] == 13, next < bytes.endIndex, bytes[next] == 10 { next = bytes.index(after: next) }
-      bytes.removeSubrange(..<next)
-      result += try consumeLine(line)
-      if finished { bytes.removeAll(); break }
+    var lineStart = bytes.startIndex
+    if skipLF, !bytes.isEmpty {
+      if bytes[lineStart] == 10 { lineStart = bytes.index(after: lineStart) }
+      skipLF = false
     }
-    guard bytes.count <= 1_048_576, eventData.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576 else {
+    var searchStart = max(lineStart, bytes.startIndex + scannedBytes)
+    while let end = bytes[searchStart...].firstIndex(where: { $0 == 10 || $0 == 13 }) {
+      // Check complete lines too; checking only the remaining buffer lets a large chunk
+      // containing its own delimiters bypass the limit.
+      guard end - lineStart <= Self.maximumBufferedBytes else { throw AIChatFailure.invalidResponse }
+      let line = Data(bytes[lineStart..<end])
+      var next = bytes.index(after: end)
+      if bytes[end] == 13 {
+        if next < bytes.endIndex, bytes[next] == 10 { next = bytes.index(after: next) }
+        else if next == bytes.endIndex { skipLF = true }
+      }
+      lineStart = next
+      searchStart = next
+      result += try consumeLine(line)
+      if finished { bytes.removeAll(); scannedBytes = 0; return result }
+    }
+    guard bytes.endIndex - lineStart <= Self.maximumBufferedBytes else {
       throw AIChatFailure.invalidResponse
     }
+    // Compact once per network chunk, not once per line in a large batch.
+    if lineStart > bytes.startIndex { bytes.removeSubrange(..<lineStart) }
+    scannedBytes = bytes.count
     return result
   }
   public mutating func finish() throws -> [String] {
@@ -76,8 +103,6 @@ public struct AIStreamParser: Sendable {
       // a blank event delimiter; unfinished data at EOF is not implicitly accepted.
       if family == .ollama {
         result += try consumeLine(bytes); bytes.removeAll()
-      } else if bytes == Data([13]) {
-        bytes.removeAll(); result += try consumeLine(Data())
       }
     }
     guard finished else { throw AIChatFailure.truncatedStream }
@@ -95,7 +120,7 @@ public struct AIStreamParser: Sendable {
       guard !eventData.isEmpty else { eventName = ""; return [] }
       let payload = eventData.joined(separator: "\n")
       let name = eventName
-      eventData.removeAll(); eventName = ""
+      eventData.removeAll(); eventBytes = 0; eventName = ""
       if name == "error" && family != .responses { throw AIChatFailure.providerError }
       if payload.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "[DONE]" {
         // Responses success is signalled only by response.completed; [DONE] is just the end.
@@ -108,7 +133,12 @@ public struct AIStreamParser: Sendable {
     let pieces = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
     var value = pieces.count > 1 ? String(pieces[1]) : ""
     if value.hasPrefix(" ") { value.removeFirst() }
-    if pieces[0] == "data" { eventData.append(value) }
+    if pieces[0] == "data" {
+      let added = value.utf8.count + (eventData.isEmpty ? 0 : 1)
+      guard added <= Self.maximumBufferedBytes - eventBytes else { throw AIChatFailure.invalidResponse }
+      eventBytes += added
+      eventData.append(value)
+    }
     else if pieces[0] == "event" { eventName = value }
     return []
   }
