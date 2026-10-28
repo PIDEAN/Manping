@@ -23,15 +23,20 @@ public struct AITranscript: Sendable, Equatable, Codable {
     "um", "uh", "ah", "er", "hmm", "mm", "oh"]
   static let maxMergedCharacters = 60
   static let mergeGap = 1.2
+  // Immutable Foundation objects are safe to share across concurrent material requests.
+  private static let whitespace = try! NSRegularExpression(pattern: #"\s+"#)
+  private static let ignoredFillerCharacters = CharacterSet.punctuationCharacters.union(.symbols).union(.whitespaces)
 
   /// Merges adjacent cues (gap < 1.2 s, ≤ 60 characters), drops exact repeats of the previous line
   /// and lines that are only filler words or punctuation. IDs are assigned after cleaning.
   public static func clean(_ cues: [DownloadSubtitleCue], language: String, isAI: Bool) -> AITranscript {
     var merged: [(start: Double, end: Double, text: String)] = []
+    merged.reserveCapacity(cues.count)
     var lastText = ""
-    for cue in cues.sorted(by: { $0.start < $1.start }) {
-      guard cue.start.isFinite, cue.end.isFinite, cue.start >= 0, cue.end >= cue.start else { continue }
-      let text = cue.text.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    // NaN breaks the ordering required by sort and can place an earlier cue after a later one.
+    let valid = cues.filter { $0.start.isFinite && $0.end.isFinite && $0.start >= 0 && $0.end >= $0.start }
+    for cue in valid.sorted(by: { $0.start < $1.start }) {
+      let text = whitespace.stringByReplacingMatches(in: cue.text, range: NSRange(cue.text.startIndex..., in: cue.text), withTemplate: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
       guard !text.isEmpty, !isFiller(text) else { continue }
       if text == lastText, let last = merged.last, cue.start - last.end < 10 {
@@ -48,7 +53,7 @@ public struct AITranscript: Sendable, Equatable, Codable {
     return AITranscript(language: language, isAI: isAI, cues: result)
   }
   static func isFiller(_ text: String) -> Bool {
-    let stripped = text.lowercased().unicodeScalars.filter { !CharacterSet.punctuationCharacters.union(.symbols).union(.whitespaces).contains($0) }
+    let stripped = text.lowercased().unicodeScalars.filter { !ignoredFillerCharacters.contains($0) }
     let value = String(String.UnicodeScalarView(stripped))
     return value.isEmpty || fillers.contains(value)
   }

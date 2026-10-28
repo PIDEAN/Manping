@@ -5,7 +5,9 @@ Builds an isolated, dependency-free SwiftPM package under .build; production fil
 are copied unchanged. This does not build the macOS app or simulate its renderer.
 """
 import argparse
+import hashlib
 import json
+import platform
 from pathlib import Path
 import shutil
 import subprocess
@@ -57,6 +59,10 @@ def benchmark(package, repeats):
     return json.loads(output)
 
 
+def source_hashes(package):
+    return {name: hashlib.sha256((package / "Sources/ManpingCore" / name).read_bytes()).hexdigest() for name in SOURCES}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", action="store_true")
@@ -79,14 +85,22 @@ def main():
             run("swift", "build", "--package-path", str(package), "-c", "release", "--product", "CoreBenchmark", "-j", "2")
     results = {
         "swift": run("swift", "--version", capture_output=True).stdout.strip(),
+        "platform": platform.platform(),
         "head": git("rev-parse", "HEAD").strip(),
         "dirty": bool(git("status", "--porcelain")),
         "baseline_ref": args.baseline_ref,
         "repeats": args.repeats,
+        "source_sha256": source_hashes(current),
     }
     if baseline:
+        results["baseline_source_sha256"] = source_hashes(baseline)
         results["baseline"] = benchmark(baseline, args.repeats)
     results["current"] = benchmark(current, args.repeats)
+    if baseline:
+        before = [(item["name"], item["checksum"]) for item in results["baseline"]]
+        after = [(item["name"], item["checksum"]) for item in results["current"]]
+        if before != after:
+            raise RuntimeError("Benchmark output counts differ from the baseline; investigate correctness before comparing speed")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(results, ensure_ascii=False, indent=2))

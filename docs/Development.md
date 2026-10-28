@@ -134,6 +134,19 @@ dist/release/满屏.app/Contents/MacOS/Manping --perf-fixture --perf-stability -
 
 诊断使用独立设置、模拟身份和传输，不访问真实凭据或在线媒体；本地播放仍走实际内嵌播放器和 Surface。滚动统计 NSView displayLink 的实际到达间隔；播放掉帧只计算5秒预热后的计数差，阈值保持 `<0.1%`。最终数值和测量限制以 Performance 文档为准。
 
+## Linux／云环境的核心回归与基准
+
+Linux 无法构建 AppKit／Metal 播放器，但可使用 Swift 6.2.4 与 Python 3 测试 AI 流式解析、字幕清理、时间码的生产源码：
+
+```sh
+python3 scripts/portable_core_check.py
+python3 scripts/portable_core_check.py --benchmark --baseline-ref 57d408f --repeats 15
+```
+
+脚本在 `.build/portable-core/` 创建无第三方依赖的 SwiftPM 包，直接复制指定生产文件，并以 Release 编译。两组代码全部编译后才串行计时，每个场景预热一次；结果含原始样本、输出数量、编译器版本、Git 状态与源文件 SHA-256，保存在 `.build/portable-core/results.json`。基线提交只做文件拆分、未改变算法，复现对比时需保留其 Git 历史。只跑当前版本的耗时可省略 `--baseline-ref`。
+
+独立包定义的 `MANPING_PORTABLE_CORE` 只关闭 Apple 本地模型的系统状态查询；常规 App 构建不定义它。Linux CI 自动执行这些测试，不以共享 runner 的计时作为硬门槛。测试文件同时属于完整 `ManpingCoreTests`，可随 Mac 的 `swift test` 运行。云端通过不代表完整 macOS App、UI、播放、HDR 或能耗通过，实测结果和限制见 [Performance](Performance.md)。
+
 ## 来源与许可
 
 [ThirdPartyNotices/README.md](ThirdPartyNotices/README.md) 和 `Dependencies.lock.json` 记录依赖来源。项目基于 GPL-3.0 上游，shader 和 SDK 保留各自许可。ad-hoc 签名用于个人本机运行，不等同 Developer ID 或公证；对外分发时必须一并提供本项目、对应依赖源码、构建说明和实际许可证。

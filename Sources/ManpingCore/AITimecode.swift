@@ -40,6 +40,7 @@ public enum AITimecode {
       guard let value = Double(piece), value.isFinite, value >= 0 else { return nil }
       if index > 0, value >= 60 { return nil }
       total = total * 60 + value
+      guard total.isFinite else { return nil }
     }
     return total
   }
