@@ -70,4 +70,3 @@ public struct AITranscript: Sendable, Equatable, Codable {
     cues.map { "[\($0.id) \(AITimecode.format($0.start))-\(AITimecode.format($0.end))] \($0.text)" }.joined(separator: "\n")
   }
 }
-
