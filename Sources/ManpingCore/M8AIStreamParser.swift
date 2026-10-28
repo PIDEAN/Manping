@@ -26,7 +26,12 @@ public enum AIChatFailure: Error, LocalizedError, Equatable, Sendable {
     case .planUnavailable: "ChatGPT 套餐用量暂时无法确认，请稍后重试。"
     case .planSignInRequired: "ChatGPT 登录已失效，请在 设置 › AI 中重新使用 ChatGPT 账号登录。"
     case .unsupportedCapability: "ChatGPT 套餐暂不支持此请求中的模型或参数。"
-    case .localModelUnavailable: AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
+    case .localModelUnavailable:
+      #if os(macOS) && !MANPING_PORTABLE_CORE
+      AppleLocalModel.unavailableReason ?? "Apple 本地模型暂时无法生成，请稍后重试。"
+      #else
+      "Apple 本地模型仅适用于受支持的 Mac。"
+      #endif
     case .localContextTooLong: "内容超出 Apple 本地模型的上下文长度，请改用其他 AI 服务或缩短问题。"
     case .localRefused: "Apple 本地模型出于安全策略未回答此请求。"
     case .contextTooLong: "内容超出当前模型的上下文长度，请在 设置 › AI › 对应服务 › 自定义模型中填写模型标识、上下文长度和最大输出，再添加并保存。"
