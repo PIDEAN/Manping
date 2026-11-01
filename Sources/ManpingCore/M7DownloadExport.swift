@@ -1,11 +1,5 @@
 import Foundation
 
-public struct DownloadSubtitleCue: Equatable, Sendable {
-  public let start: Double
-  public let end: Double
-  public let text: String
-  public init(start: Double, end: Double, text: String) { self.start = start; self.end = end; self.text = text }
-}
 public enum DownloadExport {
   public static func parseSubtitleJSON(_ data: Data) throws -> [DownloadSubtitleCue] {
     guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
