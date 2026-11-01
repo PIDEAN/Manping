@@ -11,6 +11,12 @@ import SwiftUI
 /// real size on every frame. The system transition scales snapshots of the window instead: the
 /// video stood still for half a second and the danmaku looked stretched, then snapped back.
 /// Other pages keep the system transition. 减弱动态效果 makes the move instant.
+///
+/// Both ways the frame moves with the immersive layout (picture only), which costs one stage
+/// layout per step; the toolbar and the right column change only at the windowed size: on the
+/// way in before the window grows, on the way out after it has shrunk. Switching them back at
+/// the start of the exit laid the whole page (comment list, recommendations) out at every step
+/// of the shrink and showed the right column appear at screen size, then shrink with the window.
 @MainActor final class PlayerFullScreenTransition {
   /// The window shows the playback page now.
   private let showsPlayer: () -> Bool
@@ -20,6 +26,9 @@ import SwiftUI
   private var windowedFrame: NSRect?
   private var entering = false
   private var exiting = false
+  /// Bumped by every new transition, a failure and `reset`: a frame animation still running from
+  /// an earlier one restores its window but no longer changes the layout.
+  private var transition: UInt64 = 0
 
   init(showsPlayer: @escaping () -> Bool, setFullScreen: @escaping (Bool) -> Void) {
     self.showsPlayer = showsPlayer
@@ -47,6 +56,7 @@ import SwiftUI
     // stays pinned for that jump (`willUseFullScreenContentSize`: laying the page out once at
     // the screen size flashed an enlarged picture) and the window goes back to where it was.
     let start = window.frame
+    hold(window, true)
     pinnedContentSize = window.contentRect(forFrameRect: start).size
     window.styleMask.insert(.fullScreen)
     pinnedContentSize = nil
@@ -59,11 +69,13 @@ import SwiftUI
   func didEnter() { entering = false }
   func didFailToEnter() {
     entering = false
+    transition &+= 1
     setFullScreen(false)
   }
   private func beginEntering(_ window: NSWindow) {
     guard !entering else { return }
     entering = true
+    transition &+= 1
     exiting = false
     if !window.styleMask.contains(.fullScreen) { windowedFrame = window.frame }
     setFullScreen(true)
@@ -74,33 +86,51 @@ import SwiftUI
   /// `customWindowsToExitFullScreen(for:)`: the playback page returns to its windowed frame itself.
   func customWindowsToExit(_ window: NSWindow) -> [NSWindow]? {
     beginExiting()
-    return showsPlayer() && windowedFrame != nil ? [window] : nil
+    let animates = showsPlayer() && windowedFrame != nil
+    // The system transition animates snapshots of the windowed layout: switch it now.
+    if !animates { setFullScreen(false) }
+    return animates ? [window] : nil
   }
-  /// `windowWillExitFullScreen(_:)`, for either transition.
+  /// `windowWillExitFullScreen(_:)`, for either transition. The layout waits (see the type).
   func willExit() { beginExiting() }
   /// `window(_:startCustomAnimationToExitFullScreenWithDuration:)`.
   func startExiting(_ window: NSWindow, duration: TimeInterval) {
     beginExiting()
+    guard let windowedFrame else {
+      window.styleMask.remove(.fullScreen)
+      setFullScreen(false)
+      return
+    }
+    // Removing the mark brings the title bar back; AppKit may also move the window, which still
+    // covers the screen, to fit under the menu bar. The move starts from the screen, as entering
+    // does, and nothing constrains the frame until it is done.
+    let start = window.frame
+    hold(window, true)
     window.styleMask.remove(.fullScreen)
-    guard let windowedFrame else { return }
-    move(window, to: windowedFrame, duration: duration)
+    if window.frame != start { window.setFrame(start, display: false) }
+    move(window, to: windowedFrame, duration: duration) { [weak self] in self?.setFullScreen(false) }
   }
-  func didExit() { exiting = false }
+  func didExit() {
+    exiting = false
+    setFullScreen(false)
+  }
   func didFailToExit() {
     exiting = false
+    transition &+= 1
     setFullScreen(true)
   }
   private func beginExiting() {
     guard !exiting else { return }
     exiting = true
+    transition &+= 1
     entering = false
-    setFullScreen(false)
   }
 
   /// The window closed (the standalone window can close while in full screen).
   func reset() {
     entering = false
     exiting = false
+    transition &+= 1
     windowedFrame = nil
     setFullScreen(false)
   }
@@ -109,11 +139,15 @@ import SwiftUI
 
   /// Moves the window frame in steps on the main thread: every step lays the page out at that
   /// size, so the picture and the danmaku keep rendering live instead of being scaled.
-  private func move(_ window: NSWindow, to frame: NSRect, duration: TimeInterval) {
+  /// `completion` runs once the frame has arrived.
+  private func move(_ window: NSWindow, to frame: NSRect, duration: TimeInterval,
+    completion: (@MainActor @Sendable () -> Void)? = nil) {
     // The layout switch (sidebar, toolbar, right column) lands at the current size first.
     window.contentView?.layoutSubtreeIfNeeded()
     if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || duration <= 0 {
       window.setFrame(frame, display: true)
+      hold(window, false)
+      completion?()
       return
     }
     let level = window.level
@@ -123,16 +157,41 @@ import SwiftUI
     // Above the menu bar while the frame moves over it, as the system transition does.
     window.level = NSWindow.Level(rawValue: NSWindow.Level.mainMenu.rawValue + 1)
     // One main-loop turn lets SwiftUI apply the layout switch before the first step.
-    DispatchQueue.main.async { [weak window] in
+    let current = transition
+    DispatchQueue.main.async { [weak self, weak window] in
       guard let window else { return }
       NSAnimationContext.runAnimationGroup { context in
         context.duration = max(0.1, deadline - CACurrentMediaTime())
         context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         window.animator().setFrame(frame, display: true)
-      } completionHandler: { [weak window] in
-        MainActor.assumeIsolated { window?.level = level }
+      } completionHandler: { [weak self, weak window] in
+        MainActor.assumeIsolated {
+          if let window {
+            window.level = level
+            self?.hold(window, false)
+          }
+          // A later transition, a failure or the window closing owns the layout now.
+          if self?.transition == current { completion?() }
+        }
       }
     }
+  }
+
+  /// While the transition moves the frame AppKit must leave it alone (`PlayerHostWindow`).
+  private func hold(_ window: NSWindow, _ value: Bool) {
+    (window as? PlayerHostWindow)?.holdsFrame = value
+  }
+}
+
+/// A window that can show the player. During a full-screen transition its frame is the
+/// transition's: AppKit constrains a window to the screen's visible frame (below the menu bar)
+/// when its level or style changes, and on the way out, with the full-screen mark already
+/// removed, it pulled the window down and shortened it before and while the frame moved, so the
+/// window changed size several times instead of once.
+final class PlayerHostWindow: NSWindow {
+  var holdsFrame = false
+  override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+    holdsFrame ? frameRect : super.constrainFrameRect(frameRect, to: screen)
   }
 }
 

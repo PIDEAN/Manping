@@ -374,7 +374,7 @@ import SwiftUI
     #endif
 
     installMenus()
-    window = NSWindow(
+    window = PlayerHostWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1280, height: 850),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
     )

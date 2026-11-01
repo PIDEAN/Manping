@@ -24,9 +24,7 @@ final class M8AIPromptTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(AIArticleInfo.normalizedArticle("  first\n\nsecond\tthird "), "first second third")
   }
   @MainActor func testPromptPersistenceAndFixtureIsolation() throws {
-    let suite = "fixture.ai.prompts." + UUID().uuidString
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = scratchDefaults("fixture.ai.prompts")
     let persisted = AIPromptStore(defaults: defaults)
     XCTAssertTrue(persisted.streaming)
     persisted.streaming = false

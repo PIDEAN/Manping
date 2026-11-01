@@ -179,7 +179,13 @@ enum PerformanceOptions {
 }
 
 @MainActor enum PerformanceEnvironment {
-  static let suite = "io.github.pidean.manping.performance.\(ProcessInfo.processInfo.processIdentifier)"
+  /// An absolute-path domain, so the plist lives in the temp directory and never in
+  /// ~/Library/Preferences (where cfprefsd keeps an empty `<suite>.plist` after the domain is
+  /// removed and recreates it asynchronously, so it cannot be cleaned up reliably). The name is
+  /// fixed, not per pid: measurements run one instance at a time, the launch-time
+  /// removePersistentDomain clears any leftovers of the previous run, and the system reclaims
+  /// the temp directory.
+  static let suite = NSTemporaryDirectory() + "io.github.pidean.manping.performance"
   static let defaults: any PreferencesStore = {
     #if DEBUG
       // Protect malformed scene arguments too: validation happens after AppModel construction.
@@ -201,7 +207,11 @@ enum PerformanceOptions {
   }()
   static var persistentDefaults: UserDefaults? { defaults as? UserDefaults }
   static func cleanUp() {
-    if PerformanceOptions.requested { persistentDefaults?.removePersistentDomain(forName: suite) }
+    guard PerformanceOptions.requested, let defaults = persistentDefaults else { return }
+    defaults.removePersistentDomain(forName: suite)
+    defaults.synchronize()
+    // A path domain is stored at "<suite>.plist".
+    try? FileManager.default.removeItem(atPath: suite + ".plist")
   }
 }
 

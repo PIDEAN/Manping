@@ -32,9 +32,7 @@ final class PlayerBarLayoutTests: XCTestCase {
   }
 
   func testEncodingRoundTripsThroughUserDefaults() throws {
-    let name = "Manping.PlayerBarFixture." + UUID().uuidString
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = scratchDefaults("Manping.PlayerBarFixture")
     let items: [PlayerBarItem] = [.danmakuSettings, .quality, .network, .fullscreen]
     defaults.set(PlayerBarLayout.encode(items), forKey: PlayerBarLayout.storageKey)
     XCTAssertEqual(defaults.stringArray(forKey: PlayerBarLayout.storageKey), ["danmakuSettings", "quality", "network", "fullscreen"])

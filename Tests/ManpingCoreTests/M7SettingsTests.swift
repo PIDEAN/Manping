@@ -4,9 +4,7 @@ import XCTest
 
 final class M7SettingsTests: XCTestCase {
   private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
-    let name = "Manping.SettingsFixture." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: name)!
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = scratchDefaults("Manping.SettingsFixture")
     try body(defaults)
   }
   func testLegacyPreferencesLoadAndAutoQualityRemovesOldSelection() throws {

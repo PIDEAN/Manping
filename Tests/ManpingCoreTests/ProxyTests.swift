@@ -136,7 +136,7 @@ final class ProxyTests: XCTestCase {
     XCTAssertEqual(routed.connectionSignature(secret: "a"), base)
     XCTAssertNotEqual(settings.connectionSignature(secret: "b"), base)
     XCTAssertFalse(base.contains("a|") && base.hasSuffix("|a"), "the password itself never appears")
-    let defaults = UserDefaults(suiteName: "proxy-\(UUID().uuidString)")!
+    let defaults = scratchDefaults("proxy")
     settings.save(to: defaults)
     XCTAssertEqual(ProxySettings.load(from: defaults), settings)
   }

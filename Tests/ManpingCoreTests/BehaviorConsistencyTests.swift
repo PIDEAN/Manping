@@ -6,9 +6,7 @@ import XCTest
 /// what was edited, merged shield edits, collected playlists, skip ranges and mini window size.
 final class BehaviorConsistencyTests: XCTestCase {
   private func withDefaults(_ body: (UserDefaults) throws -> Void) rethrows {
-    let name = "Manping.BehaviorFixture." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: name)!
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = scratchDefaults("Manping.BehaviorFixture")
     try body(defaults)
   }
 

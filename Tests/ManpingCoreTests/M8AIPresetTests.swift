@@ -3,10 +3,7 @@ import XCTest
 @testable import ManpingCore
 
 final class M8AIPresetTests: XCTestCase {
-  private func defaults() throws -> (UserDefaults, String) {
-    let suite = "fixture.ai.presets." + UUID().uuidString
-    return (try XCTUnwrap(UserDefaults(suiteName: suite)), suite)
-  }
+  private func presetDefaults() -> UserDefaults { scratchDefaults("fixture.ai.presets") }
 
   func testBuiltInsCoverTheTenPresetsAndSystemPromptIsTheDesignText() {
     XCTAssertEqual(AIBuiltInPresets.all.map(\.name), ["章节总结", "只看 3 分钟", "高能时刻", "弹幕在聊什么", "评论区观点", "评价", "问答",
@@ -22,8 +19,7 @@ final class M8AIPresetTests: XCTestCase {
   }
 
   @MainActor func testMigrationKeepsCustomTemplatesAsLegacyMarkdownPresets() throws {
-    let (defaults, suite) = try defaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = presetDefaults()
     defaults.set("我的总结 {title}\n{subtitle}", forKey: "Manping.AI.prompt.videoSummary")
     defaults.set(AIPromptTask.videoEvaluation.defaultTemplate, forKey: "Manping.AI.prompt.videoEvaluation")
     defaults.set("文章问答 {content} {question}", forKey: "Manping.AI.prompt.articleQuestion")
@@ -50,8 +46,7 @@ final class M8AIPresetTests: XCTestCase {
   }
 
   func testMigrationMarkerIsOnlyWrittenAfterThePresetsPersist() throws {
-    let (defaults, suite) = try defaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = presetDefaults()
     defaults.set("自定义 {title}", forKey: "Manping.AI.prompt.articleSummary")
     // A state written by an interrupted earlier run is merged, not replaced.
     var partial = AIPresetState(); partial.disabled = ["evaluation"]
@@ -65,8 +60,7 @@ final class M8AIPresetTests: XCTestCase {
   }
 
   @MainActor func testEditingResetOrderingAndFixtureIsolation() throws {
-    let (defaults, suite) = try defaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = presetDefaults()
     let store = AIPresetStore(defaults: defaults)
     var chapters = try XCTUnwrap(store.preset("chapters"))
     chapters.taskPrompt = "只要三条"
@@ -114,8 +108,7 @@ final class M8AIPresetTests: XCTestCase {
   }
 
   @MainActor func testAISubtitlesAreOnByDefaultAndIndependentOfTheDownloadSwitch() throws {
-    let (defaults, suite) = try defaults()
-    defer { defaults.removePersistentDomain(forName: suite) }
+    let defaults = presetDefaults()
     // 下载 › 隐藏 AI 字幕 (on by default) filters only downloads and subtitle lists.
     defaults.set(true, forKey: "Manping.filterAISubtitle")
     let store = AIPresetStore(defaults: defaults)

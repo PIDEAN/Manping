@@ -90,8 +90,7 @@ final class LiveFixturePreferencesTests: XCTestCase {
 
   func testPreferenceProtocolKeepsNativeUserDefaultsReads() throws {
     // Registration is volatile; this control performs no persistent set or domain mutation.
-    let native = try XCTUnwrap(
-      UserDefaults(suiteName: "invalid.manping.preference-control." + UUID().uuidString))
+    let native = scratchDefaults("invalid.manping.preference-control")
     let store: any PreferencesStore = native
     store.register(defaults: ["flag": true, "number": 42, "text": "native"])
     XCTAssertTrue(store.bool(forKey: "flag"))

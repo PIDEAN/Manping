@@ -92,7 +92,13 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
 #undef LOAD
     e->handle = e->create();
     if (!e->handle) { snprintf(error, capacity, "mpv_create failed"); bili_mpv_destroy(e); return NULL; }
-    const char *options[][2] = {{"vo","libmpv"},{"dither-depth","no"},{"hwdec","videotoolbox"},{"keep-open","yes"},{"idle","yes"},{"config","no"},{"terminal","no"},{"tls-verify","yes"},{"input-default-bindings","no"},{"user-agent","Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"},{"referrer","https://www.bilibili.com/"}};
+    // video-timing-offset=0: mpv queues a frame only once it is due, so mpv_render_context_render
+    // never sleeps for a target time. It used to wait up to 50 ms inside the render call, under
+    // the CGL context lock and the layer's gate, and every main-thread layout (a window resize, a
+    // full-screen transition step) stalled behind it. Waiting outside the call instead would not
+    // cover layout redraws, which would then show queued frames early (render.h recommends this
+    // option for that reason; it applies to the default "audio" video sync).
+    const char *options[][2] = {{"vo","libmpv"},{"video-timing-offset","0"},{"dither-depth","no"},{"hwdec","videotoolbox"},{"keep-open","yes"},{"idle","yes"},{"config","no"},{"terminal","no"},{"tls-verify","yes"},{"input-default-bindings","no"},{"user-agent","Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"},{"referrer","https://www.bilibili.com/"}};
     for (size_t i=0;i<sizeof(options)/sizeof(options[0]);i++) {
         int status=e->set_option_string(e->handle,options[i][0],options[i][1]);
         if(status<0) { snprintf(error,capacity,"%s: %s",options[i][0],e->error_string(status)); bili_mpv_destroy(e);return NULL; }

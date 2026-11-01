@@ -76,9 +76,7 @@ final class PowerPolicyTests: XCTestCase {
   }
 
   func testSavedProfilesKeepTheirMeaningAndOldAutomaticBecomesHighQuality() throws {
-    let name = "Manping.PowerFixture." + UUID().uuidString
-    let defaults = UserDefaults(suiteName: name)!
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = scratchDefaults("Manping.PowerFixture")
     XCTAssertEqual(MacSettings.load(from: defaults).text(.mpvProfile), "high-quality")
     defaults.set("auto", forKey: MacSettingKey.mpvProfile.rawValue)
     XCTAssertEqual(MacSettings.load(from: defaults).text(.mpvProfile), "high-quality")

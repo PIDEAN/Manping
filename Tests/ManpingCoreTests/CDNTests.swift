@@ -118,7 +118,7 @@ final class CDNTests: XCTestCase {
   }
 
   func testStoreLearnsCapsAndScopesResultsByNetwork() throws {
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: "cdn-store-\(UUID().uuidString)"))
+    let defaults = scratchDefaults("cdn-store")
     let store = CDNStore(defaults: defaults)
     let now = Date()
     for index in 0..<30 { store.learn(try XCTUnwrap(CDNHost("upos-\(index).bilivideo.com")), now: now.addingTimeInterval(Double(index))) }

@@ -79,9 +79,7 @@ final class LiveSessionIntegrationTests: XCTestCase, @unchecked Sendable {
     XCTAssertTrue(settings.liveEffective.interactNotices)
   }
   func testLiveSettingsPersistOnlyInInjectedSuite() throws {
-    let name = "Manping.tests.live.\(UUID().uuidString)"
-    let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-    defer { defaults.removePersistentDomain(forName: name) }
+    let defaults = scratchDefaults("Manping.tests.live")
     let all = Set(MacSettingKey.allCases)
     _ = MacSettings.committing(.liveAllowPaidGifts, .bool(true), capabilities: all, to: defaults)
     _ = MacSettings.committing(
