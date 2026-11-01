@@ -408,6 +408,7 @@ private func spaceCount(_ value: Int) -> String {
 private struct M3DynamicsResults: View {
   @ObservedObject var dynamics: M3UserDynamicsModel
   @ObservedObject var model: AppModel
+  @Environment(\.browsingPageActive) private var browsingPageActive
   var body: some View {
     Group {
       if dynamics.items.isEmpty && dynamics.loading {
@@ -431,7 +432,7 @@ private struct M3DynamicsResults: View {
               else {
                 Button("加载更多") { Task { await dynamics.loadNext() } }
                   .padding(12).buttonStyle(ChromeButtonStyle())
-                  .onAppear { Task { await dynamics.loadNext() } }
+                  .onAppear { if browsingPageActive { Task { await dynamics.loadNext() } } }
               }
             }
           }.frame(maxWidth: 760).padding(Theme.gridPadding).frame(maxWidth: .infinity)

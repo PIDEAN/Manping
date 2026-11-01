@@ -75,6 +75,11 @@ public struct DanmakuTimeline: Sendable {
     let comment: DanmakuComment
     let lane: Int
   }
+  private struct StoredComment {
+    let comment: DanmakuComment
+    // A checkpoint verifies that a cached viewport still shares this append-only prefix.
+    let revision: UUID
+  }
   private struct Lane {
     var start = -Double.infinity
     var length = 0.0
@@ -86,12 +91,18 @@ public struct DanmakuTimeline: Sendable {
   static let spacing = 1.0
   private var entries: [Entry] = []
   /// Every accepted comment, so a speed change can lay the lanes out again.
-  private var comments: [DanmakuComment] = []
+  private var comments: [StoredComment] = []
+  private var firstCommentIndex = 0
+  private var endCommentIndex: Int { firstCommentIndex + comments.count }
+  private var revision = UUID()
+  /// Appends preserve the layout; replacement, speed and shield changes do not.
+  private(set) var layoutRevision = UUID()
   private var lanes: [Lane]
   private var bottomUntil: [Double]
   public let duration: Double
   /// Playback speed multiplier the lanes are laid out for (0.5–2).
   public private(set) var speed: Double = 1
+  public private(set) var scrollingDurationScale: Double = 1
   /// Shield applied while laying out; hidden lines keep no lane.
   public private(set) var filter = DanmakuFilter()
   private var matcher = DanmakuFilter().compiled()
@@ -99,8 +110,10 @@ public struct DanmakuTimeline: Sendable {
     self.duration = max(1, duration)
     self.lanes = [Lane](repeating: Lane(), count: max(1, lanes))
     bottomUntil = [Double](repeating: -Double.infinity, count: max(1, lanes / 2))
+    let revision = revision
     self.comments = comments.filter { $0.time.isFinite }.sorted(by: { $0.time < $1.time })
-    for comment in self.comments { place(comment) }
+      .map { StoredComment(comment: $0, revision: revision) }
+    for stored in self.comments { place(stored.comment) }
   }
   public var count: Int { entries.count }
   /// Comment density over the video, `bins` buckets scaled to 0…1 (peak = 1). Counts every
@@ -108,8 +121,8 @@ public struct DanmakuTimeline: Sendable {
   public func density(duration: Double, bins: Int = 100) -> [Double] {
     guard duration.isFinite, duration > 0, bins > 0, comments.count >= 20 else { return [] }
     var counts = [Double](repeating: 0, count: bins)
-    for comment in comments where comment.time >= 0 && comment.time <= duration {
-      counts[min(bins - 1, Int(comment.time / duration * Double(bins)))] += 1
+    for stored in comments where stored.comment.time >= 0 && stored.comment.time <= duration {
+      counts[min(bins - 1, Int(stored.comment.time / duration * Double(bins)))] += 1
     }
     // Light smoothing so single spikes read as moments rather than noise.
     let smoothed = counts.indices.map { index -> Double in
@@ -126,6 +139,13 @@ public struct DanmakuTimeline: Sendable {
     speed = clamped
     relayout()
   }
+  /// Fixed comments keep their original dwell in a viewport-specific layout.
+  public mutating func setScrollingDurationScale(_ value: Double) {
+    let scale = Self.normalizedScrollingDurationScale(value)
+    guard scale != scrollingDurationScale else { return }
+    scrollingDurationScale = scale
+    relayout()
+  }
   /// Applies a new shield to the comments already loaded and to later live lines.
   public mutating func setFilter(_ value: DanmakuFilter) {
     guard value != filter else { return }
@@ -133,31 +153,75 @@ public struct DanmakuTimeline: Sendable {
     matcher = value.compiled()
     relayout()
   }
+  private static func normalizedScrollingDurationScale(_ value: Double) -> Double {
+    value.isFinite ? max(1, value) : 1
+  }
   private mutating func relayout() {
+    revision = UUID(); layoutRevision = UUID()
     entries.removeAll(keepingCapacity: true)
     lanes = [Lane](repeating: Lane(), count: lanes.count)
     bottomUntil = [Double](repeating: -Double.infinity, count: bottomUntil.count)
-    for comment in comments { place(comment) }
+    for stored in comments { place(stored.comment) }
   }
   /// Live chat: adds a comment at the current media clock. Comments must arrive in time order
   /// (a reload that restarts the clock should start a new timeline). Lines that scrolled off
   /// long ago are dropped so a long live session keeps a bounded timeline.
   @discardableResult public mutating func append(_ comment: DanmakuComment) -> Bool {
-    if let last = comments.last, comment.time < last.time { return false }
+    if let last = comments.last, comment.time < last.comment.time { return false }
     guard comment.time.isFinite else { return false }
-    comments.append(comment)
+    revision = UUID()
+    comments.append(StoredComment(comment: comment, revision: revision))
     let placed = place(comment)
     if comments.count > 1_500 {
       let cutoff = comment.time - duration * 4
-      if let keep = comments.firstIndex(where: { $0.time >= cutoff }), keep > 0 { comments.removeFirst(keep) }
+      if let keep = comments.firstIndex(where: { $0.comment.time >= cutoff }), keep > 0 {
+        comments.removeFirst(keep); firstCommentIndex += keep
+      }
       if let keep = entries.firstIndex(where: { $0.comment.time >= cutoff }), keep > 0 { entries.removeFirst(keep) }
       // A paused stream keeps the media clock still while chat keeps arriving, so the time
       // window alone never shrinks: hold at most the newest 1,500 whatever their timestamps.
-      if comments.count > 1_500 { comments.removeFirst(comments.count - 1_500) }
+      if comments.count > 1_500 {
+        let removed = comments.count - 1_500
+        comments.removeFirst(removed); firstCommentIndex += removed
+      }
       if entries.count > 1_500 { entries.removeFirst(entries.count - 1_500) }
     }
     return placed
   }
+  /// A renderer-owned layout. Unchanged publications are O(1); live updates place only the
+  /// appended suffix. Keep this on the rendering thread so a new viewport never lays out
+  /// the whole source on the main thread.
+  public struct ViewportCache: Sendable {
+    public private(set) var timeline = DanmakuTimeline(comments: [])
+    private var sourceLayoutRevision: UUID?
+    private var sourceRevision: UUID?
+    private var sourceEnd = 0
+    private var lastCommentRevision: UUID?
+    public init() {}
+
+    public mutating func update(source: DanmakuTimeline, scrollingDurationScale value: Double) {
+      let scale = DanmakuTimeline.normalizedScrollingDurationScale(value)
+      guard sourceRevision != source.revision || timeline.scrollingDurationScale != scale else { return }
+      if source.scrollingDurationScale == scale {
+        // In particular, 120 Hz uses the original layout without any extra placement.
+        timeline = source
+      } else {
+        let checkpoint = sourceEnd - source.firstCommentIndex - 1
+        let sharesPrefix = sourceEnd == 0 && source.firstCommentIndex == 0
+          || (source.comments.indices.contains(checkpoint) && source.comments[checkpoint].revision == lastCommentRevision)
+        if sourceLayoutRevision == source.layoutRevision, timeline.scrollingDurationScale == scale,
+          sourceEnd <= source.endCommentIndex, sharesPrefix {
+          for stored in source.comments.suffix(source.endCommentIndex - sourceEnd) { timeline.append(stored.comment) }
+        } else {
+          timeline = source
+          timeline.setScrollingDurationScale(scale)
+        }
+      }
+      sourceLayoutRevision = source.layoutRevision; sourceRevision = source.revision
+      sourceEnd = source.endCommentIndex; lastCommentRevision = source.comments.last?.revision
+    }
+  }
+
   /// Rough advance in ems: ASCII is about half as wide as CJK and emoji.
   static func estimatedLength(_ text: String) -> Double {
     text.unicodeScalars.reduce(0) { total, scalar in
@@ -168,19 +232,20 @@ public struct DanmakuTimeline: Sendable {
   @discardableResult private mutating func place(_ comment: DanmakuComment) -> Bool {
     guard matcher.allows(comment) else { return false }
     let time = comment.time
-    let crossing = duration / speed
+    let fixedDuration = duration / speed
+    let crossing = fixedDuration * scrollingDurationScale
     let lane: Int?
     switch comment.mode {
     case 4:
       if let index = bottomUntil.firstIndex(where: { $0 <= time }) {
-        bottomUntil[index] = time + crossing
+        bottomUntil[index] = time + fixedDuration
         entries.append(Entry(comment: comment, lane: index))
         return true
       }
       return false
     case 5:
       lane = lanes.firstIndex { $0.fixedUntil <= time && $0.start + crossing <= time }
-      if let lane { lanes[lane].fixedUntil = time + crossing }
+      if let lane { lanes[lane].fixedUntil = time + fixedDuration }
     default:
       let length = Self.estimatedLength(comment.text)
       let width = Self.assumedWidth
@@ -201,14 +266,17 @@ public struct DanmakuTimeline: Sendable {
   public func visible(at clock: Double, speed: Double = 1) -> [PositionedComment] {
     guard clock.isFinite, clock >= 0 else { return [] }
     let duration = self.duration / (speed.isFinite ? min(2, max(0.5, speed)) : 1)
-    let lo = firstOnScreen(at: clock, duration: duration)
+    let scrolling = duration * scrollingDurationScale
+    let lo = firstOnScreen(at: clock, duration: scrolling)
     var result: [PositionedComment] = []
     for entry in entries.dropFirst(lo) {
       if entry.comment.time > clock { break }
+      let crossing = entry.comment.mode == 4 || entry.comment.mode == 5 ? duration : scrolling
+      guard clock - entry.comment.time < crossing else { continue }
       result.append(
         PositionedComment(
           comment: entry.comment, lane: entry.lane,
-          progress: (clock - entry.comment.time) / duration))
+          progress: (clock - entry.comment.time) / crossing))
     }
     return result
   }
@@ -217,8 +285,14 @@ public struct DanmakuTimeline: Sendable {
   public func hasVisible(at clock: Double, speed: Double = 1) -> Bool {
     guard clock.isFinite, clock >= 0 else { return false }
     let duration = self.duration / (speed.isFinite ? min(2, max(0.5, speed)) : 1)
-    let lo = firstOnScreen(at: clock, duration: duration)
-    return lo < entries.count && entries[lo].comment.time <= clock
+    let scrolling = duration * scrollingDurationScale
+    let lo = firstOnScreen(at: clock, duration: scrolling)
+    for entry in entries.dropFirst(lo) {
+      if entry.comment.time > clock { break }
+      let crossing = entry.comment.mode == 4 || entry.comment.mode == 5 ? duration : scrolling
+      if clock - entry.comment.time < crossing { return true }
+    }
+    return false
   }
   /// Index of the first entry that has not yet left the screen at `clock` (entries are in time order).
   private func firstOnScreen(at clock: Double, duration: Double) -> Int {

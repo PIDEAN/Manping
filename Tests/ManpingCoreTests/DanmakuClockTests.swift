@@ -6,6 +6,28 @@ final class DanmakuClockTests: XCTestCase {
     clock.update(.init(host: host, media: media, playing: playing, speed: speed))
   }
 
+  func testEqualPresentationTimestampsHaveNoVelocityStepsAcrossCorrections() {
+    let clock = DanmakuClock()
+    feed(clock, host: 0, media: 10)
+    var previous = clock.media(at: 0)!
+    var lastStep: Double?
+    var maximumStepChange = 0.0
+    for frame in 1...600 {
+      let host = Double(frame) / 60
+      if frame % 6 == 0 {
+        // Alternate both extremes of the old ±4% instantaneous slew.
+        feed(clock, host: host, media: 10 + host + (frame % 12 == 0 ? 0.12 : -0.12))
+      }
+      let media = clock.media(at: host)!
+      let step = (media - previous) * 280  // conservative uncapped full-screen crawl, pt/frame
+      if let lastStep { maximumStepChange = max(maximumStepChange, abs(step - lastStep)) }
+      XCTAssertGreaterThan(step, 0)
+      lastStep = step; previous = media
+    }
+    XCTAssertLessThan(maximumStepChange, 0.02)  // <0.04 physical pixel at 2×, including sample boundaries
+    XCTAssertEqual(clock.media(at: 10)!, 20, accuracy: 0.05)
+  }
+
   func testFrameQuantisedSamplesGiveAUniformLine() {
     // 24 fps time-pos: each 100 ms sample is floored to the last frame, with sampling jitter.
     let clock = DanmakuClock()
@@ -76,6 +98,52 @@ final class DanmakuClockTests: XCTestCase {
     XCTAssertEqual(clock.media(at: 1.2)!, frozen, accuracy: 0.11)
     feed(clock, host: 1.5, media: 10.8)                     // resumes behind the line
     XCTAssertGreaterThanOrEqual(clock.media(at: 1.6)!, frozen - 0.11)
+  }
+
+  func testPausedAtTenResumesBehindWithoutRampingFromZeroOrResetting() {
+    for fps in [60, 120] {
+      let clock = DanmakuClock()
+      feed(clock, host: 0, media: 9.9)
+      feed(clock, host: 0.1, media: 9.99, playing: false)
+      XCTAssertEqual(clock.media(at: 1)!, 10, accuracy: 1e-9)
+      feed(clock, host: 1, media: 9.99)
+      var previous = clock.media(at: 1)!
+      for frame in 1...(fps * 5) {
+        let host = 1 + Double(frame) / Double(fps)
+        if frame % (fps / 10) == 0 {
+          let before = clock.media(at: host)!
+          feed(clock, host: host, media: 9.99 + host - 1)
+          XCTAssertEqual(clock.media(at: host)!, before, accuracy: 1e-9, "a normal resume must not jump at a sample")
+        }
+        let media = clock.media(at: host)!
+        let step = media - previous
+        XCTAssertGreaterThanOrEqual(step, -1e-9)
+        XCTAssertLessThanOrEqual(step, 1.04 / Double(fps) + 1e-9)
+        if frame > fps / 10 {
+          XCTAssertGreaterThanOrEqual(step, 0.96 / Double(fps) - 1e-9, "catch-up restores base speed, not an ease from rest")
+        }
+        previous = media
+      }
+      XCTAssertEqual(clock.drainDiagnostics().resets, 0)
+      XCTAssertEqual(previous, 14.99, accuracy: 0.03)
+    }
+  }
+
+  func testStutterHoldWaitsForCatchUpThenRestoresPlaybackSpeed() {
+    let clock = DanmakuClock()
+    feed(clock, host: 0, media: 10)
+    feed(clock, host: 0.1, media: 10.1)
+    feed(clock, host: 0.2, media: 9.5)
+    let frozen = clock.media(at: 0.2)!
+    for step in 1...6 {
+      let host = 0.2 + Double(step) / 10
+      feed(clock, host: host, media: 9.5 + Double(step) / 10)
+      XCTAssertEqual(clock.media(at: host + 0.05)!, frozen, accuracy: 1e-9)
+    }
+    feed(clock, host: 0.9, media: frozen)
+    XCTAssertEqual(clock.media(at: 0.9)!, frozen, accuracy: 1e-9)
+    XCTAssertEqual(clock.media(at: 1)!, frozen + 0.1, accuracy: 1e-9)
+    XCTAssertEqual(clock.drainDiagnostics().resets, 0)
   }
 
   func testShortSeekBackIsNotMistakenForAStaleSample() {

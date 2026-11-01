@@ -8,6 +8,7 @@ struct ArticleBrowserPage: View {
   let openArticle: (ArticleSummary) -> Void
   let onUser: (Int64) -> Void
   @Environment(\.colorScheme) private var scheme
+  @Environment(\.browsingPageActive) private var browsingPageActive
   init(service: BiliService, refreshToken: Int = 0, initialSection: Int64 = -1,
     openArticle: @escaping (ArticleSummary) -> Void, onUser: @escaping (Int64) -> Void) {
     _browse = StateObject(wrappedValue: ArticleBrowserModel(service: service))
@@ -34,7 +35,8 @@ struct ArticleBrowserPage: View {
         }
       }
       .task(id: refreshToken) { await browse.initialize(selection: initialSection) }
-      .onDisappear { browse.cancel() }
+      .onChange(of: browsingPageActive, initial: true) { _, active in browse.setBrowsingPageActive(active) }
+      .onDisappear { browse.setBrowsingPageActive(false); browse.cancel() }
   }
   private var sidebar: some View {
     VStack(spacing: 0) {

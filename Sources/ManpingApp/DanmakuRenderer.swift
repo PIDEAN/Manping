@@ -13,11 +13,11 @@ private struct Glyph {
   /// Advance in device pixels at the raster's pixel font size.
   let advance: Float
 }
-/// Pixel geometry of one atlas generation. Glyphs are rasterized 1:1 at
-/// `fontSize × backingScale`, so every field changes with the font size or the screen scale.
-private struct GlyphRaster: Equatable {
+/// Pixel geometry of one atlas generation; 1× displays use 2× supersampling.
+struct GlyphRaster: Equatable {
   let pixelFontSize: Int
   let scale: CGFloat
+  let style: DanmakuGlyphStyle
   /// Transparent margin around the text box for the outline and the drop shadow.
   let pad: Int
   /// Square cell edge in pixels.
@@ -26,13 +26,14 @@ private struct GlyphRaster: Equatable {
   let baseline: Int
   let atlasSize: Int
   var perRow: Int { atlasSize / cell }
-  init(fontSize: Double, scale: CGFloat, atlasSize: Int) {
-    let scale = max(1, scale)
+  init(fontSize: Double, scale: CGFloat, atlasSize: Int, style: DanmakuGlyphStyle) {
+    let scale = max(2, scale)
+    self.style = style
     let pixels = max(8, Int((CGFloat(fontSize) * scale).rounded()))
     pixelFontSize = pixels
     self.scale = scale
-    // Outline (half of 1pt outside), 1pt shadow offset and a 3pt blur.
-    pad = Int((4.5 * scale).rounded(.up)) + 1
+    // Solid outlines need less transparent margin than a 3pt blurred shadow.
+    pad = Int(((style == .shadow ? 4.5 : 1.5) * scale).rounded(.up)) + 1
     // CJK ink sits within ~1.0em above and emoji/Latin descenders ~0.3em below the baseline.
     let box = Int((CGFloat(pixels) * 1.3).rounded(.up))
     cell = min(atlasSize / 4, box + 2 * pad)
@@ -79,6 +80,7 @@ struct DanmakuScene: Sendable {
   var enabled: Bool
   var fontSize: Double
   var opacity: Double
+  var glyphStyle: DanmakuGlyphStyle
   /// Danmaku crawl speed multiplier (the 速度 setting), not the playback speed.
   var speed: Double
   var area: Double
@@ -110,9 +112,13 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
   private struct Shared {
     var scene: DanmakuScene?
     var stopped = false
+    var renderFailed = false
   }
   private let shared = OSAllocatedUnfairLock(initialState: Shared())
-  private let statistics = OSAllocatedUnfairLock(initialState: [String: Int]())
+  private let statistics = OSAllocatedUnfairLock(initialState: [
+    "framePresented": 0, "frameSkippedInFlight": 0, "frameSkippedRender": 0,
+    "frameGPUFailures": 0, "frameNotPresented": 0,
+  ])
   private let clock: DanmakuClock
   private let layer: CAMetalLayer
   private let device: MTLDevice
@@ -121,6 +127,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
   private let report: @Sendable (String) -> Void
   private let captureEnabled: Bool
   // Render-thread state.
+  private var timelineCache = DanmakuTimeline.ViewportCache()
   private var link: CAMetalDisplayLink?
   private var pages: [Int: GlyphPage] = [:]
   private var cache = GlyphCachePolicy()
@@ -228,8 +235,16 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
   // MARK: Frame
 
   func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
-    let (scene, stopped) = shared.withLock { ($0.scene, $0.stopped) }
-    guard !stopped, let scene, scene.size.width > 0, scene.size.height > 0 else { return }
+    let (scene, stopped, retry) = shared.withLock { state in
+      defer { state.renderFailed = false }
+      return (state.scene, state.stopped, state.renderFailed)
+    }
+    guard !stopped, var scene, scene.size.width > 0, scene.size.height > 0 else { return }
+    // Resolve the latest immutable source here, not during main-thread layout/publication.
+    timelineCache.update(source: scene.timeline, scrollingDurationScale: DanmakuMotion.scrollingDurationScale(
+      stageWidth: scene.size.width, maximumFPS: scene.maximumFPS))
+    scene.timeline = timelineCache.timeline
+    if retry { invalidatePlan(); drawnEmpty = false; drawnVersion = -1 }
     let target = update.targetPresentationTimestamp
     let playing = clock.isRunning
     let media = clock.media(at: target) ?? drawnClock
@@ -241,7 +256,6 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       entering = scene.timeline.hasVisible(at: ahead, speed: scene.speed)
     }
     adaptRate(active: enabled && playing && (onScreen || entering), scene: scene)
-    DanmakuMotionProbe.record(host: target, clock: media, speed: 1, playing: enabled && playing)
     // Nothing to show and the last presented frame is already empty: no clear, no present.
     // Glyphs for lines about to enter are still rendered ahead on the workshop.
     if !onScreen, drawnEmpty {
@@ -257,9 +271,11 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     // Nothing moved and nothing changed: keep the last frame on screen.
     // Lines waiting for workshop glyphs keep the frame live until they can be drawn.
     if scene.version == drawnVersion, enabled == drawnEnabled, !enabled || media == drawnClock, !pendingGlyphs { return }
-    guard inFlight.wait(timeout: .now()) == .success else { return }
+    guard inFlight.wait(timeout: .now()) == .success else { noteSkipped(.inFlight); return }
     let started = CACurrentMediaTime()
-    if !render(scene: scene, media: media, enabled: enabled, drawable: update.drawable) { inFlight.signal(); return }
+    let result = render(scene: scene, media: media, enabled: enabled, drawable: update.drawable, target: target, playing: playing)
+    if result == .failed { inFlight.signal(); noteSkipped(.render); return }
+    if result == .submitted { noteSkipped(.render) }
     let micros = Int((CACurrentMediaTime() - started) * 1_000_000)
     statistics.withLock { stats in
       stats["frameMicros"] = micros
@@ -267,19 +283,25 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       stats["framePeakWindow"] = max(stats["framePeakWindow"] ?? 0, micros)
       stats["frameMicrosTotal", default: 0] += micros; stats["frameCount", default: 0] += 1
     }
-    drawnVersion = scene.version; drawnClock = media; drawnEnabled = enabled
+    if result == .presented { drawnVersion = scene.version; drawnClock = media; drawnEnabled = enabled }
+  }
+
+  private func noteSkipped(_ reason: DanmakuMotionProbe.SkipReason) {
+    let key = reason == .inFlight ? "frameSkippedInFlight" : "frameSkippedRender"
+    statistics.withLock { $0[key, default: 0] += 1 }
+    DanmakuMotionProbe.skipped(reason)
   }
 
   /// Full display rate (or the cap) while lines move or are about to enter; 10 Hz otherwise.
   private func adaptRate(active: Bool, scene: DanmakuScene) {
-    let top = Float(max(30, scene.maximumFPS))
+    let top = Float(max(10, scene.maximumFPS))
     let range: CAFrameRateRange
     if !active { range = CAFrameRateRange(minimum: 10, maximum: 10, preferred: 10) }
     else if let cap = scene.frameCap {
       let ceiling = min(Float(max(30, cap)), top)
-      range = CAFrameRateRange(minimum: 30, maximum: ceiling, preferred: ceiling)
+      range = CAFrameRateRange(minimum: ceiling, maximum: ceiling, preferred: ceiling)
     }
-    else { range = CAFrameRateRange(minimum: 60, maximum: top, preferred: top) }
+    else { range = CAFrameRateRange(minimum: min(60, top), maximum: top, preferred: top) }
     guard appliedRange.map({ $0.minimum != range.minimum || $0.maximum != range.maximum || $0.preferred != range.preferred }) ?? true
     else { return }
     appliedRange = range
@@ -294,7 +316,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
   /// Drops every atlas generation when the pixel font size or the scale changes. Frames already
   /// submitted keep their own textures alive until completion.
   private func prepareRaster(_ scene: DanmakuScene) -> GlyphRaster {
-    let next = GlyphRaster(fontSize: scene.fontSize, scale: scene.scale, atlasSize: atlasSize)
+    let next = GlyphRaster(fontSize: scene.fontSize, scale: scene.scale, atlasSize: atlasSize, style: scene.glyphStyle)
     if let raster, raster == next { return raster }
     raster = next
     pages = [:]
@@ -416,9 +438,11 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     return true
   }
 
-  /// Encodes and presents one frame; false when nothing was submitted.
-  private func render(scene: DanmakuScene, media: Double, enabled: Bool, drawable: CAMetalDrawable) -> Bool {
-    guard let command = commandQueue.makeCommandBuffer() else { return false }
+  private enum RenderResult { case failed, submitted, presented }
+  /// A submitted blit without a drawable present must not advance the drawn-frame state.
+  private func render(scene: DanmakuScene, media: Double, enabled: Bool, drawable: CAMetalDrawable,
+    target: Double, playing: Bool) -> RenderResult {
+    guard let command = commandQueue.makeCommandBuffer() else { return .failed }
     let visible = enabled
       ? Array(scene.timeline.visible(at: media, speed: scene.speed).prefix(scene.lineLimit)) : []
     let raster = prepareRaster(scene)
@@ -449,12 +473,12 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       if ready.count < candidates.count {
         workshop.request(Set(candidates.flatMap { Array($0.comment.text) }), raster: raster)
       }
-      guard replan(ready, raster: raster, blits: &blits) else { return false }
+      guard replan(ready, raster: raster, blits: &blits) else { return .failed }
     }
     pendingGlyphs = visible.contains { layouts[key($0)] == nil }
     if !blits.isEmpty {
       // The plan above assumes these copies happen: without them, rebuild it next frame.
-      guard let blit = command.makeBlitCommandEncoder() else { invalidatePlan(); return false }
+      guard let blit = command.makeBlitCommandEncoder() else { invalidatePlan(); return .failed }
       let size = MTLSize(width: raster.cell, height: raster.cell, depth: 1)
       for (source, from, target, to) in blits {
         blit.copy(from: source, sourceSlice: 0, sourceLevel: 0, sourceOrigin: from, sourceSize: size,
@@ -474,7 +498,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     guard let encoder = command.makeRenderCommandEncoder(descriptor: descriptor) else {
       // Copies encoded above are dropped with this command buffer.
       if !blits.isEmpty { invalidatePlan() }
-      return false
+      return .failed
     }
     retained.withLock { state in
       for texture in frameTextures { state.pages[texture, default: 0] += 1 }
@@ -486,10 +510,11 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     let scale = Float(raster.scale)
     // The drawable's own size, in points: while the window resizes (a full-screen transition)
     // the main thread may already have resized the layer for a scene published a moment later.
-    // Placing lines in the drawable that is actually presented keeps glyphs 1:1 with pixels and
-    // the lane area following the new height, never scaled.
-    let width = Float(drawable.texture.width) / scale
-    let height = Float(drawable.texture.height) / scale
+    // Placing lines in the drawable that is actually presented keeps point geometry stable
+    // (also with a supersampled atlas) and the lanes following the new height, never stretched.
+    let displayScale = Float(max(1, scene.scale))
+    let width = Float(drawable.texture.width) / displayScale
+    let height = Float(drawable.texture.height) / displayScale
     let fontSize = Float(scene.fontSize)
     let laneHeight = fontSize * 1.35
     // Device pixels to points: glyphs map 1:1 onto the drawable.
@@ -502,7 +527,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     // bottom comments stack up from the control bar. Tiny views fall back to the full height.
     let bottomEdge = height > scene.bottomInset + laneHeight * 2 ? height - scene.bottomInset : height
     let areaLimit = min(height * Float(scene.area), bottomEdge)
-    let snap = { (value: Float) -> Float in (value * scale).rounded() / scale }
+    let snap = { (value: Float) -> Float in (value * displayScale).rounded() / displayScale }
     let alpha = Float(min(1, max(0, scene.opacity)))
     let uvSize = Float(raster.cell) / Float(atlasSize)
 
@@ -606,7 +631,14 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     }
     let completion = inFlight
     let retained = self.retained
-    command.addCompletedHandler { [framePages, frameTextures, capture] _ in
+    let statistics = self.statistics
+    let shared = self.shared
+    command.addCompletedHandler { [framePages, frameTextures, capture] completed in
+      if completed.status == .error {
+        statistics.withLock { $0["frameGPUFailures", default: 0] += 1; $0["frameSkippedRender", default: 0] += 1 }
+        DanmakuMotionProbe.skipped(.render)
+        shared.withLock { $0.renderFailed = true }
+      }
       withExtendedLifetime(framePages) {}
       capture?.writePNG()
       retained.withLock { state in
@@ -620,6 +652,16 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
     }
     // Without vertices this frame would be blank: keep the previous one and try again next frame.
     if missingBuffer { pendingGlyphs = true } else {
+      drawable.addPresentedHandler { presented in
+        guard presented.presentedTime > 0 else {
+          statistics.withLock { $0["frameNotPresented", default: 0] += 1 }
+          DanmakuMotionProbe.skipped(.unconfirmedPresent)
+          return
+        }
+        statistics.withLock { $0["framePresented", default: 0] += 1 }
+        DanmakuMotionProbe.record(host: target, clock: media, speed: 1, playing: enabled && playing,
+          presentedHost: presented.presentedTime)
+      }
       command.present(drawable); drawnEmpty = placed.isEmpty
       noteEntries(placed.map(\.time), media: media)
     }
@@ -633,7 +675,7 @@ final class DanmakuEngine: NSObject, CAMetalDisplayLinkDelegate, @unchecked Send
       "entries": entries, "lateEntries": lateEntries, "entryLateMaxMicros": entryLateMaxMicros,
     ]
     statistics.withLock { $0.merge(snapshot) { _, new in new } }
-    return true
+    return missingBuffer ? .submitted : .presented
   }
 
   /// Evidence that idling never costs an entry: how long after its start time each line was
@@ -687,6 +729,7 @@ final class DanmakuView: NSView {
   private let metalLayer = CAMetalLayer()
   private var engine: DanmakuEngine?
   private var observations: [AnyCancellable] = []
+  private var screenObserver: NSObjectProtocol?
   private var version = 0
   private var stopped = false
   private static weak var diagnosticEngine: DanmakuEngine?
@@ -700,6 +743,11 @@ final class DanmakuView: NSView {
     metalLayer.isOpaque = false
     metalLayer.framebufferOnly = !ProcessInfo.processInfo.arguments.contains("--glyph-probe")
     metalLayer.presentsWithTransaction = false
+    metalLayer.displaySyncEnabled = true
+    metalLayer.maximumDrawableCount = 3
+    // SDR white remains SDR on an HDR television; do not light local-dimming zones at EDR white.
+    metalLayer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+    metalLayer.wantsExtendedDynamicRangeContent = false
     wantsLayer = true
     // Until the next frame is drawn at a new size, the last one stays at its own pixel size,
     // pinned to the top edge where the lanes start: danmaku never look stretched or squeezed
@@ -740,6 +788,14 @@ final class DanmakuView: NSView {
   }
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+    screenObserver = nil
+    if let window, !stopped {
+      screenObserver = NotificationCenter.default.addObserver(forName: NSWindow.didChangeScreenNotification,
+        object: window, queue: .main) { [weak self] _ in
+          MainActor.assumeIsolated { self?.resize() }
+        }
+    }
     resize()
   }
   private func resize() {
@@ -757,19 +813,22 @@ final class DanmakuView: NSView {
     version &+= 1
     // A host window may scale the layer down (the mini window); the main player uses it as is.
     let fit = (window as? DanmakuFitting)?.danmakuFit
+    let maximumFPS = window?.screen?.maximumFramesPerSecond ?? 60
     engine.publish(DanmakuScene(
       timeline: model.timeline, enabled: model.commentsEnabled,
       fontSize: fit?.fontSize(model.danmakuFontSize, height: bounds.height) ?? model.danmakuFontSize,
-      opacity: model.danmakuOpacity, speed: model.danmakuSpeed,
+      opacity: model.danmakuOpacity, glyphStyle: model.danmakuGlyphStyle.resolved(maximumFPS: maximumFPS), speed: model.danmakuSpeed,
       area: fit.map { min(model.danmakuArea, $0.area) } ?? model.danmakuArea,
       lineLimit: min(PowerState.shared.danmakuLineLimit, fit?.lineLimit ?? .max),
       bottomInset: fit?.bottomInset ?? DanmakuFit.regularBottomInset, size: bounds.size,
-      scale: window?.backingScaleFactor ?? 2, maximumFPS: window?.screen?.maximumFramesPerSecond ?? 60,
+      scale: window?.backingScaleFactor ?? 2, maximumFPS: maximumFPS,
       frameCap: PowerState.shared.danmakuFrameCap(setting: model.danmakuFrameRate), version: version))
   }
   func stop() {
     stopped = true
     observations.removeAll()
+    if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+    screenObserver = nil
     engine?.stop()
   }
 }
@@ -858,8 +917,10 @@ final class GlyphWorkshop: @unchecked Sendable {
         context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
         // Shadow offsets are in base space (y up), unaffected by the flip above: a negative
         // height moves the shadow down on screen. One shadow for fill and outline together.
-        context.setShadow(offset: CGSize(width: 0, height: -raster.scale), blur: 3 * raster.scale,
-          color: CGColor(gray: 0, alpha: 0.6))
+        if raster.style == .shadow {
+          context.setShadow(offset: CGSize(width: 0, height: -raster.scale), blur: 3 * raster.scale,
+            color: CGColor(gray: 0, alpha: 0.6))
+        }
         context.beginTransparencyLayer(auxiliaryInfo: nil)
         context.setLineJoin(.round)
         context.textPosition = CGPoint(x: raster.pad, y: raster.baseline)

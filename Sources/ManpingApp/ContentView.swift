@@ -18,7 +18,10 @@ struct ContentView: View {
     }
     #if DEBUG
     // README animations: `MANPING_DEMO_SCENE` with `--ui-fixture` (docs/media/README.md).
-    .task { DemoDirector.startIfRequested(model: model) }
+    .task {
+      DemoDirector.startIfRequested(model: model)
+      DebugFullScreenProbe.startIfRequested(model: model)
+    }
     #endif
   }
 }
@@ -340,7 +343,16 @@ private struct ShellContent: View {
   @ViewBuilder private var pageContent: some View {
     if model.usesUIFixtures && !model.fixtureReady {
       PageStateView(.loading, title: "正在准备本地样本…").frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else if model.mainShowsPlayer && model.playbackElsewhere {
+    } else {
+      ZStack(alignment: .topLeading) {
+        BrowsingPageLayer(active: model.browsingPageActive) { browsingContent }
+          .id(model.browsingPage)
+        playbackContent
+      }
+    }
+  }
+  @ViewBuilder private var playbackContent: some View {
+    if model.mainShowsPlayer && model.playbackElsewhere {
       // The picture plays in the mini window or the standalone window; the page waits here
       // until the user browses elsewhere (playback then keeps going beside the main window).
       let mini = model.compactPlayer
@@ -357,30 +369,39 @@ private struct ShellContent: View {
       }.frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(Theme.text(scheme))
     } else if model.mainShowsPlayer, let selected = model.selected {
       VideoDetailPage(model: model, player: model.player, video: selected).id(ObjectIdentifier(model.player))
-    } else if let route = model.currentOverlay {
-      switch route {
-      case .search(let term): M3SearchPage(model: model, term: term)
-      case .favorites: M3FavoritesPage(model: model)
-      case .viewLater: M3ViewLaterPage(model: model)
-      case .history: M3HistoryPage(model: model)
-      case .userSpace(let mid): M3UserSpacePage(model: model, mid: mid).id(mid)
-      case .following(let mid): M3FollowingPage(model: model, mid: mid).id(mid)
-      case .followers(let mid): M3FollowersPage(model: model, mid: mid).id(mid)
+    } else {
+      switch model.currentOverlay {
       case .pgc(let selection):
         if let playback = model.pgcPlayback {
           PGCPlayerPage(model: model, playback: playback, selection: selection).id(ObjectIdentifier(playback.player))
         }
-      case .article(let id):
-        ArticleReaderPage(service: model.service, id: id, rpc: try? model.standardRPCService(), onUser: { model.openOverlay(.userSpace($0)) }, onVideo: model.open, onArticle: { model.openOverlay(.article($0)) }, onLogin: { model.showingLogin = true },
-          aiContent: { detail in AnyView(AIPanelStack(runtime: model.ai, source: .article(AIArticleInfo(detail: detail)))) }).id(id)
       case .video: PageStateView(.loading, title: "正在打开视频", message: "正在获取视频详情与播放地址。")
       case .live:
         if let live = model.livePlayback {
           LivePlayerPage(model: model, live: live).id(ObjectIdentifier(live.player))
         }
+      default: EmptyView()
       }
-    } else {
-      switch model.page {
+    }
+  }
+  @ViewBuilder private var browsingContent: some View {
+    switch model.browsingPage {
+    case .overlay(let route, _):
+      switch route {
+      case .search(let term): M3SearchPage(model: model, term: term)
+      case .favorites: M3FavoritesPage(model: model)
+      case .viewLater: M3ViewLaterPage(model: model)
+      case .history: M3HistoryPage(model: model)
+      case .userSpace(let mid): M3UserSpacePage(model: model, mid: mid)
+      case .following(let mid): M3FollowingPage(model: model, mid: mid)
+      case .followers(let mid): M3FollowersPage(model: model, mid: mid)
+      case .article(let id):
+        ArticleReaderPage(service: model.service, id: id, rpc: try? model.standardRPCService(), onUser: { model.openOverlay(.userSpace($0)) }, onVideo: model.open, onArticle: { model.openOverlay(.article($0)) }, onLogin: { model.showingLogin = true },
+          aiContent: { detail in AnyView(AIPanelStack(runtime: model.ai, source: .article(AIArticleInfo(detail: detail)))) })
+      case .video, .pgc, .live: EmptyView()
+      }
+    case .root(let page):
+      switch page {
       case .popular: PopularPage(model: model)
       case .moment: M4MomentPage(model: model)
       case .video:

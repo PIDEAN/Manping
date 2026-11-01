@@ -7,6 +7,23 @@ final class M7SettingsTests: XCTestCase {
     let defaults = scratchDefaults("Manping.SettingsFixture")
     try body(defaults)
   }
+  func testTVPlaybackDefaultsAreConservativeAndRoundTrip() throws {
+    try withDefaults { defaults in
+      let initial = MacSettings.load(from: defaults)
+      XCTAssertFalse(initial.bool(.videoSmoothMotion))
+      XCTAssertEqual(initial.text(.fullscreenSurround), "black")
+      XCTAssertEqual(initial.text(.danmakuGlyphStyle), DanmakuGlyphStyle.automatic.rawValue)
+      let capabilities: Set<MacSettingKey> = [.videoSmoothMotion, .fullscreenSurround, .danmakuGlyphStyle]
+      var settings = initial
+      for (key, value): (MacSettingKey, MacSettingValue) in [(.videoSmoothMotion, .bool(true)),
+        (.fullscreenSurround, .text("ambient")), (.danmakuGlyphStyle, .text("outline"))] {
+        XCTAssertTrue(settings.set(key, value, capabilities: capabilities))
+        settings.save(key, to: defaults)
+      }
+      XCTAssertEqual(settings, MacSettings.load(from: defaults))
+      XCTAssertFalse(settings.set(.fullscreenSurround, .text("invalid"), capabilities: capabilities))
+    }
+  }
   func testLegacyPreferencesLoadAndAutoQualityRemovesOldSelection() throws {
     try withDefaults { defaults in
       defaults.set("深色", forKey: "appTheme")

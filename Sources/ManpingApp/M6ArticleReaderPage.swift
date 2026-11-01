@@ -30,6 +30,8 @@ import SwiftUI
   private let rpc: (any BiliRPCService)?
   private var id: Int64 = 0
   private var expected: AuthSnapshot?
+  private var browsingPageActive = false
+  private var needsIdentityReload = false
   private var generation = UUID()
   private var commentRevision = UUID()
   private var next: Int64 = 0
@@ -46,12 +48,25 @@ import SwiftUI
         guard let self, !Task.isCancelled, let expected = self.expected else { continue }
         if event.epoch != expected.epoch || event.identityRevision != expected.identityRevision {
           self.cancel(); self.expected = nil; self.detail = nil
-          self.error = "登录状态已改变，请重新加载文章。"
+          self.needsIdentityReload = true; self.error = "登录状态已改变，请重新加载文章。"
+          self.reloadIdentityIfNeeded()
         }
       }
     }
   }
   deinit { observer?.cancel(); flight?.cancel(); commentFlight?.cancel(); mutation?.cancel() }
+  func setBrowsingPageActive(_ active: Bool) {
+    browsingPageActive = active
+    reloadIdentityIfNeeded()
+  }
+  private func reloadIdentityIfNeeded() {
+    guard browsingPageActive, needsIdentityReload else { return }
+    // Video links retain the reader too; ordinary return must not reset its reading position.
+    Task { [weak self] in
+      guard let self, self.browsingPageActive, self.needsIdentityReload else { return }
+      await self.load(id: self.id)
+    }
+  }
   func cancel() {
     generation = UUID(); commentRevision = UUID()
     flight?.cancel(); commentFlight?.cancel(); mutation?.cancel()
@@ -61,7 +76,7 @@ import SwiftUI
     commentLikes = [:]; commentCounts = [:]; draft = ""; commentsOpened = false
   }
   func load(id: Int64) async {
-    cancel(); self.id = id; detail = nil; error = nil; mutationError = nil
+    cancel(); needsIdentityReload = false; self.id = id; detail = nil; error = nil; mutationError = nil
     loading = true; let revision = generation
     let snapshot = await service.authSnapshot()
     guard revision == generation, !Task.isCancelled else {
@@ -221,6 +236,7 @@ struct ArticleReaderPage: View {
   @State private var progress = ArticleReadingProgress()
   @StateObject private var reader: ArticleReaderModel
   @Environment(\.colorScheme) private var scheme
+  @Environment(\.browsingPageActive) private var browsingPageActive
   init(service: BiliService, id: Int64, rpc: (any BiliRPCService)? = nil,
     onUser: @escaping (Int64) -> Void, onVideo: @escaping (Video) -> Void,
     onArticle: @escaping (Int64) -> Void = { _ in }, onLogin: @escaping () -> Void = {},
@@ -250,7 +266,9 @@ struct ArticleReaderPage: View {
     }.foregroundStyle(Theme.text(scheme))
       .animation(.snappy(duration: 0.25), value: showingAI)
       .animation(.snappy(duration: 0.25), value: reader.commentsOpened)
-      .task(id: id) { await reader.load(id: id) }.onDisappear { reader.cancel() }
+      .task(id: id) { await reader.load(id: id) }
+      .onChange(of: browsingPageActive, initial: true) { _, active in reader.setBrowsingPageActive(active) }
+      .onDisappear { reader.setBrowsingPageActive(false); reader.cancel() }
       .onChange(of: reader.detail?.article.id) { _, value in
         #if DEBUG
         if value != nil, DebugUIFixtures.enabled, ProcessInfo.processInfo.arguments.contains("--ui-ai-preview") { showingAI = true }

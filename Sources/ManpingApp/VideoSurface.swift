@@ -15,6 +15,7 @@ final class VideoSurface: NSView {
   private var displayTimer: Timer?
   private var lastDisplay = ""
   private var lastLayerSignature = ""
+  private var lastRefreshRate = 0.0
   private var appliedPeak = 0.0
   private var appliedPeakAt = Date.distantPast
   private var appliedForHDR = false
@@ -78,6 +79,7 @@ final class VideoSurface: NSView {
           MpvEnginePool.shared.adopt(video, for: engine)
         }
         videoLayer = video
+        video.setSmoothMotion(model.videoSmoothMotion)
         layer?.addSublayer(video)
         video.invalidateFrame()
         renderReady = true
@@ -147,13 +149,20 @@ final class VideoSurface: NSView {
     let edr = videoLayer.floating && potential > 1 && !forcedSDR && (hdrSource || everySourceEDR)
     let deep = videoLayer.floating && (edr || hdrSource || forcedSDR || everySourceEDR)
     let scale = window?.backingScaleFactor ?? 1
-    let signature =
-      "edr=\(edr) deep=\(deep) current=\((rawCurrent * 10).rounded() / 10) mappedHeadroom=\(current) potential=\(potential) scale=\(scale)"
+    var refreshRate = Double(screen?.maximumFramesPerSecond ?? 60)
     videoLayer.setVisible(
       window != nil && !isHiddenOrHasHiddenAncestor && !(window?.isMiniaturized ?? false))
     if let number = screen?.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
-      videoLayer.setDisplay(CGDirectDisplayID(number.uint32Value))
+      refreshRate = videoLayer.setDisplay(CGDirectDisplayID(number.uint32Value),
+        fallbackFPS: screen?.maximumFramesPerSecond ?? 60)
     }
+    // Normal client API stays on the model's command queue, outside every render/CGL lock.
+    if refreshRate != lastRefreshRate {
+      lastRefreshRate = refreshRate
+      model.set("display-fps-override", String(refreshRate))
+    }
+    let signature =
+      "edr=\(edr) deep=\(deep) current=\((rawCurrent * 10).rounded() / 10) mappedHeadroom=\(current) potential=\(potential) scale=\(scale) refreshHz=\(refreshRate)"
     guard signature != lastDisplay else { return }
     lastDisplay = signature
     displayEvidence = signature
@@ -200,6 +209,7 @@ final class VideoSurface: NSView {
   }
   /// The source's transfer became known or changed (SDR ↔ HDR): pick the output right away.
   func sourceTransferChanged() { updateDisplay() }
+  func setSmoothMotion(_ value: Bool) { videoLayer?.setSmoothMotion(value) }
   func refreshDanmakuPreferences() { metalView?.refreshPreferences() }
   func danmakuTimelineChanged() { metalView?.timelineChanged() }
   func captureVideoFrame(width: Int, height: Int) async -> CGImage? {

@@ -188,6 +188,10 @@ enum PerformanceOptions {
   static let suite = NSTemporaryDirectory() + "io.github.pidean.manping.performance"
   static let defaults: any PreferencesStore = {
     #if DEBUG
+      // Playback A/B actions must not carry a smoothing choice into the next fixture run.
+      if DebugUIFixtures.enabled, ProcessInfo.processInfo.arguments.contains("--ui-playback-report") {
+        return MemoryPreferences()
+      }
       // Protect malformed scene arguments too: validation happens after AppModel construction.
       if DebugUIFixtures.usesLiveSceneMemory {
         if let scene = DebugUIFixtures.liveScene,
@@ -547,13 +551,17 @@ enum PerformanceCoverData {
     let startTime = player.time
     let startRenderFrames = renderFrames(player)
     let startSubmits = danmakuSubmits(), startHost = CACurrentMediaTime()
+    let startDanmaku = DanmakuView.diagnosticEvidence
     guard let startVO = player.metrics["frame-drop-count"], let startDecoder = player.metrics["decoder-frame-drop-count"] else { throw PerformanceOptions.Failure.countersUnavailable }
     Self.log("PERF playback WARM media_s=\(startTime) hwdec_current=\(player.hardware) vo_drop=\(startVO) decoder_drop=\(startDecoder) danmaku_lines=\(player.timeline.count) comments_enabled=\(player.commentsEnabled) engine_profile=\(player.engineProfile) power=\(PowerState.shared.level) source_transfer=\(player.videoGamma)")
     try await wait(seconds: max(70, player.duration + 15)) { player.eofReached || player.time >= player.duration }
     let elapsed = CACurrentMediaTime() - startHost
     let submits = danmakuSubmits() - startSubmits
-    Self.log(String(format: "PERF playback DANMAKU submits_delta=%d elapsed_s=%.3f presents_per_s=%.2f lines=%d enabled=%@ evidence=%@", submits, elapsed,
-      Double(submits) / max(0.001, elapsed), player.timeline.count, player.commentsEnabled ? "yes" : "no",
+    let danmaku = DanmakuView.diagnosticEvidence
+    func delta(_ key: String) -> Int { (danmaku[key] ?? 0) - (startDanmaku[key] ?? 0) }
+    Self.log(String(format: "PERF playback DANMAKU submits_delta=%d elapsed_s=%.3f presents_per_s=%.2f presents_delta=%d skipped_inflight=%d skipped_render=%d gpu_failures=%d unconfirmed_presents=%d lines=%d enabled=%@ evidence=%@", submits, elapsed,
+      Double(delta("framePresented")) / max(0.001, elapsed), delta("framePresented"), delta("frameSkippedInFlight"),
+      delta("frameSkippedRender"), delta("frameGPUFailures"), delta("frameNotPresented"), player.timeline.count, player.commentsEnabled ? "yes" : "no",
       DanmakuView.diagnosticEvidence.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: ",")))
     Self.log("PERF playback DISPLAY \(player.surface?.displayEvidence ?? "unavailable")")
     await delay(0.15)

@@ -6,7 +6,7 @@ import SwiftUI
 // put the picture in one rounded, always-dark container that sits on the window's backdrop 12 pt
 // from the window edges, the toolbar and the right panel. Around the picture the stage shows a
 // still, blurred and darkened copy of the cover, so letterboxing reads as part of the picture
-// instead of a black hole. Full screen drops the radius, the margins and the edge.
+// instead of a black hole. Full screen defaults to pure black and drops the radius, margins and edge.
 
 // MARK: - Page layout
 
@@ -38,8 +38,8 @@ extension View {
   /// The player surface fills the stage, over the stage backdrop made from `cover`. The surface
   /// fits the video to the picture's shape itself (`PlayerSurface.pictureAspect`), while the
   /// danmaku, the gestures and the overlays use the whole stage.
-  func playerStageBackdrop(cover: URL?) -> some View {
-    modifier(PlayerStageFill(cover: cover))
+  func playerStageBackdrop(cover: URL?, immersive: Bool, surround: String) -> some View {
+    modifier(PlayerStageFill(cover: cover, black: PlayerStageBackdrop.usesBlack(immersive: immersive, selection: surround)))
   }
 
   /// Sizes a layer that belongs to the picture itself (an offline sample's artwork)
@@ -71,11 +71,15 @@ func stagePictureAspect(_ aspect: CGFloat?) -> CGFloat { aspect ?? 16 / 9 }
 
 private struct PlayerStageFill: ViewModifier {
   let cover: URL?
+  let black: Bool
   func body(content: Content) -> some View {
     content
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       // A background never takes part in layout: the filled cover cannot grow the stage.
-      .background { PlayerStageBackdrop(cover: cover) }
+      .background {
+        // Do not mount the image loader, CI renderer or vignette at all in pure-black mode.
+        if black { Color.black } else { PlayerStageBackdrop(cover: cover) }
+      }
   }
 }
 
@@ -110,6 +114,7 @@ private struct PlayerSidePanelSurface: ViewModifier {
 /// per cover (never sampled from the video), and plain `stage` colour without a cover or at the
 /// strongest power-saving step (Low Power Mode or serious thermal pressure) with 「进一步省电」 on.
 struct PlayerStageBackdrop: View {
+  static func usesBlack(immersive: Bool, selection: String) -> Bool { immersive && selection != "ambient" }
   let cover: URL?
   @ObservedObject private var power = PowerState.shared
   @Environment(\.accessibilityReduceMotion) private var reduceMotion

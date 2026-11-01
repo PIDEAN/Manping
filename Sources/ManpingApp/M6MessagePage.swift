@@ -102,7 +102,7 @@ struct M6MessagePage: View {
               }.buttonStyle(SidebarRowStyle(selected: messages.selected?.id == session.id))
             }
             if messages.hasMore && messages.error == nil {
-              Color.clear.frame(height: 1).task(id: messages.sessions.count) { await messages.loadNext() }
+              M6MessagePaginationSentinel(count: messages.sessions.count) { await messages.loadNext() }
             }
           }
         }.padding(.horizontal, 10).padding(.bottom, 12)
@@ -121,7 +121,7 @@ struct M6MessagePage: View {
         }
         if messages.loading { ProgressView().padding(16) }
         if messages.hasMore && messages.error == nil {
-          Color.clear.frame(height: 1).task(id: messages.notifications.count) { await messages.loadNext() }
+          M6MessagePaginationSentinel(count: messages.notifications.count) { await messages.loadNext() }
         }
       }.padding(Theme.gridPadding).frame(maxWidth: 820).frame(maxWidth: .infinity)
     }
@@ -146,6 +146,21 @@ struct M6MessagePage: View {
       let value = args[index + 1].split(separator: ":").dropFirst().first,
       let item = MessageSection(rawValue: String(value)) { section = item }
     #endif
+  }
+}
+
+/// Visibility retries skipped pagination without cancelling a request already in flight.
+struct M6MessagePaginationSentinel: View {
+  let count: Int
+  let load: () async -> Void
+  @Environment(\.browsingPageActive) private var browsingPageActive
+  var body: some View {
+    Color.clear.frame(height: 1).task(id: count) {
+      if browsingPageActive { await load() }
+    }
+    .onChange(of: browsingPageActive) { _, active in
+      if active { Task { await load() } }
+    }
   }
 }
 

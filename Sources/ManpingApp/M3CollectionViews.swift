@@ -64,6 +64,7 @@ struct M3CollectionConfirmation: View {
   let actionTitle: String
   let confirm: () -> Void
   let cancel: () -> Void
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     ZStack {
@@ -78,7 +79,7 @@ struct M3CollectionConfirmation: View {
         }.padding(.top, 4)
       }.padding(20).frame(width: 360)
         .floatingGlassPanel(readingTint: Theme.panel(scheme).opacity(0.55))
-    }.accessibilityAddTraits(.isModal).onExitCommand(perform: cancel)
+    }.accessibilityAddTraits(.isModal).onExitCommand(perform: browsingPageActive ? cancel : nil)
   }
 }
 
@@ -113,6 +114,7 @@ struct M3CollectionResults: View {
   @ObservedObject var model: AppModel
   let emptyTitle: String
   let remove: (LibraryEntry) -> Void
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.colorScheme) private var scheme
   var body: some View {
     VStack(spacing: 0) {
@@ -145,7 +147,7 @@ struct M3CollectionResults: View {
             spacing: Theme.gridSpacing)], spacing: collection.isPGC ? 24 : Theme.gridSpacing) {
             ForEach(collection.entries) { entry in
               card(entry).onAppear {
-                if entry.id == collection.entries.last?.id, collection.error == nil {
+                if browsingPageActive, entry.id == collection.entries.last?.id, collection.error == nil {
                   Task { await collection.loadNext() }
                 }
               }

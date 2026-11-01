@@ -4,8 +4,12 @@ import SwiftUI
 /// 首页: 推荐 / 热门 / 排行榜 (the tabs live in the toolbar). Per-partition rankings are on 分区.
 struct PopularPage: View {
   @ObservedObject var model: AppModel
-  @StateObject private var feed = BrowseFeedModel()
+  @StateObject private var feed: BrowseFeedModel
   private var requestKey: String { String(describing: model.popularTab) }
+  init(model: AppModel) {
+    self.model = model
+    _feed = StateObject(wrappedValue: BrowseFeedModel(service: model.service))
+  }
   var body: some View {
     BrowseVideoResults(feed: feed, open: model.open).equatable()
       .pageToolbar(title: "首页", refreshing: feed.state.isLoading && !feed.state.items.isEmpty, refresh: { feed.refresh() }) {

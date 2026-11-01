@@ -204,6 +204,8 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   var danmakuSpeed: Double = 1
   /// 弹幕帧率: `DanmakuFrameRate.display` or `.sixty`.
   var danmakuFrameRate = DanmakuFrameRate.display
+  var danmakuGlyphStyle = DanmakuGlyphStyle.automatic
+  var videoSmoothMotion: Bool { runtimeSettings.bool(.videoSmoothMotion) }
   /// Fraction of the view height scrolling and top danmaku may use (1/4, 1/2 or 1). It is a
   /// player-local preference kept outside the settings catalog.
   var danmakuArea: Double = PlayerModel.storedDanmakuArea {
@@ -452,7 +454,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
           "frame-drop-count", "decoder-frame-drop-count", "mistimed-frame-count",
           "demuxer-cache-duration", "demuxer-cache-state/fw-bytes", "video-params/sig-peak",
           "estimated-vf-fps", "estimated-frame-number", "estimated-frame-count",
-          "display-fps", "vsync-jitter", "video-bitrate",
+          "display-fps", "estimated-display-fps", "display-fps-override", "vsync-jitter", "video-bitrate",
         ]
         var measured = Dictionary(
           uniqueKeysWithValues: properties.compactMap { name -> (String, Double)? in
@@ -742,6 +744,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     danmakuOpacity = settings.number(.danmakuOpacity)
     danmakuSpeed = settings.number(.danmakuSpeed)
     danmakuFrameRate = settings.text(.danmakuFrameRate)
+    danmakuGlyphStyle = DanmakuGlyphStyle(rawValue: settings.text(.danmakuGlyphStyle)) ?? .automatic
     timeline.setSpeed(danmakuSpeed)
     surface?.refreshDanmakuPreferences()
   }
@@ -753,6 +756,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   func configureRuntime(settings: MacSettings, previous: MacSettings? = nil) {
     let old = runtimeSettings
     runtimeSettings = settings
+    surface?.setSmoothMotion(settings.bool(.videoSmoothMotion))
     if !settings.bool(.liveText) { liveText.clear() }
     applyDanmakuPreferences(settings)
     if engine != nil || external != nil {

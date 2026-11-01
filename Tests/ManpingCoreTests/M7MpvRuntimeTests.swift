@@ -3,6 +3,16 @@ import XCTest
 @testable import ManpingCore
 
 final class M7MpvRuntimeTests: XCTestCase {
+  func testSmoothMotionOnlyOptsIntoDisplaySyncWhenEnabled() {
+    var settings = MacSettings()
+    func properties() -> [String: String] { Dictionary(uniqueKeysWithValues: MpvRuntimePlan.properties(settings)) }
+    XCTAssertEqual(properties()["video-sync"], "audio")
+    XCTAssertEqual(properties()["interpolation"], "no")
+    settings.set(.videoSmoothMotion, .bool(true), capabilities: [.videoSmoothMotion])
+    XCTAssertEqual(properties()["video-sync"], "display-resample")
+    XCTAssertEqual(properties()["interpolation"], "yes")
+    XCTAssertEqual(properties()["tscale"], "oversample")
+  }
   func testIPCEncodesURLAsDataAndRejectsInvalidCommands() throws {
     let url = "https://example.invalid/video?text=\"a\"&x=1\nsecond"
     let data = try MpvRuntimePlan.ipcData(command: ["loadfile", url], requestID: 9)

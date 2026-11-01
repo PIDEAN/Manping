@@ -125,7 +125,7 @@ struct LivePlayerPage: View {
     PlayerSurface(model: player, pictureAspect: stagePictureAspect(nil))
       // Nothing to show yet (loading, ended, failed): the empty surface would be a black box on the stage.
       .opacity(live.stream == nil || live.ended || (live.error != nil && player.duration <= 0) ? 0 : 1)
-      .playerStageBackdrop(cover: live.room?.cover)
+      .playerStageBackdrop(cover: live.room?.cover, immersive: immersive, surround: model.appSettings.text(.fullscreenSurround))
       .overlay { statusOverlay }
       .overlay(alignment: .topLeading) {
         if let message = live.reconnecting {

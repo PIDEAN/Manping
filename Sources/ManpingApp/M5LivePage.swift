@@ -8,6 +8,7 @@ struct M5LivePage: View {
   @AppStorage("m5LiveChildWidth") private var childWidth = 200.0
   @AppStorage("m5LiveSidebarHidden") private var sidebarHidden = false
   @State private var showsFollowing = false
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.colorScheme) private var scheme
   private var showsChildren: Bool { !sidebarHidden && !discovery.children.isEmpty }
   init(model: AppModel) {
@@ -133,7 +134,7 @@ struct M5LivePage: View {
             ForEach(discovery.rooms) { room in
               M5LiveCard(room: room, recommendation: discovery.isRecommendation, play: model.openLiveRoom, watch: model.openLive) { mid in model.openOverlay(.userSpace(mid)) }
                 .onAppear {
-                  if room.id == discovery.rooms.last?.id, discovery.error == nil { Task { await discovery.loadNext() } }
+                  if browsingPageActive, room.id == discovery.rooms.last?.id, discovery.error == nil { Task { await discovery.loadNext() } }
                 }
             }
           }.cardGridContent().padding(Theme.gridPadding)

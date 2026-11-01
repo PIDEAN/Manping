@@ -380,3 +380,100 @@ python3 scripts/performance_check.py --only playback \
 `.github/workflows/build.yml` 新增 Linux `portable-core` 作业，直接复制并编译四个生产源文件，不使用重新实现的算法或业务 mock。`MANPING_PORTABLE_CORE` 仅隔离 Apple 本地模型的系统不可用原因查询；正常 Mac App 仍使用原实现。原来的完整 Mac 构建与测试作业保留，但仍取决于 runner 是否安装 Xcode 27。 隐私 CI 在 PR 事件下检出实际提交 SHA，避免把 GitHub 临时合并提交的系统 committer 身份误报为项目作者；仍扫描实际提交的完整历史，校验规则不放宽。
 
 后续优先在 Apple Silicon Mac 上复验 [KnownIssues](KnownIssues.md) 已记录的热门页滚动长尾、播放器反复起停后的 RSS 趋势、真实弱网下的首帧时间与恢复。密集弹幕的 CPU／帧率应单独取样后再决定优化点。本轮未改动 mpv、shader、Metal 渲染算法或画质，也不将这些尚未实测的项目标为通过。
+
+## 外接电视 60 Hz：节奏、弹幕与全屏留白（2026-11-01）
+
+### 环境、方法与边界
+
+MacBookPro18,2 / M1 Max、64 GiB、macOS 27.0.1 (26A434)、Swift 6.4.2、arm64 Debug（不是 Release）。基线为 `200ae754`，仅加报告中的屏幕定位、A/V 和窗口信息，不改基线渲染。复用 `/Applications/满屏.app` 的本地运行库模板，libmpv SHA-256 为 `37043ada2c30d8177499e793751ff1f7476a98d77e5131b8c360fa43795ce652`；没有重新编译或替换 mpv，也未改发布包。依赖从本机缓存离线复制到本 worktree，所有编译、编码均在采样前完成，测量串行运行。未联网、未请求账号、未移动鼠标或改系统/电视设置。桌面其它进程未受控，未采集 GPU 功率、能耗或物理亮度。
+
+实际读到两块屏：内建 2056×1329 pt、2×、最高/标称 120 Hz；HISENSE-TV `(2056,135,1920,1080)`、2×、最高/标称 **60 Hz**，EDR current 1.2、potential 7.7487。主表全部在电视上，舞台 1920×1080 pt，mpv FBO **3840×2160**。quiet accessory 模式不可靠地进入原生全屏 Space，故新增仅 fixture 可用的 `stage-fullscreen` 动作：不激活窗口，以无边框窗口覆盖本屏并使用生产的 immersive 布局。**这是全尺寸沉浸舞台测试，不是原生进出全屏转场验收**。未操作用户原有 Release 进程。
+
+本地素材来自已有 `docs/media/.assets/vod.mp4`（1920×1080、30 fps、无音频），加入 48 kHz AAC 正弦音轨、截取 38 s；24/25 fps 版经 VideoToolbox 转为 CFR。是 1080p 源、4K 输出，不冒称 4K 源解码验收，也没有耳听音质。每轮报告 32 s：0.2 s 移到电视，1 s 设置平滑开关，8 s 进入全尺寸舞台，11 s 注入 600 条合成弹幕。**13–32 s** 的 20 个秒级样本为稳态窗口（媒体约第 8–27 秒）；累计计数仍保留启动和布局切换。P95 使用 nearest-rank `ceil(0.95*n)-1`；缺失的 mpv 属性标作 N/A，绝不当成 0。最后一轮将 fixture 播放报告切到 `MemoryPreferences`，避免上一轮的开关污染下一轮或写入应用偏好。
+
+原始报告/日志仅在 `.build/tv60/`，最终主表为 `checked-tv-{24,25,30}-{0,1}.json`，换屏/截图为 `checked-transitions.json`，内建默认关闭为 `checked-internal-30-default.json`，PERF 为 `checked-perf-tv.log`。最终采样包主程序 SHA-256 `44d1505c9d9961346b39b87d06a4b8d8f986c22dd06b71389634797affb1d6c2`。额外首轮、截图轮、早期非隔离/隔离轮（`isolated-*`）、换屏轮和失败的无 `go` 启动轮均保留，没有混入主表。早期隔离包 SHA `45d78f3ff3add90dcfdc131769d5a13591580b0662e6cd3b2eae879ebac8831e`，副本 `.build/tv60/measured.app`；最终补齐了 NEXT_FRAME_INFO→render 间竞态的无等待保证，以及非 1/4/5 模式与原有滚动语义一致的判定后，重新编译并重跑了整张主表、换屏、内建和 PERF。
+
+### 1a–1c：mpv 显示同步原型，默认保持关闭
+
+本机 mpv 0.41.0 的 `options/options.c:185,252` 确认正式名称是 **`display-fps-override`**，`override-display-fps` 只是旧名 alias。`VideoSurface` 在与 CVDisplayLink 换屏相同的位置更新覆盖值；取当前 link 的有理数周期，缺失时才用屏幕 maximumFPS，保留 59.94 而非四舍五入成 60。调用通过播放器的串行 command queue，**不在 CGL/gate 内调用普通 mpv client API**。
+
+设置 › 播放增加「画面平滑」：开启为 `video-sync=display-resample`、`interpolation=yes`、`tscale=oversample`；关闭仍是 audio/no。按 `render.h` 的 NEXT_FRAME_INFO / BLOCK_VSYNC 契约，开启时每个 CVDisplayLink tick 都驱动 render（包括重复帧），布局和 250 ms 保活 timer 不提前消费 display-sync 帧；swap 在下一个 vsync 报告。停止/隐藏时异步补报最后一个 swap，避免等待已取消的下一次 vsync。全程保留 CGL→gate 锁顺序，进入 CA display 前释放双锁，不启用 ADVANCED_CONTROL 的额外死锁承诺。
+
+`video-timing-offset=0` **继续保留**：它只影响 audio 同步，避免 render 在 UI 共用的锁内等待；display-sync 不使用该偏移，改由 vsync 泵约束。render 显式不做 target-time 等待（audio 已由 offset=0 保证帧到期才入队），不依赖可能在 get_info→render 之间变化的帧标志来决定是否等待。平滑模式的播放中截图在下一次 draw 内 blit 当前 CA FBO，不再额外调用 mpv render 去消费下一帧；原有关闭模式的离屏截图路径保留。
+
+| CFR / 平滑 | VO 总数 / 稳态增量 | decoder 总数 | mistimed 总数 / 稳态增量 | displayFps / 实测 estimated Hz（末样本） | vsyncJitter（末样本，无量纲） | 稳态 \|A/V\| P95 / 最大 ms |
+| --- | ---: | ---: | --- | --- | ---: | ---: |
+| 24 / 关 | 0 / 0 | 0 | N/A | 60 / N/A | N/A | 13.461 / 18.830 |
+| 24 / 开 | **2 / 0** | 0 | 4 / 0 | 60 / 59.9944 | 0.09339 | 1.172 / 1.247 |
+| 25 / 关 | 0 / 0 | 0 | N/A | 60 / N/A | N/A | 9.395 / 11.229 |
+| 25 / 开 | 0 / 0 | 0 | 3 / 0 | 60 / 59.9985 | 0.09024 | 4.405 / 5.605 |
+| 30 / 关 | 0 / 0 | 0 | N/A | 60 / N/A | N/A | 4.488 / 5.551 |
+| 30 / 开 | 0 / 0 | 0 | 3 / 0 | 60 / 59.9935 | 0.07982 | 4.589 / 5.833 |
+
+三组开关稳态均无新增视频丢帧；**开启时仍有启动 mistimed，最终 24 fps 有 2 次启动 VO 掉帧，不能确认“无额外掉帧”**，故默认关闭。前一轮 `isolated-*` 的 24/25/30 开启分别为 VO 0/0/2、mistimed 3/3/3，稳态增量同为 0；启动结果有波动，不挑选零掉帧的轮次作默认开启依据。另一次非隔离的 24 fps 开启轮（含 22 s 截图）累计 6 VO / 10 mistimed、末端 estimated 59.5235 Hz、jitter 0.14483；保留该不稳定反例，不因主表成功而宣称长期稳定。截图轮关闭模式在 22–23 s 增加 4/4/5 个 VO（24/25/30 fps），因此截图轮不作纯稳态 A/B；六次截图均成功得到正向的 1920×1080 PNG，平滑模式的 FBO-copy 路径也有实际出图证据。
+
+插值结论：**不做“仅整数倍才开插值”的 gate**。60/24=2.5、60/25=2.4 恰是需要处理不均匀 cadence 的场景，反而不应排除；30→60 或 24→120 的整数倍理想情况下只需等次重复。`oversample` 比 linear/其它卷积核更少混合（源码 `video/out/gpu/video.c:3645–3655` 按每个刷新区间的帧覆盖比例钳位），整倍数理想相位下系数为 0/1，但相位漂移时仍可能混合边界，不能保证永不变软。保留 mpv 默认 1% interpolation-threshold（接近 1:1 时自动关闭），不基于有噪声的 estimated-vf-fps / 未调整倍速的值反复切换 shader。可选项说明明确适用 60 Hz 的 24/25 fps，可能变软，直播、VFR、直通音频或音画异常时关闭；这些场景没有实测。
+
+### 2a–2g：弹幕
+
+- **诊断**：`dmMotion` 现在只在 drawable 的 presented handler 且 presentedTime>0 后计入。速度比例仍使用放置时的 targetPresentationTimestamp，帧间隔/jitter 改用 Metal 的实际呈现时间。`frameSkippedInFlight` / `frameSkippedRender` 分别统计信号量满和编码/缓冲失败；GPU completion error 另计 `frameGPUFailures` 并重建失效 atlas 计划。presentedTime=0 记 `frameNotPresented` / `unconfirmedPresents`，可能是遮挡或系统不提供确认，**不能直接等同 GPU 错误或物理掉帧**。PERF 同时输出 submits、实际确认的 presents、两种 skip、GPU error 和未确认数，不再把提交次数冒称上屏次数。
+- **换屏/频率**：监听所在窗口的 didChangeScreenNotification，重新 publish（即使同为 2×）；帧率有上限时 minimum=maximum=preferred，低于 60 Hz 的屏幕也不会请求高于 maximum 的 minimum。35 s 定向轮暂停/恢复、seek、电视→内建→电视、平滑开关和截图全部完成、error 为空。屏幕证据当次即变为 60→120→60 Hz，mpv 的秒级读回在下一样本确认；弹幕确认帧率在换屏后为 112.1→120→117，再回到约 60。短时换屏仍有未确认帧和视频计数变化，不是零丢帧转场保证。
+- **匀速**：不是把音频采样误差硬加到位置，也不取整滚动 x。仍用 targetPresentationTimestamp，纠偏上限仍 ±4%，但速度本身以 0.5 s 的指数过程连续变化，小偏差约 3 s 收敛（原约 1.5 s）；位置是该速度的积分，样本边界处速度连续。暂停、seek、大漂移/卡顿的冻结/重置语义保留。更慢吸收量化噪声是为了避免电视 MEMC 在每次 100 ms 音频采样时看到突变运动矢量，不是新增延迟缓冲。
+- **速度**：仅 maximumFPS≤60 且舞台宽于 1280 pt 时，把所有滚动行的穿越时长乘 `width/1280`；窗口 ≤1280 pt、120 Hz 屏的速度策略不变。1920 pt / 默认速度从 8 s 改为 12 s，300 pt 长的行约从 277.5→185 pt/s（60 Hz 下 4.625→3.083 pt/帧）。这是**舞台宽度部分 ≤160 pt/媒体秒**的上限，不是对任意长文本的绝对 160 pt/s 上限；统一因子保证原有 lane 防追尾关系，lane 会按延长后的时长重排，固定顶/底行仍停留 8 s。0.5–2× 弹幕速度照常乘入，不与播放倍速混为一谈。
+- **字体**：自动样式在 ≤60 Hz 使用实心描边、无模糊阴影，>60 Hz 保留旧描边+3 pt 模糊阴影；可在设置 › 弹幕选择自动/描边/描边与阴影。y 按**显示器物理像素**对齐，滚动 x 保留亚像素。1× backing 的 atlas 按 2× 光栅化，几何仍按显示器 scale 换算，不能把 2× raster scale 当作 drawable scale；本机没有 1× 屏，此路径仅单测。沿用单次 linear 采样以稳定亚像素滚动，纹理 mipmapped=false，只有 mip 0，不加入额外 mipmap 或第二重模糊。
+- **HDR**：弹幕是 bgra8Unorm、sRGB、wantsExtendedDynamicRangeContent=false，明确限定 SDR 白，和视频层的 EDR 独立；displaySyncEnabled=true、maximumDrawableCount=3 与 inFlight 的 3 个槽一致。电视 HDR 模式下本轮素材为 SDR，未用光度计或 HDR 源测量 Mini-LED 光晕，不能保证电视不做自己的局部调光或 MEMC。
+- **背景负载**：StageAmbientRenderer 是每张封面一次的 128 px 静态 CI 图，不从视频采样、无每帧 CI 重绘。纯黑时分支完全不挂载 PlayerStageBackdrop，因而没有氛围图加载、CI 任务或暗角层；不是把仍在渲染的背景 opacity 设 0。窗口/选择氛围色时仍使用原缓存和强省电降级。未采 GPU watts，不声称节能百分比。
+
+| 主表稳态弹幕（13–32 s） | 确认 fps 范围 | 最大确认间隔 ms | 速度比例 RMS 最大值 | 全轮 inFlight / render skip / GPU error | 全轮未确认 present |
+| --- | --- | ---: | ---: | --- | ---: |
+| 24 / 关 | 59–60 | 33.3 | 0.003 | 0 / 0 / 0 | 9 |
+| 24 / 开 | 59–60 | 33.3 | 0.005 | 0 / 0 / 0 | 10 |
+| 25 / 关 | 60 | 16.7 | 0.003 | 0 / 0 / 0 | 7 |
+| 25 / 开 | 59–60 | 33.3 | 0.013 | 0 / 0 / 0 | 9 |
+| 30 / 关 | 59–60 | 33.3 | 0.007 | 0 / 0 / 0 | 10 |
+| 30 / 开 | 59–60 | 33.3 | 0.005 | 0 / 0 / 0 | 7 |
+
+RMS 包括允许的缓慢时钟纠偏，非“相邻步长差”；主表最大编码 CPU 峰值 11.725 ms（24/关）；前一隔离轮 25/开曾到 14.203 ms，同样保留，不把它剔除为噪声。60 Hz 下仍有一次刷新间隔变成 33.3 ms 的情况，不宣称完美无掉帧。新探针揭示真实 present 的间隙；旧基线在 present 前计数，不能拿旧“60/120 fps、0 jitter”直接证明新探针变差或改善。
+
+可对照的纯算法实验直接编译基线/候选 `DanmakuClock.swift`：600 个等间隔 60 Hz target，100 ms 一次交替 ±120 ms 误差，280 pt/s 保守原始速度，包含全部样本边界：
+
+```text
+before: max_adjacent_step_delta_pt=0.373333333 min_step_pt=4.480000000 max_step_pt=4.853333333 final_error_ms=-4.000000
+after:  max_adjacent_step_delta_pt=0.007109812 min_step_pt=4.635405442 max_step_pt=4.683481450 final_error_ms=-0.408150
+```
+
+这验证纠偏不再产生速度阶跃，不能代替肉眼 MEMC 验收。电视旧基线（30 fps+AAC）舞台只有 1835×1050 pt、FBO3670×2064，VO/decoder=0，displayFps/mistimed/jitter 不可用；新覆盖值实测读回 60。内建基线为 1835×1080 pt、旧探针 120 fps；候选默认关闭，2056×1329 pt、FBO4112×2314、VO/decoder=0，实际确认 117–120 fps、最长20.8 ms、全轮19个未确认 present；前一隔离轮最长16.7 ms、23个未确认 present，均保留。尺寸与探针口径不同，**没有证明物理 120 Hz 完全无回归**；源代码策略保留该屏速度和阴影，仅共享时钟连续性与诊断/SDR 修正。
+
+另用实际 PERF 本地播放路径在电视全尺寸跑完 38 s 文件（没有 demo 的二次 load）：
+
+```text
+PERF playback DANMAKU submits_delta=1986 elapsed_s=33.110 presents_per_s=59.98 presents_delta=1986 skipped_inflight=0 skipped_render=0 gpu_failures=0 unconfirmed_presents=0 lines=39 enabled=yes
+PERF playback DISPLAY edr=false deep=false current=1.2 mappedHeadroom=1.2 potential=7.748689651489258 scale=2.0 refreshHz=60.0
+PERF playback END file=30-audio.mp4 start_s=5.067 end_s=38.133 expected_cfr_frames=992.0 vo_drop_delta=0 decoder_drop_delta=0 total_drop_pct=0.000000 hwdec_current=videotoolbox estimated_vf_fps=29.126 threshold_pct=0.1 result=PASS
+PERF complete
+```
+
+### 3、4：全屏留白与使用建议
+
+设置 › 播放 ›「全屏时画面四周」默认「纯黑」，可选「氛围色」。视频、番剧和直播页都显式传入 immersive 与同一设置；黑色是 Color.black、无暗角、没有挂载氛围 renderer。窗口模式不变。设计规范同步更新；电视建议见 [KnownIssues](KnownIssues.md#外接电视的小建议)：先关闭 MEMC、使用游戏/PC模式、确认60 Hz，HDR光晕可试较低弹幕不透明度。这里不改系统/电视选项。
+
+### 复现与验证
+
+只运行新增/直接受影响的测试，完整 swift build / swift test 由主会话执行，本轮不能代签全套 769 项验收。定向 66 Core + 6 App 项、0失败，覆盖设置默认/持久化、时钟边界步长、宽度速度上限/固定行寿命、59.94 Hz 换算、1× 超采样、实际 present 探针计数、全屏背景选择以及既有防碰撞/导航/省电逻辑。
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift test --skip-update --disable-automatic-resolution \
+  --filter 'Danmaku|DisplayRefreshRateTests|M7SettingsTests|M7MpvRuntimeTests|PowerPolicyTests|CoreTests.testDanmaku|M7PlaybackNavigationTests|NavigationTests'
+# 上面的定向测试已编译 Debug app；这里只封装，不另跑完整 build。
+MANPING_SIGN_IDENTITY=- python3 scripts/build_debug_app.py --no-build --template /Applications/满屏.app
+mkdir -p .build/tv60/candidate-demo; touch .build/tv60/candidate-demo/go
+# FPS=24/25/30，ON=0/1；媒体按前述方法离线生成。
+MANPING_DEMO_SCENE=hero MANPING_DEMO_OUT="$PWD/.build/tv60/candidate-demo" \
+MANPING_DEMO_MEDIA="$PWD/.build/tv60/${FPS}-audio.mp4" \
+'.build/ui/满屏 Debug.app/Contents/MacOS/Manping' --ui-fixture --ui-quiet \
+  --ui-playback-report "$PWD/.build/tv60/reproduce-${FPS}-${ON}.json" --ui-report-seconds 32 \
+  --ui-report-actions "0.2:screen=4,1:smooth-motion=${ON},8:stage-fullscreen,11:danmaku-sample"
+```
+
+屏幕 ID 4/1 是本轮枚举结果，别的机器须先查自己的屏幕，不能照抄。封装脚本的 `--no-build` 会诚实标记 source freshness unverified；它没有运行完整 build，也未用该包做发布/新鲜度截图门禁。尚需主会话全量验证、独立渲染并发审查和用户实际观看：原生全屏转场、120 Hz 对照、HDR 源、不同长度/颜色弹幕、MEMC/像素响应、直播/VFR、音频直通、长时间 A/V 与 GPU 负载。当前结论为 **ESCALATE：实现和定向证据已交付，未完成这些物理/全量验收，不把平滑默认打开**。

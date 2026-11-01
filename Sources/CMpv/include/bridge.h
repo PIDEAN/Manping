@@ -19,11 +19,15 @@ int bili_mpv_load_inflight(bili_mpv *engine);
 void bili_mpv_release_load(bili_mpv *engine);
 int bili_mpv_render_create(bili_mpv *engine);
 int bili_mpv_render_pending(bili_mpv *engine);
+// NEXT_FRAME_INFO flags; call with the same current context and render serialization.
+uint64_t bili_mpv_render_frame_flags(bili_mpv *engine);
 int bili_mpv_render(bili_mpv *engine, int floating);
 // Renders the current frame into an offscreen framebuffer of width x height and reads it back
 // top row first into `pixels`: RGBA8 (width * height * 4 bytes), or with `floating` RGBA16F read
 // as 32-bit floats (width * height * 16 bytes) for EDR output. Needs the render context current.
-int bili_mpv_capture(bili_mpv *engine, int width, int height, int floating, void *pixels);
+// current_frame copies CA's current draw target without consuming a queued mpv frame; only
+// call that variant inside draw, before CA releases the target.
+int bili_mpv_capture(bili_mpv *engine, int width, int height, int floating, int current_frame, void *pixels);
 void bili_mpv_render_stats(bili_mpv *engine, char *buffer, size_t capacity);
 void bili_mpv_render_destroy(bili_mpv *engine);
 void bili_mpv_destroy(bili_mpv *engine);

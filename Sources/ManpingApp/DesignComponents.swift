@@ -103,15 +103,28 @@ struct SidebarSectionTitle: View {
 struct LoadMoreFooter: View {
   let isLoading: Bool
   var autoLoad = true
+  var hasMore = true
   let load: () -> Void
+  @Environment(\.browsingPageActive) private var browsingPageActive
+  @State private var requestIssued = false
+  private var shouldAutoLoad: Bool { browsingPageActive && autoLoad && !isLoading && hasMore }
   var body: some View {
     Group {
       if isLoading { ProgressView().controlSize(.small) }
       else {
         Button("加载更多", action: load).buttonStyle(AppButtonStyle(size: .small))
-          .onAppear { if autoLoad { load() } }
+          .disabled(!hasMore)
       }
     }.frame(maxWidth: .infinity).frame(height: 56)
+      .onChange(of: isLoading) { _, loading in if loading { requestIssued = false } }
+      .task(id: shouldAutoLoad) { if shouldAutoLoad { requestAutoLoad() } }
+  }
+  private func requestAutoLoad() {
+    guard browsingPageActive, !isLoading, hasMore, !requestIssued else { return }
+    // A load often starts in a Task. Claim it before the parent publishes isLoading so
+    // appearance and a quick playback return cannot request the same page twice.
+    requestIssued = true
+    load()
   }
 }
 
@@ -486,11 +499,12 @@ struct StreakLoadingView: View {
   var width: CGFloat = 120
   var height: CGFloat = 4
   var tint: Color = Theme.accent
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.colorScheme) private var scheme
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
-    TimelineView(.animation) { context in
+    TimelineView(.animation(paused: !browsingPageActive)) { context in
       let period = 1.4
       let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: period) / period
       let streak = width * 0.45

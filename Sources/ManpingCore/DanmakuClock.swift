@@ -9,7 +9,8 @@ import os
 /// backwards. This clock is instead a straight line `media(t) = anchor + (t − anchorHost) × rate`
 /// evaluated at the display's presentation time. Samples (taken with their own host time on
 /// the sampling thread) only nudge `rate`, by at most ±4 % of the playback speed, so the error
-/// bleeds off over about 1.5 s with no visible change in speed. Seeks and large drifts reset the
+/// bleeds off over about 3 s. The slope itself eases over 0.5 s, so a new sample cannot
+/// introduce a step in velocity at 60 Hz. Seeks and large drifts reset the
 /// line; pause and buffering freeze it. While playing it never runs backwards.
 public final class DanmakuClock: Sendable {
   public struct Sample: Sendable, Equatable {
@@ -25,6 +26,7 @@ public final class DanmakuClock: Sendable {
     var anchorHost = 0.0
     var anchorMedia = 0.0
     var rate = 0.0
+    var targetRate = 0.0
     var speed = 1.0
     var running = false
     var known = false
@@ -38,7 +40,9 @@ public final class DanmakuClock: Sendable {
     var maxError = 0.0
   }
   /// Seconds over which a small error is absorbed.
-  static let convergence = 1.5
+  static let convergence = 3.0
+  /// Smooth velocity as well as position; a ±4% correction must not change in one refresh.
+  static let rateSmoothing = 0.5
   /// Largest speed change used to absorb it, relative to playback speed.
   static let maximumSlew = 0.04
   /// Errors above this are seeks, stalls or reloads: jump instead of slewing.
@@ -76,7 +80,7 @@ public final class DanmakuClock: Sendable {
       if s.running, s.known, speed != s.speed {
         // Speed change: bend the line where it is now; position never steps back.
         s.anchorMedia = Self.position(s, at: sample.host); s.anchorHost = sample.host
-        s.rate = speed; s.speed = speed
+        s.rate = speed; s.targetRate = speed; s.speed = speed
         return
       }
       if !s.running || !s.known || speed != s.speed {
@@ -84,9 +88,9 @@ public final class DanmakuClock: Sendable {
         s.anchorHost = sample.host; s.speed = speed; s.running = true
         if s.known, behind > 0, behind < Self.holdLimit {
           // Resuming slightly behind the frozen line: wait for media to catch up.
-          s.rate = 0
+          s.rate = 0; s.targetRate = 0
         } else {
-          s.anchorMedia = sample.media; s.rate = speed
+          s.anchorMedia = sample.media; s.rate = speed; s.targetRate = speed
         }
         s.known = true
         return
@@ -94,21 +98,32 @@ public final class DanmakuClock: Sendable {
       let predicted = Self.position(s, at: sample.host)
       let error = sample.media - predicted
       s.maxError = max(s.maxError, abs(error))
+      if s.rate == 0, s.targetRate == 0 {
+        // Holding is not a small velocity correction. Wait until media catches the frozen
+        // line, then resume at playback speed; easing up from zero accumulates a false seek.
+        if error < 0, error > -Self.holdLimit {
+          s.anchorHost = sample.host
+          return
+        }
+        s.rate = speed; s.targetRate = speed
+      }
       if error < -Self.resetThreshold * max(1, speed), error > -Self.holdLimit {
         // Media fell behind (the source stuttered): hold still until it catches up rather
         // than jumping lines backwards. Small residue is slewed away as usual afterwards.
-        s.anchorHost = sample.host; s.anchorMedia = predicted; s.rate = 0
+        s.anchorHost = sample.host; s.anchorMedia = predicted; s.rate = 0; s.targetRate = 0
         return
       }
       if abs(error) > Self.resetThreshold * max(1, speed) {
         s.resets += 1
-        s.anchorHost = sample.host; s.anchorMedia = sample.media; s.rate = speed
+        s.anchorHost = sample.host; s.anchorMedia = sample.media; s.rate = speed; s.targetRate = speed
         return
       }
       // Re-anchor on the line itself (no jump) and steer its slope toward the samples.
       let limit = speed * Self.maximumSlew
-      s.anchorHost = sample.host; s.anchorMedia = predicted
-      s.rate = speed + min(limit, max(-limit, error / Self.convergence))
+      let elapsed = min(max(0, sample.host - s.anchorHost), 0.5)
+      let rate = s.targetRate + (s.rate - s.targetRate) * exp(-elapsed / Self.rateSmoothing)
+      s.anchorHost = sample.host; s.anchorMedia = predicted; s.rate = rate
+      s.targetRate = speed + min(limit, max(-limit, error / Self.convergence))
     }
   }
 
@@ -145,6 +160,7 @@ public final class DanmakuClock: Sendable {
     guard s.running else { return s.anchorMedia }
     // Never extrapolate far past the last sample: a stalled poll must not run away.
     let elapsed = min(max(0, host - s.anchorHost), 0.5)
-    return s.anchorMedia + elapsed * s.rate
+    let easing = Self.rateSmoothing * (1 - exp(-elapsed / Self.rateSmoothing))
+    return s.anchorMedia + elapsed * s.targetRate + (s.rate - s.targetRate) * easing
   }
 }

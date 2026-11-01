@@ -22,6 +22,7 @@ private struct PGCDiscoveryPage: View {
   @AppStorage("pgcAnimeLastSection") private var animeSection = "timeline"
   @AppStorage("pgcCinemaLastCategory") private var cinemaCategory = "movie"
   @Environment(\.colorScheme) private var scheme
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @State private var diagnosticApplied = false
   init(model: AppModel, cinema: Bool, onOpen: @escaping (PGCSelection) -> Void, onFavorites: @escaping () -> Void) {
     self.model = model; self.cinema = cinema; self.onOpen = onOpen; self.onFavorites = onFavorites
@@ -49,7 +50,8 @@ private struct PGCDiscoveryPage: View {
       }
       .onAppear { applyDiagnosticSelection() }
       .task(id: key) { if timeline { await browse.loadTimeline() } else { await browse.loadIndex(category) } }
-      .onDisappear { browse.cancel() }
+      .onChange(of: browsingPageActive, initial: true) { _, active in browse.setBrowsingPageActive(active) }
+      .onDisappear { browse.setBrowsingPageActive(false); browse.cancel() }
   }
   private func applyDiagnosticSelection() {
     guard !diagnosticApplied else { return }

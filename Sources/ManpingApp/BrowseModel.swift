@@ -20,15 +20,30 @@ struct BrowseFeedState {
   private var key: String?
   private var loader: Loader?
   private var request: Task<Void, Never>?
+  private var identityTask: Task<Void, Never>?
+  private var identity: AuthIdentityEvent?
   private var generation = UUID()
   private final class WeakFeed {
     weak var value: BrowseFeedModel?
     init(_ value: BrowseFeedModel) { self.value = value }
   }
   private static var diagnosticFeeds: [WeakFeed] = []
-  init() {
+  init(service: BiliService) {
     if PerformanceOptions.requested { Self.diagnosticFeeds.append(WeakFeed(self)) }
+    identityTask = Task { [weak self, service] in
+      for await event in await service.identityEvents() {
+        guard let self, !Task.isCancelled else { return }
+        let previous = self.identity; self.identity = event
+        let changed = previous.map { $0.epoch != event.epoch || $0.identityRevision != event.identityRevision }
+          ?? (self.key != nil)
+        if changed {
+          self.states = [:]; self.refreshTokens = [:]
+          self.reset()
+        }
+      }
+    }
   }
+  deinit { identityTask?.cancel(); request?.cancel() }
   static var diagnosticLiveCount: Int {
     diagnosticFeeds.removeAll { $0.value == nil }
     return diagnosticFeeds.count

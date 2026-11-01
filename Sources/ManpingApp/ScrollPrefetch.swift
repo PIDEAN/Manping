@@ -13,6 +13,7 @@ private struct ScrollPrefetchModifier: ViewModifier {
   let enabled: Bool
   let load: () -> Void
   @State private var isNearEnd = false
+  @Environment(\.browsingPageActive) private var browsingPageActive
 
   func body(content: Content) -> some View {
     content
@@ -21,10 +22,13 @@ private struct ScrollPrefetchModifier: ViewModifier {
           isNearEnd: geometry.contentSize.height > 0 && geometry.contentSize.height - geometry.visibleRect.maxY <= 800)
       } action: { _, value in
         if isNearEnd != value.isNearEnd { isNearEnd = value.isNearEnd }
-        if enabled && value.isNearEnd { load() }
+        if browsingPageActive && enabled && value.isNearEnd { load() }
       }
       .onChange(of: enabled) { _, value in
-        if value && isNearEnd { load() }
+        if browsingPageActive && value && isNearEnd { load() }
+      }
+      .onChange(of: browsingPageActive) { _, active in
+        if active && enabled && isNearEnd { load() }
       }
   }
 }

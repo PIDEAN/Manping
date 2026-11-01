@@ -37,6 +37,8 @@ scripts/live_check.sh --fixture --theme dark --wait 4 \
   --output docs/screenshots/local-fixture
 ```
 
+全屏退出自检可用 `MANPING_FS_PROBE=/tmp/fs.json` 配合 `--ui-fixture --skip-auth --ui-page popular` 运行 Debug app；它自动进出全屏、记录窗口及前台状态并退出。可选 `MANPING_FS_FRAME=x,y,w,h` 指定初始窗口屏幕坐标，`MANPING_FS_MEDIA=/path/to/video` 使用本地视频。每次只运行一个自检实例。
+
 fixture 使用隔离身份、合成封面与业务响应，不读取保存的凭据、不加载在线媒体、不发送真实账号写操作。Debug 支持 `--ui-page`、`--ui-theme`、`--ui-window-size`、`--ui-video-tab`；截图通过窗口 PID/尺寸和登录面板状态校验。生产外部 mpv IPC 的本地检查命令：
 
 ```sh

@@ -62,6 +62,20 @@ import Foundation
     case "seek": if let value = parts.dropFirst().first.flatMap(Double.init) { model.player.seek(value) }
     case "pause": model.player.togglePause()
     case "screenshot": model.takePlayerScreenshot()
+    case "capture-frame":
+      guard DebugUIFixtures.enabled,
+        let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--ui-playback-report"),
+        ProcessInfo.processInfo.arguments.indices.contains(index + 1) else { return }
+      let output = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[index + 1])
+        .deletingPathExtension().appendingPathExtension("png")
+      Task {
+        guard let image = await model.player.captureFrame(),
+          let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+          print("Playback frame capture failed"); return
+        }
+        do { try data.write(to: output); print("Playback frame capture ready: \(image.width)x\(image.height)") }
+        catch { print("Playback frame capture write failed") }
+      }
     case "audio-only": model.player.setAudioOnly(parts.dropFirst().first != "0")
     case "quality":
       if let qn = parts.dropFirst().first.flatMap(Int.init),
@@ -79,6 +93,29 @@ import Foundation
     // Full-screen transitions: toggle the window showing the picture, or move it to the
     // standalone window. `danmaku-sample` fills every lane with scrolling, top and bottom lines
     // from the current position, so captured frames show the danmaku size during transitions.
+    case "screen":
+      // Move only this fixture's own window; never activate it or move the user's pointer.
+      guard DebugUIFixtures.enabled, let id = parts.dropFirst().first.flatMap(UInt32.init),
+        let screen = NSScreen.screens.first(where: {
+          ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id
+        }), let window = (NSApp.delegate as? AppDelegate)?.window else { return }
+      let size = window.frame.size
+      window.setFrameOrigin(NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.midY - size.height / 2))
+    case "smooth-motion":
+      guard DebugUIFixtures.enabled else { return }
+      model.settingsModel.set(.videoSmoothMotion, .bool(parts.dropFirst().first != "0"))
+    case "surround":
+      guard DebugUIFixtures.enabled, let value = parts.dropFirst().first else { return }
+      model.settingsModel.set(.fullscreenSurround, .text(value))
+    case "stage-fullscreen":
+      // Accessory apps cannot reliably enter a native Space. Exercise the same immersive
+      // layout at the panel's full pixel size without activating another user's Space.
+      guard DebugUIFixtures.enabled, let window = (NSApp.delegate as? AppDelegate)?.window,
+        let screen = window.screen else { return }
+      (window as? PlayerHostWindow)?.holdsFrame = true
+      model.setWindowFullScreen(true, detached: false)
+      window.styleMask = [.borderless]
+      window.setFrame(screen.frame, display: true)
     case "fullscreen":
       // As the menu item: the player when something plays, otherwise the main window.
       if model.hasPlayback { model.togglePlayerFullScreen() }
@@ -135,7 +172,22 @@ import Foundation
       "fps": player.metrics["estimated-vf-fps"] ?? -1,
       "mistimed": player.metrics["mistimed-frame-count"] ?? -1,
       "displayUpdates": player.displayUpdates,
+      "avsync": player.metrics["avsync"] ?? NSNull(),
+      "display": player.surface?.displayEvidence ?? "",
+      "render": player.surface?.renderEvidence ?? "",
+      "screen": { () -> [String: Any] in
+        guard let window = player.surface?.window, let screen = window.screen else { return [:] }
+        return ["name": screen.localizedName, "maximumFPS": screen.maximumFramesPerSecond,
+          "scale": window.backingScaleFactor, "windowFrame": NSStringFromRect(window.frame),
+          "immersive": model.immersiveMainPlayback, "screenFrame": NSStringFromRect(screen.frame),
+          "surfaceSize": NSStringFromSize(player.surface?.bounds.size ?? .zero)]
+      }(),
       "displayFps": player.metrics["display-fps"] ?? -1,
+      "displayFpsOverride": player.metrics["display-fps-override"] ?? -1,
+      "estimatedDisplayFps": player.metrics["estimated-display-fps"] ?? -1,
+      "smoothMotion": player.videoSmoothMotion,
+      "surround": model.appSettings.text(.fullscreenSurround),
+      "preferences": PerformanceEnvironment.persistentDefaults == nil ? "memory" : "app-domain",
       "vsyncJitter": player.metrics["vsync-jitter"] ?? -1,
       "videoMbps": (player.metrics["video-bitrate"] ?? 0) / 1_000_000,
       "media": player.mediaEvidence,

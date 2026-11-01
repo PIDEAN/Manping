@@ -9,12 +9,18 @@ struct VideoPartitionPage: View {
   let ranking: (Int) async throws -> BrowseVideoPage
 
   @StateObject private var directory = BrowsePartitionDirectory()
-  @StateObject private var feed = BrowseFeedModel()
+  @StateObject private var feed: BrowseFeedModel
   @State private var selectedParentID: Int?
   @State private var selectedChildID: Int?
   @State private var showsRanking = false
   @State private var order: PartitionOrder = .recommended
   @Environment(\.colorScheme) private var scheme
+
+  init(service: BiliService, open: @escaping (Video) -> Void, refreshToken: Int = 0,
+    ranking: @escaping (Int) async throws -> BrowseVideoPage) {
+    self.service = service; self.open = open; self.refreshToken = refreshToken; self.ranking = ranking
+    _feed = StateObject(wrappedValue: BrowseFeedModel(service: service))
+  }
 
   private var parent: VideoPartition? {
     directory.partitions.first(where: { $0.id == selectedParentID })

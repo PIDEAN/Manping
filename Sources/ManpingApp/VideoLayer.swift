@@ -33,6 +33,16 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
   private var force = true
   private var visible = true
   private var playbackActive = false
+  private var smoothMotion = false
+  private var vsyncDraw = false
+  private var swapPending = false
+  private static let blockVsync: UInt64 = 1 << 3
+  private struct CaptureRequest: Sendable {
+    let width: Int
+    let height: Int
+    let completion: @Sendable (CGImage?) -> Void
+  }
+  private var pendingCaptures: [CaptureRequest] = []
   init(engine: OpaquePointer) throws {
     var chosen: CGLPixelFormatObj?
     var count: GLint = 0
@@ -83,7 +93,7 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     timer.resume()
   }
   /// Presents a frame if mpv has one (or a redraw was forced). Always runs on `renderQueue`.
-  fileprivate func pump() {
+  fileprivate func pump(isVsync: Bool = false) {
     pumpLock.withLock { pumpQueued = false }
     CGLLockContext(context)
     gate.lock()
@@ -94,7 +104,16 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     }
     CGLSetCurrentContext(context)
     let pending = bili_mpv_render_pending(engine) != 0
-    let display = pending || force
+    let blocks = bili_mpv_render_frame_flags(engine) & Self.blockVsync != 0
+    let paced = playbackActive && (smoothMotion || blocks)
+    if swapPending, isVsync || !playbackActive {
+      bili_mpv_report_swap(engine)
+      swapPending = false
+    }
+    // Display-sync repeats/interpolates even without a fresh source frame. A timer or a CA
+    // layout redraw must not consume BLOCK_VSYNC frames between display-link ticks.
+    let display = paced ? isVsync : (pending || force)
+    vsyncDraw = display && isVsync
     if display { force = true }
     gate.unlock()
     CGLUnlockContext(context)
@@ -104,6 +123,7 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
       self.display()
       CATransaction.flush()
     }
+    gate.lock(); vsyncDraw = false; gate.unlock()
   }
   /// Called on the display link thread once per refresh; coalesces into one queued pump.
   private func vsync() {
@@ -112,32 +132,47 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
       pumpQueued = true
       return true
     }
-    if queue { renderQueue.async { [weak self] in self?.pump() } }
+    if queue { renderQueue.async { [weak self] in self?.pump(isVsync: true) } }
+  }
+  /// Call with `gate` held; querying the period must not briefly start an idle display link.
+  private func ensureLink() {
+    guard link == nil else { return }
+    var created: CVDisplayLink?
+    guard CVDisplayLinkCreateWithCGDisplay(linkDisplay, &created) == kCVReturnSuccess, let created else { return }
+    CVDisplayLinkSetOutputHandler(created) { [weak self] _, _, _, _, _ in
+      self?.vsync()
+      return kCVReturnSuccess
+    }
+    link = created
   }
   /// Call with `gate` held.
   private func updateLink(running: Bool) {
     if running {
-      if link == nil {
-        var created: CVDisplayLink?
-        guard CVDisplayLinkCreateWithCGDisplay(linkDisplay, &created) == kCVReturnSuccess, let created else { return }
-        CVDisplayLinkSetOutputHandler(created) { [weak self] _, _, _, _, _ in
-          self?.vsync()
-          return kCVReturnSuccess
-        }
-        link = created
-      }
+      ensureLink()
       if let link, !CVDisplayLinkIsRunning(link) { CVDisplayLinkStart(link) }
     } else if let link, CVDisplayLinkIsRunning(link) {
       CVDisplayLinkStop(link)
     }
   }
   /// Follows the window to another screen so vsync matches the panel showing the video.
-  func setDisplay(_ id: CGDirectDisplayID) {
+  func setDisplay(_ id: CGDirectDisplayID, fallbackFPS: Int) -> Double {
     gate.lock()
     defer { gate.unlock() }
-    guard id != linkDisplay else { return }
-    linkDisplay = id
-    if let link { CVDisplayLinkSetCurrentCGDisplay(link, id) }
+    if id != linkDisplay {
+      linkDisplay = id
+      if let link { CVDisplayLinkSetCurrentCGDisplay(link, id) }
+    }
+    // Create the link even while paused so the first refresh override is not a guessed 60.
+    ensureLink()
+    let period = link.map(CVDisplayLinkGetNominalOutputVideoRefreshPeriod)
+    return DisplayRefreshRate.hertz(periodValue: period?.timeValue ?? 0,
+      timeScale: period?.timeScale ?? 0, fallback: fallbackFPS)
+  }
+  func setSmoothMotion(_ value: Bool) {
+    gate.lock()
+    smoothMotion = value
+    force = true
+    gate.unlock()
   }
   override init(layer: Any) {
     let source = layer as! VideoLayer
@@ -178,15 +213,39 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
   }
   func setVisible(_ value: Bool) {
     gate.lock()
+    let stopping = visible && !value
     visible = value
+    if !value { cancelCaptures() }
     updatePacing()
     gate.unlock()
+    if stopping { renderQueue.async { [weak self] in self?.finishSwap() } }
   }
   func setPlaybackActive(_ value: Bool) {
     gate.lock()
+    let stopping = playbackActive && !value
     playbackActive = value
+    if !value { cancelCaptures() }
     updatePacing()
     gate.unlock()
+    if stopping { renderQueue.async { [weak self] in self?.finishSwap() } }
+  }
+  /// Drain the last rendered frame when pacing stops; otherwise mpv waits 200 ms for a
+  /// swap whose next vsync was just cancelled. Never wait for the render queue on the UI thread.
+  private func finishSwap() {
+    CGLLockContext(context)
+    defer { CGLUnlockContext(context) }
+    gate.lock()
+    defer { gate.unlock() }
+    guard let engine, swapPending else { return }
+    CGLSetCurrentContext(context)
+    bili_mpv_report_swap(engine)
+    swapPending = false
+  }
+  /// A hidden/stopped layer has no next draw to fulfill a deferred screenshot.
+  private func cancelCaptures() {
+    let captures = pendingCaptures
+    pendingCaptures = []
+    for capture in captures { capture.completion(nil) }
   }
   func invalidateFrame() {
     gate.lock()
@@ -203,7 +262,10 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     defer { gate.unlock() }
     guard let engine, visible else { return false }
     CGLSetCurrentContext(context)
-    return bili_mpv_render_pending(engine) != 0 || force
+    let pending = bili_mpv_render_pending(engine) != 0
+    let blocks = bili_mpv_render_frame_flags(engine) & Self.blockVsync != 0
+    if playbackActive && (smoothMotion || blocks) { return vsyncDraw }
+    return pending || force
   }
   override func draw(
     inCGLContext ctx: CGLContextObj, pixelFormat pf: CGLPixelFormatObj,
@@ -215,19 +277,40 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     defer { gate.unlock() }
     guard let engine, visible else { return }
     CGLSetCurrentContext(context)
+    let blocks = bili_mpv_render_frame_flags(engine) & Self.blockVsync != 0
+    let paced = playbackActive && (smoothMotion || blocks)
+    guard !paced || vsyncDraw else { return }
+    vsyncDraw = false
     force = false
     // The framebuffer Core Animation hands us follows the pixel format (half floats when
     // `floating`), whatever the layer's contentsFormat; tell mpv what it really draws into.
-    _ = bili_mpv_render(engine, floating ? 1 : 0)
+    let result = bili_mpv_render(engine, floating ? 1 : 0)
+    let captures = pendingCaptures
+    pendingCaptures = []
+    for capture in captures {
+      capture.completion(result > 0 ? captureImage(width: capture.width, height: capture.height, currentFrame: true) : nil)
+    }
     super.draw(inCGLContext: ctx, pixelFormat: pf, forLayerTime: t, displayTime: ts)
-    bili_mpv_report_swap(engine)
+    if result > 0 {
+      if paced { swapPending = true } else { bili_mpv_report_swap(engine) }
+    }
   }
   /// The current frame as mpv draws it (scaling, tone mapping, shaders), rendered offscreen at
   /// `width` x `height`. mpv's own screenshot cannot read VideoToolbox frames.
   func captureFrame(width: Int, height: Int, completion: @escaping @Sendable (CGImage?) -> Void) {
     // A Sendable weak box: the optimizer rejects capturing this layer in the queue closure.
     let target = WeakVideoLayer(self)
-    renderQueue.async { completion(target.layer?.captureOnRenderQueue(width: width, height: height)) }
+    renderQueue.async {
+      guard let layer = target.layer else { completion(nil); return }
+      let deferred = layer.gate.withLock {
+        if layer.engine != nil, layer.visible, layer.playbackActive, layer.smoothMotion {
+          layer.pendingCaptures.append(CaptureRequest(width: width, height: height, completion: completion))
+          return true
+        }
+        return false
+      }
+      if !deferred { completion(layer.captureOnRenderQueue(width: width, height: height)) }
+    }
   }
   /// Runs on `renderQueue` with the context and gate held.
   fileprivate func captureOnRenderQueue(width: Int, height: Int) -> CGImage? {
@@ -235,18 +318,22 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     defer { CGLUnlockContext(context) }
     gate.lock()
     defer { gate.unlock() }
-    guard let engine else { return nil }
+    return captureImage(width: width, height: height, currentFrame: false)
+  }
+  /// Requires CGL → gate. In display-sync the draw callback owns the source FBO for the blit.
+  private func captureImage(width: Int, height: Int, currentFrame: Bool) -> CGImage? {
+    guard let engine, width > 0, height > 0, width <= 8192, height <= 8192 else { return nil }
     CGLSetCurrentContext(context)
     // EDR output is linear BT.2020 in half floats (target-prim/trc set for EDR): read it as
     // floats and colour-match to 8-bit sRGB; SDR output is already sRGB bytes.
     let image: CGImage?
     if floating && edrOutput {
       var pixels = [Float](repeating: 0, count: width * height * 4)
-      guard bili_mpv_capture(engine, Int32(width), Int32(height), 1, &pixels) >= 0 else { return nil }
+      guard bili_mpv_capture(engine, Int32(width), Int32(height), 1, currentFrame ? 1 : 0, &pixels) >= 0 else { return nil }
       image = Self.sRGBImage(fromLinear2020: pixels, width: width, height: height)
     } else {
       var pixels = [UInt8](repeating: 0, count: width * height * 4)
-      guard bili_mpv_capture(engine, Int32(width), Int32(height), 0, &pixels) >= 0,
+      guard bili_mpv_capture(engine, Int32(width), Int32(height), 0, currentFrame ? 1 : 0, &pixels) >= 0,
         let provider = CGDataProvider(data: Data(pixels) as CFData) else { return nil }
       image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
         bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -288,6 +375,7 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     defer { gate.unlock() }
     displaySource?.cancel()
     displaySource = nil
+    cancelCaptures()
     if let link { CVDisplayLinkStop(link) }
     link = nil
     guard let engine else { return }

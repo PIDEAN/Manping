@@ -96,7 +96,7 @@ import WebKit
     case popular = "热门"
     case ranking = "排行榜"
   }
-  enum OverlayRoute: Equatable {
+  enum OverlayRoute: Hashable {
     case search(String)
     case video(String)
     case userSpace(Int64)
@@ -188,7 +188,7 @@ import WebKit
   }
   /// The selection the open episode page was opened with (its route and its page key).
   @Published private(set) var pgcSelection: PGCSelection?
-  private static func isPlayerRoute(_ route: OverlayRoute) -> Bool {
+  static func isPlayerRoute(_ route: OverlayRoute) -> Bool {
     switch route {
     case .video, .pgc, .live: true
     default: false
@@ -248,6 +248,20 @@ import WebKit
   var canGoBack: Bool { !overlays.isEmpty }
   var canGoForward: Bool { !forwardRoutes.isEmpty }
   var currentOverlay: OverlayRoute? { overlays.last }
+  enum BrowsingPage: Hashable {
+    case root(Page)
+    case overlay(OverlayRoute, depth: Int)
+  }
+  /// Player routes never own retained browsing state, nor count toward its stack position.
+  /// Removing a parked player when opening another video must not recreate its source page.
+  var browsingPage: BrowsingPage {
+    let routes = overlays.filter { !Self.isPlayerRoute($0) }
+    if let route = routes.last { return .overlay(route, depth: routes.count) }
+    return .root(page)
+  }
+  var browsingPageActive: Bool {
+    !mainShowsPlayer && !(currentOverlay.map(Self.isPlayerRoute) ?? false)
+  }
   /// The sidebar item the current screen belongs to.
   var currentDestination: Destination {
     for route in overlays.reversed() {
@@ -736,9 +750,9 @@ import WebKit
     setUpProxy()
   }
   #if DEBUG
-  init(probeService: BiliService) {
+  init(probeService: BiliService, observeIdentity: Bool = true) {
     service = probeService
-    observeQueueIdentity()
+    if observeIdentity { observeQueueIdentity() }
   }
   #endif
   func initialize(skipAuthentication: Bool = false) async {
@@ -899,6 +913,8 @@ import WebKit
     switch route {
     case .video, .pgc, .live:
       if playbackElsewhere { leavePlaybackPage() } else { closePlayer() }
+      // The source page is still mounted, with its loaded rows and scroll position intact.
+      return
     default: forwardRoutes.append(route); overlays.removeLast()
     }
     resumeVisiblePlayback()

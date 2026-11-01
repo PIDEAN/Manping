@@ -13,6 +13,8 @@ import SwiftUI
   private let service: BiliService
   private var category: PGCCategory?
   private var expected: AuthSnapshot?
+  private var browsingPageActive = false
+  private(set) var needsIdentityReload = false
   private var flight: Task<Void, Never>?
   private var identityTask: Task<Void, Never>?
   private var generation = UUID()
@@ -24,15 +26,30 @@ import SwiftUI
       for await event in await service.identityEvents() {
         guard let self, let expected = self.expected, !Task.isCancelled else { continue }
         if event.epoch != expected.epoch || event.identityRevision != expected.identityRevision {
-          self.reset(); self.error = "登录状态已改变，请刷新页面。"
+          self.reset(); self.needsIdentityReload = true
+          self.error = "登录状态已改变，请刷新页面。"
+          self.reloadIdentityIfNeeded()
         }
       }
     }
   }
   deinit { identityTask?.cancel(); flight?.cancel() }
+  func setBrowsingPageActive(_ active: Bool) {
+    browsingPageActive = active
+    reloadIdentityIfNeeded()
+  }
+  private func reloadIdentityIfNeeded() {
+    guard browsingPageActive, needsIdentityReload else { return }
+    // Playback keeps the page mounted. Only invalidated data needs a load on return.
+    Task { [weak self] in
+      guard let self, self.browsingPageActive, self.needsIdentityReload else { return }
+      await self.refresh()
+    }
+  }
   func cancel() { generation = UUID(); flight?.cancel(); flight = nil; isLoading = false }
   private func reset() {
-    cancel(); expected = nil; filters = []; selection = [:]; seasons = []; days = []; selectedDay = nil
+    cancel(); needsIdentityReload = false
+    expected = nil; filters = []; selection = [:]; seasons = []; days = []; selectedDay = nil
     page = 1; emptyPages = 0; hasMore = false; error = nil
   }
   func loadTimeline() async {

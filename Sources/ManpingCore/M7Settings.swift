@@ -22,7 +22,8 @@ public enum MacSettingKey: String, CaseIterable, Sendable {
   case liveInteractNotices = "Manping.liveInteractNotices"
   case volume = "Manping.defaultVolume", danmakuEnabled = "Manping.danmakuEnabled", danmakuFontSize = "Manping.danmakuFontSize"
   case danmakuOpacity = "Manping.danmakuOpacity", danmakuSpeed = "Manping.danmakuSpeed", screenshotFormat = "Manping.screenshotFormat"
-  case danmakuFrameRate = "Manping.danmakuFrameRate"
+  case danmakuFrameRate = "Manping.danmakuFrameRate", danmakuGlyphStyle = "Manping.danmakuGlyphStyle"
+  case videoSmoothMotion = "Manping.videoSmoothMotion", fullscreenSurround = "Manping.fullscreenSurround"
   case hideMainOnPlay = "Manping.hideMainOnPlay", integratedPlayer = "Manping.integratedPlayer", decode = "Manping.decode"
   case displayMode = "Manping.displayMode", skipNextPrompt = "Manping.skipNextPrompt", autoNextRelated = "Manping.autoNextRelated"
   case endWithPlaylist = "Manping.endWithPlaylist", liveWebPlayer = "Manping.liveWebPlayer"
@@ -127,6 +128,8 @@ public enum MacSettingsCatalog {
     // 播放
     .init(.quality, .playback, "画质与编码", "首选画质", "视频没有这一档时选用最接近的画质。", .choice([MacSettingChoice(.number(0), "自动（沿用上次）"), MacSettingChoice(.number(127), "最高画质"), MacSettingChoice(.number(120), "4K 优先"), MacSettingChoice(.number(80), "1080P 优先"), MacSettingChoice(.number(64), "720P")]), .number(0)),
     .init(.codec, .playback, "画质与编码", "首选编码", "视频提供这种编码时优先使用它。", options([("h264", "H.264"), ("hevc", "HEVC"), ("av1", "AV1")]), .text("h264")),
+    .init(.videoSmoothMotion, .playback, "画面", "画面平滑", "适合外接 60 Hz 屏幕播放 24 / 25 帧视频；按屏幕节奏重采样音频并混合相邻帧，可能略软，直播或音画不同步时请关闭。", .toggle, .bool(false)),
+    .init(.fullscreenSurround, .playback, "画面", "全屏时画面四周", "只影响全屏，窗口内仍显示氛围色。", options([("black", "纯黑"), ("ambient", "氛围色")]), .text("black")),
     .init(.stepForward, .playback, "进度与倍速", "快进时长（秒）", "按右方向键时前进的秒数。", .number(1...600, step: 1), .number(30)),
     .init(.stepBackward, .playback, "进度与倍速", "快退时长（秒）", "按左方向键时后退的秒数。", .number(1...600, step: 1), .number(10)),
     .init(.temporarySpeed, .playback, "进度与倍速", "长按倍速", "在画面上按住时临时加速，松开后恢复原速。", .number(1.1...4, step: 0.1), .number(3)),
@@ -149,6 +152,7 @@ public enum MacSettingsCatalog {
     .init(.autoLoadHistory, .playback, "番剧", "从上次看到的位置继续", "打开番剧和影视时从账号记录的进度开始播放。", .toggle, .bool(true)),
     // 弹幕
     .init(.danmakuFontSize, .danmaku, "外观", "字号", "", .number(12...48, step: 1), .number(24)),
+    .init(.danmakuGlyphStyle, .danmaku, "外观", "描边样式", "自动在 60 Hz 及以下屏幕使用无模糊阴影的描边，减少运动拖影；高刷新率屏幕保留阴影。", options([(DanmakuGlyphStyle.automatic.rawValue, "自动（跟随屏幕）"), (DanmakuGlyphStyle.outline.rawValue, "描边"), (DanmakuGlyphStyle.shadow.rawValue, "描边与阴影")]), .text(DanmakuGlyphStyle.automatic.rawValue)),
     .init(.danmakuOpacity, .danmaku, "外观", "不透明度", "只改变文字，描边保持清晰。", .number(0.2...1, step: 0.05), .number(0.9)),
     .init(.danmakuSpeed, .danmaku, "外观", "速度", "数值越大，弹幕越快划过画面。", .number(0.5...2, step: 0.1), .number(1)),
     .init(.danmakuFrameRate, .danmaku, "外观", "弹幕帧率", "「60 帧」更省电。省电时的上限见 设置 › 播放 › 省电。", options([(DanmakuFrameRate.display, "跟随屏幕"), (DanmakuFrameRate.sixty, "60 帧")]), .text(DanmakuFrameRate.display)),

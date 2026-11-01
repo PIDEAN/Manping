@@ -15,6 +15,10 @@ import SwiftUI
   @Published private(set) var hasMore = false
   private let service: BiliService
   private var expected: AuthSnapshot?
+  private var browsingPageActive = false
+  private(set) var needsIdentityReload = false
+  private var hasLoadedDirectory = false
+  private var directorySelection: Int64 = -1
   private var flight: Task<Void, Never>?
   private var observer: Task<Void, Never>?
   private var generation = UUID()
@@ -32,22 +36,37 @@ import SwiftUI
         guard let self, !Task.isCancelled, let expected = self.expected else { continue }
         if event.epoch != expected.epoch || event.identityRevision != expected.identityRevision {
           self.cancel(); self.expected = nil; self.articles = []; self.hasMore = false
-          self.error = "登录状态已改变，请刷新页面。"
+          self.needsIdentityReload = true; self.error = "登录状态已改变，请刷新页面。"
+          self.reloadIdentityIfNeeded()
         }
       }
     }
   }
   deinit { flight?.cancel(); observer?.cancel() }
+  func setBrowsingPageActive(_ active: Bool) {
+    browsingPageActive = active
+    reloadIdentityIfNeeded()
+  }
+  private func reloadIdentityIfNeeded() {
+    guard browsingPageActive, needsIdentityReload else { return }
+    // Keep loaded selections, but retry a directory interrupted by the identity change.
+    Task { [weak self] in
+      guard let self, self.browsingPageActive, self.needsIdentityReload else { return }
+      if self.hasLoadedDirectory { await self.refresh() }
+      else { await self.initialize(selection: self.directorySelection) }
+    }
+  }
   func cancel() { generation = UUID(); flight?.cancel(); flight = nil; isLoading = false; directoryLoading = false }
   func initialize(selection: Int64 = -1) async {
-    cancel(); directoryLoading = true; directoryError = nil
+    cancel(); needsIdentityReload = false; directoryLoading = true; directoryError = nil
+    hasLoadedDirectory = false; directorySelection = selection
     let revision = generation; let snapshot = await service.authSnapshot()
     guard revision == generation, !Task.isCancelled else { return }
     expected = snapshot
     do {
       let result = try await service.articlePartitions(expectedIdentity: snapshot)
       try await check(revision, snapshot)
-      partitions = result
+      partitions = result; hasLoadedDirectory = true
     } catch is CancellationError { return }
     catch { if revision == generation { directoryError = error.localizedDescription } }
     guard revision == generation else { return }
@@ -70,6 +89,7 @@ import SwiftUI
   }
   func refresh() async { cancel(); await resetFeed() }
   private func resetFeed() async {
+    needsIdentityReload = false
     articles = []; page = 1; emptyPages = 0; error = nil; hasMore = true
     let revision = generation; let snapshot = await service.authSnapshot()
     guard revision == generation, !Task.isCancelled else { return }

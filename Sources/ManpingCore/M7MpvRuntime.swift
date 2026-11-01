@@ -5,6 +5,9 @@ public enum MpvRuntimePlan {
   public static func properties(_ settings: MacSettings) -> [(String, String)] {
     var result = [
       ("audio-exclusive", settings.bool(.audioExclusive) ? "yes" : "no"),
+      ("video-sync", settings.bool(.videoSmoothMotion) ? "display-resample" : "audio"),
+      ("interpolation", settings.bool(.videoSmoothMotion) ? "yes" : "no"),
+      ("tscale", "oversample"),
       ("hr-seek", settings.text(.preciseSeek)),
       ("demuxer-cache-dir", settings.text(.diskCacheDirectory)),
       ("demuxer-cache-unlink-files", "immediate"),

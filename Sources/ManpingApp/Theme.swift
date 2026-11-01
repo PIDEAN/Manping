@@ -339,16 +339,20 @@ extension View {
 }
 
 private struct CardGridModifier: ViewModifier {
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @State private var hover = CardGridHover()
   @State private var keyboardNavigation = NSApp.isFullKeyboardAccessEnabled
   func body(content: Content) -> some View {
     content
-      .environment(\.cardHoverPaused, hover.paused)
+      .environment(\.cardHoverPaused, !browsingPageActive || hover.paused)
       .environment(\.cardGridHover, hover)
       .coordinateSpace(.named(CardGridHover.viewport))
-      .onContinuousHover(coordinateSpace: .named(CardGridHover.viewport)) { hover.pointer($0) }
+      .onContinuousHover(coordinateSpace: .named(CardGridHover.viewport)) { phase in
+        if browsingPageActive { hover.pointer(phase) }
+      }
       .focusEffectDisabled(!keyboardNavigation)
-      .onScrollPhaseChange { _, phase in hover.scrollPhase(phase.isScrolling) }
+      .onScrollPhaseChange { _, phase in if browsingPageActive { hover.scrollPhase(phase.isScrolling) } }
+      .onChange(of: browsingPageActive) { _, active in if !active { hover.stop() } }
       .onDisappear { hover.stop() }
       // The setting is changed in System Settings, so re-read it whenever the app comes back.
       .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -359,6 +363,7 @@ private struct CardGridModifier: ViewModifier {
 }
 
 private struct CardGridContentModifier: ViewModifier {
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.cardGridHover) private var grid
   func body(content: Content) -> some View {
     if let grid {
@@ -366,7 +371,7 @@ private struct CardGridContentModifier: ViewModifier {
       content
         .coordinateSpace(.named(CardGridHover.content))
         .onGeometryChange(for: CGPoint.self) { $0.frame(in: .named(CardGridHover.viewport)).origin } action: { origin in
-          grid.contentMoved(to: origin)
+          if browsingPageActive { grid.contentMoved(to: origin) }
         }
         .environment(\.cardGridTracker, grid)
     } else {
@@ -523,8 +528,9 @@ private struct CardHover: ViewModifier {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(\.cardHoverPaused) private var paused
   @Environment(\.cardGridTracker) private var grid
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @State private var state = CardHoverState()
-  private var hovering: Bool { state.hovered && !paused }
+  private var hovering: Bool { browsingPageActive && state.hovered && !paused }
   func body(content: Content) -> some View {
     // The shadow lives on a background that only exists while hovered, so scrolling grids
     // never pay for an offscreen shadow pass per card.
@@ -555,7 +561,7 @@ private struct CardHover: ViewModifier {
         }
     } else {
       content.onHover { value in
-        guard state.hovered != value else { return }
+        guard browsingPageActive, state.hovered != value else { return }
         withAnimation(Self.animation) { state.hovered = value }
       }
     }
@@ -704,6 +710,7 @@ struct AppTextFieldStyle: TextFieldStyle {
   var height: CGFloat = Theme.controlHeight
   @Environment(\.colorScheme) private var scheme
   @FocusState private var focused: Bool
+  @Environment(\.browsingPageActive) private var browsingPageActive
 
   func _body(configuration: TextField<Self._Label>) -> some View {
     configuration.textFieldStyle(.plain).font(Theme.Font.body).focused($focused)
@@ -714,5 +721,6 @@ struct AppTextFieldStyle: TextFieldStyle {
           .strokeBorder(focused ? Theme.accent : Theme.separator(scheme), lineWidth: focused ? 1 : 0.5)
       )
       .animation(Theme.hoverAnimation, value: focused)
+      .onChange(of: browsingPageActive) { _, active in if !active { focused = false } }
   }
 }

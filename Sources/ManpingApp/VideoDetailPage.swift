@@ -223,7 +223,7 @@ struct VideoDetailPage: View {
             .playerPictureFrame(aspect: stagePictureAspect(pictureAspect)).allowsHitTesting(false)
         }
       }
-      .playerStageBackdrop(cover: stageCover)
+      .playerStageBackdrop(cover: stageCover, immersive: immersive, surround: model.appSettings.text(.fullscreenSurround))
       // The cover sits under the status layer: loading, errors and retry stay visible over it.
       .overlay {
         if player.audioOnly { AudioOnlyBackdrop(cover: stageCover, title: details?.video.title ?? model.selected?.title ?? "") }

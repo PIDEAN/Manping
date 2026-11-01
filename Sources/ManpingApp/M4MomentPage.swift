@@ -11,6 +11,7 @@ struct M4MomentPage: View {
   @State private var commentItem: RPCDynamic?
   @State private var commentTask: Task<Void, Never>?
   @State private var initialized = false
+  @Environment(\.browsingPageActive) private var browsingPageActive
   @Environment(\.colorScheme) private var scheme
   init(model: AppModel) {
     self.model = model
@@ -60,7 +61,7 @@ struct M4MomentPage: View {
       }
       .onChange(of: feed.identityVersion) { _, _ in closeComments() }
       .onDisappear { feed.cancel(); closeComments() }
-      .onExitCommand { if commentsPresented { closeComments() } }
+      .onExitCommand(perform: browsingPageActive ? { if commentsPresented { closeComments() } } : nil)
   }
   private var sectionTabs: some View {
     SegmentedTabs(options: MomentFeedSection.allCases.map { ($0, $0.rawValue) }, selection: Binding(
@@ -117,7 +118,7 @@ struct M4MomentPage: View {
           if let error = feed.error {
             PageStateView(.error, title: "没能加载更多动态", message: error, actionTitle: "重试") { Task { await feed.loadNext() } }
           } else if feed.loading || feed.hasMore {
-            LoadMoreFooter(isLoading: feed.loading) { Task { await feed.loadNext() } }
+            LoadMoreFooter(isLoading: feed.loading, hasMore: feed.hasMore) { Task { await feed.loadNext() } }
           }
         }
       }

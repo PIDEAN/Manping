@@ -29,6 +29,19 @@ import SwiftUI
   /// Bumped by every new transition, a failure and `reset`: a frame animation still running from
   /// an earlier one restores its window but no longer changes the layout.
   private var transition: UInt64 = 0
+  private weak var movingWindow: NSWindow?
+  private var savedLevel: NSWindow.Level?
+  private var exitTarget: NSRect?
+
+  private func finishMove(finalFrame: NSRect? = nil) {
+    guard let window = movingWindow else { savedLevel = nil; exitTarget = nil; return }
+    hold(window, false)
+    if let level = savedLevel { window.level = level }
+    if let finalFrame { window.setFrame(finalFrame, display: true) }
+    movingWindow = nil
+    savedLevel = nil
+    exitTarget = nil
+  }
 
   init(showsPlayer: @escaping () -> Bool, setFullScreen: @escaping (Bool) -> Void) {
     self.showsPlayer = showsPlayer
@@ -70,10 +83,12 @@ import SwiftUI
   func didFailToEnter() {
     entering = false
     transition &+= 1
+    finishMove()
     setFullScreen(false)
   }
   private func beginEntering(_ window: NSWindow) {
     guard !entering else { return }
+    finishMove()
     entering = true
     transition &+= 1
     exiting = false
@@ -105,22 +120,29 @@ import SwiftUI
     // covers the screen, to fit under the menu bar. The move starts from the screen, as entering
     // does, and nothing constrains the frame until it is done.
     let start = window.frame
+    let target = (window.screen ?? NSScreen.main).map {
+      playerExitFrame(windowedFrame, screen: $0.frame, visible: $0.visibleFrame)
+    } ?? windowedFrame
     hold(window, true)
     window.styleMask.remove(.fullScreen)
     if window.frame != start { window.setFrame(start, display: false) }
-    move(window, to: windowedFrame, duration: duration) { [weak self] in self?.setFullScreen(false) }
+    move(window, to: target, duration: duration, isExit: true) { [weak self] in self?.setFullScreen(false) }
   }
   func didExit() {
+    transition &+= 1
+    finishMove(finalFrame: exitTarget)
     exiting = false
     setFullScreen(false)
   }
   func didFailToExit() {
     exiting = false
     transition &+= 1
+    finishMove()
     setFullScreen(true)
   }
   private func beginExiting() {
     guard !exiting else { return }
+    finishMove()
     exiting = true
     transition &+= 1
     entering = false
@@ -131,6 +153,7 @@ import SwiftUI
     entering = false
     exiting = false
     transition &+= 1
+    finishMove()
     windowedFrame = nil
     setFullScreen(false)
   }
@@ -141,16 +164,17 @@ import SwiftUI
   /// size, so the picture and the danmaku keep rendering live instead of being scaled.
   /// `completion` runs once the frame has arrived.
   private func move(_ window: NSWindow, to frame: NSRect, duration: TimeInterval,
-    completion: (@MainActor @Sendable () -> Void)? = nil) {
+    isExit: Bool = false, completion: (@MainActor @Sendable () -> Void)? = nil) {
+    movingWindow = window
+    exitTarget = isExit ? frame : nil
     // The layout switch (sidebar, toolbar, right column) lands at the current size first.
     window.contentView?.layoutSubtreeIfNeeded()
     if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || duration <= 0 {
-      window.setFrame(frame, display: true)
-      hold(window, false)
+      finishMove(finalFrame: frame)
       completion?()
       return
     }
-    let level = window.level
+    savedLevel = window.level
     // AppKit finishes its side of the transition `duration` after it asked for the animation;
     // the move ends just before, so no step lands after AppKit has placed the window.
     let deadline = CACurrentMediaTime() + duration - 0.04
@@ -159,19 +183,16 @@ import SwiftUI
     // One main-loop turn lets SwiftUI apply the layout switch before the first step.
     let current = transition
     DispatchQueue.main.async { [weak self, weak window] in
-      guard let window else { return }
+      guard let self, let window, self.transition == current else { return }
       NSAnimationContext.runAnimationGroup { context in
         context.duration = max(0.1, deadline - CACurrentMediaTime())
         context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         window.animator().setFrame(frame, display: true)
       } completionHandler: { [weak self, weak window] in
         MainActor.assumeIsolated {
-          if let window {
-            window.level = level
-            self?.hold(window, false)
-          }
-          // A later transition, a failure or the window closing owns the layout now.
-          if self?.transition == current { completion?() }
+          guard let self, window != nil, self.transition == current else { return }
+          self.finishMove(finalFrame: isExit ? frame : nil)
+          completion?()
         }
       }
     }
@@ -181,6 +202,21 @@ import SwiftUI
   private func hold(_ window: NSWindow, _ value: Bool) {
     (window as? PlayerHostWindow)?.holdsFrame = value
   }
+}
+
+/// Fits a saved window frame to the screen currently hosting full screen.
+func playerExitFrame(_ saved: NSRect, screen: NSRect, visible: NSRect) -> NSRect {
+  let width = min(max(0, saved.width), visible.width)
+  let height = min(max(0, saved.height), visible.height)
+  let overlap = saved.intersection(screen)
+  let area = saved.width * saved.height
+  if overlap.isNull || overlap.width * overlap.height < area / 2 {
+    return NSRect(x: visible.midX - width / 2, y: visible.midY - height / 2,
+                  width: width, height: height)
+  }
+  return NSRect(x: min(max(saved.minX, visible.minX), visible.maxX - width),
+                y: min(max(saved.minY, visible.minY), visible.maxY - height),
+                width: width, height: height)
 }
 
 /// A window that can show the player. During a full-screen transition its frame is the

@@ -2,14 +2,17 @@ import Foundation
 import os
 
 /// Measures how evenly scrolling danmaku move: for every drawn frame while playing, the media
-/// clock's advance divided by the time between the frames' presentation timestamps should be
-/// exactly 1, and frames should arrive at the display's rate. Deviations are what the eye reads
-/// as stutter. Called from the render thread; enabled only by the debug playback report.
+/// clock's advance divided by the time between target presentation timestamps should be 1.
+/// Intervals use Metal's confirmed presentation times, so dropped/late presents remain visible.
+/// Called from drawable callbacks; enabled only by the debug playback report.
 enum DanmakuMotionProbe {
+  enum SkipReason { case inFlight, render, unconfirmedPresent }
   private struct State {
     var enabled = false
     var lastHost: Double?
     var lastClock = 0.0
+    var lastPresented: Double?
+    var skippedInFlight = 0, skippedRender = 0, unconfirmedPresents = 0
     var ratios: [Double] = []
     var intervals: [Double] = []
     var stalls = 0
@@ -17,18 +20,32 @@ enum DanmakuMotionProbe {
   }
   private static let state = OSAllocatedUnfairLock(initialState: State())
 
-  static func enable() { state.withLock { $0.enabled = true } }
-
-  /// `host` is the presentation time the frame is for, `clock` the media time used to place it.
-  static func record(host: Double, clock: Double, speed: Double, playing: Bool) {
+  static func enable() { state.withLock { $0 = State(enabled: true) } }
+  static func skipped(_ reason: SkipReason) {
     state.withLock { s in
       guard s.enabled else { return }
-      defer { s.lastHost = playing ? host : nil; s.lastClock = clock }
-      guard playing, let lastHost = s.lastHost, host > lastHost, speed > 0, clock.isFinite else { return }
+      switch reason {
+      case .inFlight: s.skippedInFlight += 1
+      case .render: s.skippedRender += 1
+      case .unconfirmedPresent: s.unconfirmedPresents += 1
+      }
+    }
+  }
+
+  /// `host` is the target used for placement; `presentedHost` is Metal's actual presentation time.
+  static func record(host: Double, clock: Double, speed: Double, playing: Bool, presentedHost: Double) {
+    state.withLock { s in
+      guard s.enabled else { return }
+      // Completion callbacks can race a drain, but never count an out-of-order drawable twice.
+      if let last = s.lastHost, playing, host <= last { return }
+      defer { s.lastHost = playing ? host : nil; s.lastClock = clock; s.lastPresented = playing ? presentedHost : nil }
+      guard playing, let lastHost = s.lastHost, let lastPresented = s.lastPresented,
+        host > lastHost, presentedHost > lastPresented, speed > 0, clock.isFinite else { return }
       let dt = host - lastHost
       // Long gaps are seeks, pauses or hidden windows, not motion.
       guard dt < 0.25, abs(clock - s.lastClock) < 1 else { return }
-      s.ratios.append((clock - s.lastClock) / (dt * speed)); s.intervals.append(dt)
+      s.ratios.append((clock - s.lastClock) / (dt * speed))
+      s.intervals.append(presentedHost - lastPresented)
       if clock == s.lastClock { s.stalls += 1 }
       if clock < s.lastClock { s.backwards += 1 }
     }
@@ -37,8 +54,10 @@ enum DanmakuMotionProbe {
   /// Statistics since the previous call, then reset.
   static func drain() -> [String: Double] {
     state.withLock { s in
-      defer { s.ratios = []; s.intervals = []; s.stalls = 0; s.backwards = 0 }
-      guard !s.ratios.isEmpty else { return ["frames": 0] }
+      defer { s.ratios = []; s.intervals = []; s.stalls = 0; s.backwards = 0; s.skippedInFlight = 0; s.skippedRender = 0; s.unconfirmedPresents = 0 }
+      let skips = ["skippedInFlight": Double(s.skippedInFlight), "skippedRender": Double(s.skippedRender),
+        "unconfirmedPresents": Double(s.unconfirmedPresents)]
+      guard !s.ratios.isEmpty else { return skips.merging(["frames": 0]) { _, new in new } }
       let ratios = s.ratios, intervals = s.intervals
       let mean = ratios.reduce(0, +) / Double(ratios.count)
       let deviation = (ratios.map { ($0 - 1) * ($0 - 1) }.reduce(0, +) / Double(ratios.count)).squareRoot()
@@ -56,7 +75,7 @@ enum DanmakuMotionProbe {
         "ratioP95": (sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))] * 1000).rounded() / 1000,
         "stalls": Double(s.stalls),
         "backwards": Double(s.backwards),
-      ]
+      ].merging(skips) { _, new in new }
     }
   }
 }

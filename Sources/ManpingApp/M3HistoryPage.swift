@@ -8,7 +8,9 @@ struct M3HistoryPage: View {
   @State private var tab: HistoryBusiness = .archive
   @State private var searchText = ""
   @State private var consumedScopeRequest: UUID?
+  @State private var loadedIdentityVersion = 0
   @Environment(\.colorScheme) private var scheme
+  @Environment(\.browsingPageActive) private var browsingPageActive
   init(model: AppModel) {
     self.model = model
     _history = StateObject(wrappedValue: HistoryPageModel(service: model.service, rpc: Self.makeRPC(model)))
@@ -37,6 +39,7 @@ struct M3HistoryPage: View {
       .pageToolbar(title: "历史记录", subtitle: history.keyword.isEmpty ? nil : "搜索「\(history.keyword)」",
         refreshing: history.isLoading && !history.records.isEmpty, refresh: { Task { await history.refresh() } }) { headerControls }
       .task(id: "\(tab.rawValue):\(model.refreshToken)") {
+        loadedIdentityVersion = history.identityVersion
         if let request = model.regionalSearchRequest, request.route == .history,
           consumedScopeRequest != request.revision {
           consumedScopeRequest = request.revision; searchText = request.keyword
@@ -48,6 +51,8 @@ struct M3HistoryPage: View {
         consumedScopeRequest = request.revision; searchText = request.keyword
         Task { await history.load(business: tab, keyword: request.keyword) }
       }
+      .onChange(of: browsingPageActive, initial: true) { _, _ in reloadIdentityIfNeeded() }
+      .onChange(of: history.identityVersion) { _, _ in reloadIdentityIfNeeded() }
       .onDisappear { history.cancelRequests() }
       .confirmationDialog(confirmationTitle, isPresented: Binding(
         get: { history.confirmation != nil }, set: { if !$0 { history.cancelConfirmation() } }
@@ -55,6 +60,12 @@ struct M3HistoryPage: View {
         Button(confirmationTitle, role: .destructive) { history.confirmInBackground() }
         Button("取消", role: .cancel) { history.cancelConfirmation() }
       } message: { Text("此操作会影响当前账号，无法撤销。") }
+  }
+  private func reloadIdentityIfNeeded() {
+    guard browsingPageActive, loadedIdentityVersion != history.identityVersion else { return }
+    // History already publishes invalidation; a retained source consumes it only when visible.
+    loadedIdentityVersion = history.identityVersion
+    Task { await history.refresh() }
   }
   private var confirmationTitle: String {
     if case .remove? = history.confirmation { return "删除这条历史记录" }

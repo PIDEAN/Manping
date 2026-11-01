@@ -36,6 +36,7 @@ struct bili_mpv {
     void (*free)(void *);
     void (*free_node_contents)(mpv_node *);
     uint64_t (*render_update)(mpv_render_context *);
+    int (*render_get_info)(mpv_render_context *, mpv_render_param);
     void (*render_set_update)(mpv_render_context *, mpv_render_update_fn, void *);
     atomic_bool dirty;
     atomic_int target_peak;
@@ -87,6 +88,7 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
     LOAD(hook_add, "mpv_hook_add"); LOAD(hook_continue, "mpv_hook_continue");
     LOAD(free, "mpv_free"); LOAD(free_node_contents, "mpv_free_node_contents"); LOAD(render_update, "mpv_render_context_update"); LOAD(error_string, "mpv_error_string");
     LOAD(render_set_update, "mpv_render_context_set_update_callback");
+    LOAD(render_get_info, "mpv_render_context_get_info");
     LOAD(render_create, "mpv_render_context_create"); LOAD(render_render, "mpv_render_context_render");
     LOAD(render_report_swap, "mpv_render_context_report_swap"); LOAD(render_free, "mpv_render_context_free");
 #undef LOAD
@@ -173,7 +175,13 @@ int bili_mpv_render_pending(bili_mpv *e) {
     if(!e || !e->render || !atomic_exchange(&e->dirty,0)) return 0;
     return (e->render_update(e->render) & MPV_RENDER_UPDATE_FRAME)!=0;
 }
-int bili_mpv_capture(bili_mpv *e,int width,int height,int floating,void *pixels) {
+uint64_t bili_mpv_render_frame_flags(bili_mpv *e) {
+    if(!e || !e->render) return 0;
+    mpv_render_frame_info info={0};
+    e->render_get_info(e->render,(mpv_render_param){MPV_RENDER_PARAM_NEXT_FRAME_INFO,&info});
+    return info.flags;
+}
+int bili_mpv_capture(bili_mpv *e,int width,int height,int floating,int current_frame,void *pixels) {
     if(!e || !e->render || width<=0 || height<=0 || width>8192 || height>8192 || !pixels) return MPV_ERROR_INVALID_PARAMETER;
     GLint previous=0, viewport[4];
     glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&previous);
@@ -188,13 +196,23 @@ int bili_mpv_capture(bili_mpv *e,int width,int height,int floating,void *pixels)
     int result=MPV_ERROR_GENERIC;
     if(glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE) {
         glViewport(0,0,width,height);
-        // Not flipped: in a texture-backed framebuffer mpv writes the top row first.
-        mpv_opengl_fbo fbo={(int)framebuffer,width,height,floating?GL_RGBA16F:GL_RGBA8};
-        int flip=0;
-        mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{0,NULL}};
-        active_engine=e;
-        result=e->render_render(e->render,params);
-        active_engine=NULL;
+        if(current_frame) {
+            // During display-sync, a second mpv render would consume the next BLOCK_VSYNC
+            // frame early. Copy the frame just drawn in CA's still-valid target instead.
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,(GLuint)previous);
+            glReadBuffer(previous?GL_COLOR_ATTACHMENT0:GL_BACK);
+            glBlitFramebuffer(viewport[0],viewport[1]+viewport[3],viewport[0]+viewport[2],viewport[1],
+              0,0,width,height,GL_COLOR_BUFFER_BIT,GL_LINEAR);
+            result=0;
+        } else {
+            // Not flipped: in a texture-backed framebuffer mpv writes the top row first.
+            mpv_opengl_fbo fbo={(int)framebuffer,width,height,floating?GL_RGBA16F:GL_RGBA8};
+            int flip=0;
+            mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{0,NULL}};
+            active_engine=e;
+            result=e->render_render(e->render,params);
+            active_engine=NULL;
+        }
         if(result>=0) {
             glBindFramebuffer(GL_READ_FRAMEBUFFER,framebuffer);
             glReadBuffer(GL_COLOR_ATTACHMENT0);
@@ -217,7 +235,12 @@ int bili_mpv_render(bili_mpv *e,int floating) {
     if(viewport[2]<=0 || viewport[3]<=0) return 0;
     mpv_opengl_fbo fbo={framebuffer,viewport[2],viewport[3],floating?GL_RGBA16F:GL_RGBA8};
     int flip=1;
-    mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{0,NULL}};
+    // Audio frames are already due (video-timing-offset=0); display-sync is host-vsync paced.
+    // Disable waiting unconditionally: a BLOCK_VSYNC frame can arrive between get_info and
+    // render, and must never introduce a wait while CGL/CA locks are held.
+    int block=0;
+    mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},
+      {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,&block},{0,NULL}};
     active_engine=e;
     int result=e->render_render(e->render,params);
     active_engine=NULL;
