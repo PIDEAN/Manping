@@ -96,8 +96,14 @@ final class VideoLayer: CAOpenGLLayer, @unchecked Sendable {
     let pending = bili_mpv_render_pending(engine) != 0
     let display = pending || force
     if display { force = true }
+    // A new frame is queued ahead of its display time (video-timing-offset). Wait for it here,
+    // with neither lock held: mpv used to sleep inside the render call, holding both, and the
+    // main thread's layout (`invalidateFrame`, `setVisible`, a resize redraw) waited behind it
+    // on every step of a window resize or full-screen transition.
+    let wait = pending ? bili_mpv_frame_wait_us(engine) : 0
     gate.unlock()
     CGLUnlockContext(context)
+    if wait > 0 { usleep(useconds_t(wait)) }
     // Never hold either render lock while acquiring Core Animation's transaction lock.
     if display {
       setNeedsDisplay()

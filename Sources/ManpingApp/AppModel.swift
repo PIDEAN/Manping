@@ -1950,7 +1950,8 @@ import WebKit
     }
   }
   /// The main window is in full screen, or entering it (set before the transition moves the
-  /// frame, so the layout switches first).
+  /// frame, so the layout switches first). Leaving keeps it until the frame is back at its
+  /// windowed size (`PlayerFullScreenTransition`).
   @Published private(set) var mainWindowFullScreen = false
   /// The same for the standalone playback window.
   @Published private(set) var playbackWindowFullScreen = false

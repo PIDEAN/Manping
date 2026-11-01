@@ -19,6 +19,9 @@ int bili_mpv_load_inflight(bili_mpv *engine);
 void bili_mpv_release_load(bili_mpv *engine);
 int bili_mpv_render_create(bili_mpv *engine);
 int bili_mpv_render_pending(bili_mpv *engine);
+// Microseconds until the next queued video frame is due (0: due now, a redraw, or unknown).
+// Needs the render context current, like the other render calls.
+int64_t bili_mpv_frame_wait_us(bili_mpv *engine);
 int bili_mpv_render(bili_mpv *engine, int floating);
 // Renders the current frame into an offscreen framebuffer of width x height and reads it back
 // top row first into `pixels`: RGBA8 (width * height * 4 bytes), or with `floating` RGBA16F read

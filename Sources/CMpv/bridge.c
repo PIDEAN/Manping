@@ -52,6 +52,10 @@ struct bili_mpv {
     int (*render_render)(mpv_render_context *, mpv_render_param *);
     void (*render_report_swap)(mpv_render_context *);
     void (*render_free)(mpv_render_context *);
+    // Optional: with both, render calls never block for the frame's target time; the caller
+    // waits for it first (bili_mpv_frame_wait_us), outside the locks it renders under.
+    int (*render_get_info)(mpv_render_context *, mpv_render_param);
+    int64_t (*get_time_us)(mpv_handle *);
 };
 static _Thread_local bili_mpv *active_engine;
 static void diagnostic_link_program(GLuint program) {
@@ -90,6 +94,9 @@ bili_mpv *bili_mpv_create(const char *path, int isolated, char *error, size_t ca
     LOAD(render_create, "mpv_render_context_create"); LOAD(render_render, "mpv_render_context_render");
     LOAD(render_report_swap, "mpv_render_context_report_swap"); LOAD(render_free, "mpv_render_context_free");
 #undef LOAD
+    *(void **)(&e->render_get_info) = dlsym(e->library, "mpv_render_context_get_info");
+    *(void **)(&e->get_time_us) = dlsym(e->library, "mpv_get_time_us");
+    if (!e->render_get_info || !e->get_time_us) { e->render_get_info = NULL; e->get_time_us = NULL; }
     e->handle = e->create();
     if (!e->handle) { snprintf(error, capacity, "mpv_create failed"); bili_mpv_destroy(e); return NULL; }
     const char *options[][2] = {{"vo","libmpv"},{"dither-depth","no"},{"hwdec","videotoolbox"},{"keep-open","yes"},{"idle","yes"},{"config","no"},{"terminal","no"},{"tls-verify","yes"},{"input-default-bindings","no"},{"user-agent","Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"},{"referrer","https://www.bilibili.com/"}};
@@ -167,6 +174,16 @@ int bili_mpv_render_pending(bili_mpv *e) {
     if(!e || !e->render || !atomic_exchange(&e->dirty,0)) return 0;
     return (e->render_update(e->render) & MPV_RENDER_UPDATE_FRAME)!=0;
 }
+int64_t bili_mpv_frame_wait_us(bili_mpv *e) {
+    if(!e || !e->render || !e->render_get_info) return 0;
+    mpv_render_frame_info info={0,0};
+    mpv_render_param param={MPV_RENDER_PARAM_NEXT_FRAME_INFO,&info};
+    if(e->render_get_info(e->render,param)<0) return 0;
+    if(!(info.flags&MPV_RENDER_FRAME_INFO_PRESENT) || (info.flags&MPV_RENDER_FRAME_INFO_REDRAW) || info.target_time<=0) return 0;
+    int64_t wait=info.target_time-e->get_time_us(e->handle);
+    // video-timing-offset (50 ms by default) bounds how early mpv queues a frame.
+    return wait<=0 ? 0 : (wait>100000 ? 100000 : wait);
+}
 int bili_mpv_capture(bili_mpv *e,int width,int height,int floating,void *pixels) {
     if(!e || !e->render || width<=0 || height<=0 || width>8192 || height>8192 || !pixels) return MPV_ERROR_INVALID_PARAMETER;
     GLint previous=0, viewport[4];
@@ -211,7 +228,12 @@ int bili_mpv_render(bili_mpv *e,int floating) {
     if(viewport[2]<=0 || viewport[3]<=0) return 0;
     mpv_opengl_fbo fbo={framebuffer,viewport[2],viewport[3],floating?GL_RGBA16F:GL_RGBA8};
     int flip=1;
-    mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{0,NULL}};
+    // mpv's own wait for the target time runs inside this call, under the CGL context lock and
+    // the layer's gate: every main-thread layout (a window resize, a full-screen transition step)
+    // then stalled for up to video-timing-offset behind it. The render queue waits beforehand
+    // instead (bili_mpv_frame_wait_us), so this call never sleeps.
+    int block=e->render_get_info ? 0 : 1;
+    mpv_render_param params[]={{MPV_RENDER_PARAM_OPENGL_FBO,&fbo},{MPV_RENDER_PARAM_FLIP_Y,&flip},{MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME,&block},{0,NULL}};
     active_engine=e;
     int result=e->render_render(e->render,params);
     active_engine=NULL;

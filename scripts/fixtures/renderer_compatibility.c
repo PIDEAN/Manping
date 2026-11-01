@@ -42,6 +42,9 @@ static void *render(void *opaque) {
         atomic_store(&f->ready, 1);
         while (!atomic_load(&f->stop)) {
             if (bili_mpv_render_pending(f->mpv)) {
+                // The render call no longer waits for the frame's display time; the caller does.
+                int64_t wait = bili_mpv_frame_wait_us(f->mpv);
+                if (wait > 0) usleep((useconds_t)wait);
                 glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
                 glViewport(0, 0, f->width, f->height);
                 if (bili_mpv_render(f->mpv, 1) < 0) atomic_store(&f->failure, 3);
