@@ -24,6 +24,11 @@ import VideoToolbox
   var onPlaybackEnd: (() -> Void)?
   var onEpisodeChange: (() -> Void)?
   var onMediaReady: (() -> Void)?
+  var onProgressReady: ((AuthSnapshot) -> Void)?
+  var resumePosition: (PGCEpisode, AuthSnapshot, Int?) -> Double = { episode, _, seconds in
+    PlaybackBookmark.start(seconds ?? 0, duration: episode.duration)
+  }
+  private var openingPosition: Double?
   /// 设置 › 自动跳过片头片尾, read on every check so a change applies while the episode plays.
   var automaticSkip: () -> Bool = { false }
   var skipNextPrompt: () -> Bool = { false }
@@ -62,6 +67,7 @@ import VideoToolbox
   deinit { identityTask?.cancel(); flight?.cancel() }
   func cancelRequests() {
     cdn?.detach()
+    openingPosition = nil
     generation = UUID(); flight?.cancel(); flight = nil; eofObservation = nil; skipObservation = nil; isLoading = false
   }
   func shutdown() { interactions.shutdown(); cancelRequests(); identityTask?.cancel(); identityTask = nil; player.shutdown() }
@@ -93,8 +99,8 @@ import VideoToolbox
         episode = initial
         skipTracker.reset(episode: initial.id)
         interactions.reset(episodeID: initial.id, seasonID: initial.seasonID, aid: initial.aid)
-        let start = selection.episodeID == nil && restoreHistory && initial.id == result.progressEpisodeID ? max(0, result.progressSeconds) : 0
-        try await loadMedia(initial, start: Double(start), revision: revision, expected: snapshot)
+        let start = restoreHistory ? resumePosition(initial, snapshot, initial.id == result.progressEpisodeID ? result.progressSeconds : nil) : 0
+        try await loadMedia(initial, start: start, revision: revision, expected: snapshot)
       } catch is CancellationError {} catch {
         if (try? await check(revision, expected: snapshot)) != nil { self.error = error.localizedDescription }
       }
@@ -123,7 +129,8 @@ import VideoToolbox
       if generation == revision { isLoading = false; flight = nil }
     }
   }
-  func selectEpisode(_ episode: PGCEpisode) {
+  func selectEpisode(_ episode: PGCEpisode) { selectEpisode(episode, resume: true) }
+  private func selectEpisode(_ episode: PGCEpisode, resume: Bool) {
     // Choosing another episode while one is loading replaces that load (cancelRequests below).
     guard let details, let expected,
       (details.episodes + details.extras.flatMap(\.episodes)).contains(where: { $0.id == episode.id }) else { return }
@@ -136,7 +143,9 @@ import VideoToolbox
     let revision = generation
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      do { try await loadMedia(episode, start: 0, revision: revision, expected: expected) }
+      let restore = PerformanceEnvironment.defaults.object(forKey: "autoLoadHistory") as? Bool ?? true
+      let start = resume && restore ? resumePosition(episode, expected, episode.id == details.progressEpisodeID ? details.progressSeconds : nil) : 0
+      do { try await loadMedia(episode, start: start, revision: revision, expected: expected) }
       catch is CancellationError {} catch {
         if (try? await check(revision, expected: expected)) != nil { self.error = error.localizedDescription }
       }
@@ -150,26 +159,31 @@ import VideoToolbox
   }
   func nextEpisode() {
     guard canPlayNext, let details, let index = details.episodes.firstIndex(where: { $0.id == episode?.id }) else { return }
-    selectEpisode(details.episodes[index + 1])
+    selectEpisode(details.episodes[index + 1], resume: false)
   }
   private func loadMedia(_ episode: PGCEpisode, start: Double, revision: UUID, expected: AuthSnapshot) async throws {
     try await check(revision, expected: expected)
     let streams = try await service.pgcPlayback(episode, expectedIdentity: expected)
     try await check(revision, expected: expected)
     let choice = try PlaybackSelector.select(streams, preferences: preferences, supportsHardware: Self.supportsHardware)
+    openingPosition = start
     manifest = streams; selectedStream = choice.video
     fixturePosition = start
-    if usesFixtures { player.status = "本地样本 · 未加载在线媒体" }
+    if usesFixtures { openingPosition = nil; player.status = "本地样本 · 未加载在线媒体" }
     else if let cdn {
       let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: preferences.avoidP2P,
         reportFailureTo: player)
       try await check(revision, expected: expected)
       // nil: a quality change made during startup already loaded the newer stream.
-      if let prepared {
-        player.load(video: prepared.video, audio: prepared.audio, start: start); AppModel.configurePlayerPreferences(player)
+      if let prepared, selectedStream?.id == choice.video.id {
+        play(video: prepared.video, audio: prepared.audio, start: start, expected: expected)
+        AppModel.configurePlayerPreferences(player)
         attachCDN(ticket: prepared.ticket)
       }
-    } else { player.load(video: choice.videoURL, audio: choice.audioURL, start: start); AppModel.configurePlayerPreferences(player) }
+    } else {
+      play(video: choice.videoURL, audio: choice.audioURL, start: start, expected: expected)
+      AppModel.configurePlayerPreferences(player)
+    }
     isLoading = false
     onMediaReady?()
     observeSkips(revision: revision)
@@ -241,15 +255,20 @@ import VideoToolbox
       if persist { preferences.lastQuality = stream.quality }
       guard !usesFixtures else { return }
       if let cdn {
-        let time = player.time, paused = player.paused
+        let paused = player.paused
         guard let prepared = await cdn.prepare(video: stream, audio: audio, avoidP2P: preferences.avoidP2P, allowProbe: false, preserveRecovery: recovering),
           (try? await check(revision, expected: expected)) != nil, selectedStream?.id == stream.id else { return }
-        player.load(video: prepared.video, audio: prepared.audio, start: time, paused: paused)
+        play(video: prepared.video, audio: prepared.audio, start: openingPosition ?? player.time, paused: paused, expected: expected)
         attachCDN(ticket: prepared.ticket)
       } else {
-        player.load(video: preferredURL(stream), audio: preferredURL(audio), start: player.time, paused: player.paused)
+        play(video: preferredURL(stream), audio: preferredURL(audio), start: openingPosition ?? player.time, paused: player.paused, expected: expected)
       }
     }
+  }
+  private func play(video: URL, audio: URL?, start: Double, paused: Bool = false, expected: AuthSnapshot) {
+    player.load(video: video, audio: audio, start: start, paused: paused)
+    openingPosition = nil
+    onProgressReady?(expected)
   }
   private func attachCDN(ticket: Int) {
     let revision = generation

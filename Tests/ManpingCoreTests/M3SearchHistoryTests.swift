@@ -130,6 +130,14 @@ final class M3SearchHistoryTests: XCTestCase, @unchecked Sendable {
     let record = try XCTUnwrap(model.records.first)
     XCTAssertEqual(record.key.kid, 321)
     XCTAssertEqual(record.item.oid, 789)
+    model.acknowledgeProgress(aid: 321, cid: 456, episode: nil, seconds: 37, identity: await service.authSnapshot())
+    let updated = try XCTUnwrap(model.records.first)
+    XCTAssertEqual(updated.id, record.id)
+    XCTAssertEqual(updated.videoBookmark(for: model.loadedIdentity)?.seconds, 37)
+    XCTAssertEqual(updated.videoBookmark(for: model.loadedIdentity)?.cid, 456)
+    XCTAssertNil(updated.videoBookmark(for: nil))
+    model.acknowledgeProgress(aid: 321, cid: 999, episode: nil, seconds: 9, identity: await service.authSnapshot())
+    XCTAssertEqual(model.records.first?.videoBookmark(for: model.loadedIdentity)?.seconds, 37)
     // Exact SDK CursorItem adapter uses Kid as the UGC aid; Oid is a separate field.
     if case .video(let video) = record.entry.destination { XCTAssertEqual(video.aid, 321) } else { XCTFail("Video history") }
     model.requestRemove(record); let removed = await model.confirm(); XCTAssertTrue(removed)
@@ -189,6 +197,15 @@ final class M3SearchHistoryTests: XCTestCase, @unchecked Sendable {
     XCTAssertEqual(refreshRequests.map { $0.url!.path }, ["/api/oauth2/refreshToken"])
     XCTAssertEqual(refreshedCalls.last?.authorization, ["identify_v1 fixture-refreshed"])
     refreshedModel.cancelRequests()
+  }
+  func testPGCHistoryPreservesDeletionBusinessAndExplicitEpisodeRoute() throws {
+    let item = RPCHistoryItem(id: 321, oid: 789, business: "pgc", title: "Episode", uri: "bilibili://bangumi/play/ep42",
+      viewedAt: 1000, content: .episode(cover: nil, progress: 37, duration: 300, subtitle: "fixture"))
+    let row = try XCTUnwrap(HistoryRecord(item: item, business: .archive))
+    XCTAssertEqual(row.key.apiBusiness, "pgc")
+    XCTAssertEqual(row.id, "pgc:321")
+    guard case .web(let url) = row.entry.destination else { return XCTFail("Missing episode route") }
+    XCTAssertEqual(BiliLinkParser.parse(url), .episode(42))
   }
   func testOldHistoryMutationContextRejectedBeforeTransport() async throws {
     let service = try await auth(); let transport = SearchHistoryRPC()

@@ -146,7 +146,8 @@ public actor BiliService {
     return AuthSnapshot(
       epoch: authEpoch, identityRevision: identityRevision,
       state: valid != nil ? .appAuthorized : web ? .webOnly : .needsLogin,
-      token: valid)
+      token: valid, storedMID: appToken.flatMap { $0.isComplete ? $0.mid : nil },
+      webMID: web ? cookieValue("DedeUserID").flatMap(Int64.init).flatMap { $0 > 0 ? $0 : nil } : nil)
   }
   public func identityEvents() -> AsyncStream<AuthIdentityEvent> {
     let id = UUID()

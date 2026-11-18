@@ -108,7 +108,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   @Published var time: Double = 0
 }
 
-@MainActor final class PlayerModel: ObservableObject {
+@MainActor final class PlayerModel: ObservableObject, WatchProgressSource {
   let clock = PlaybackClock()
   /// Every seek asked of this player, sent before it is carried out (片段播放 tells its own apart).
   let seekRequests = PassthroughSubject<Double, Never>()
@@ -121,6 +121,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
   @Published private(set) var buffering = false
   /// Seconds of media buffered ahead of the playhead (`demuxer-cache-duration`).
   private(set) var bufferedAhead: Double = 0
+  private(set) var hasPlaybackSample = false
   @Published private(set) var eofReached = false
   private var eofArmed = false
   private(set) var terminalFailure = false
@@ -291,6 +292,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       let external = M7ExternalMpv { [weak self] sample in
         Task { @MainActor [weak self] in
           guard let self, !self.closing, !self.terminalFailure else { return }
+          if !sample.idle, sample.duration > 0 { self.hasPlaybackSample = true }
           self.time = sample.time
           self.danmakuClock.update(.init(host: CACurrentMediaTime(), media: sample.time,
             playing: !sample.paused, speed: sample.speed))
@@ -506,6 +508,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
         }
         // Publish only real changes: every @Published write re-renders observing views.
         if timeKnown, self.generation == sampledGeneration, self.pending == nil {
+          if !idle { self.hasPlaybackSample = true }
           self.time = time
         }
         if let sampledPasses { self.passes = sampledPasses }
@@ -566,6 +569,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
     self.start()
     if let engine { bili_mpv_pause_intent(engine, paused ? 1 : 0) }
     generation += 1
+    hasPlaybackSample = false
     terminalFailure = false
     terminalFailureAt = nil
     resetPlaybackEnd()
@@ -580,7 +584,7 @@ private final class PlaybackEOFGeneration: @unchecked Sendable {
       // External mpv keeps its own options; carry 仅播放声音 to it on every load as well.
       external.set("vid", audioOnly ? "no" : "auto")
       status = "外部 mpv · 正在加载"
-      time = 0
+      time = start
       return
     }
     pending = (video, audio, start, paused)

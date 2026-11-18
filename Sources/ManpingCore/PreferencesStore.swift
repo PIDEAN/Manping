@@ -20,7 +20,9 @@ public protocol PreferencesStore: AnyObject, Sendable {
   func register(defaults registrationDictionary: [String: Any])
 }
 
+#if canImport(Darwin)
 extension UserDefaults: PreferencesStore {}
+#endif
 
 /// Fixture preferences have no UserDefaults backing and cannot create or alter a domain.
 public final class MemoryPreferences: PreferencesStore, @unchecked Sendable {

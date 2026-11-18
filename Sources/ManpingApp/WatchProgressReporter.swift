@@ -1,10 +1,13 @@
-import ManpingCore
 import Foundation
+import ManpingCore
 
-/// Writes the watch position to the account's history like the original client: every 30 s
-/// while playing, and once more when the video is switched or closed. Paused players and
-/// position zero are not reported; nothing is sent while signed out or when the user turned
-/// the setting off. Debug playback reports never write to the account.
+@MainActor protocol WatchProgressSource: AnyObject {
+  var time: Double { get }
+  var paused: Bool { get }
+  var eofReached: Bool { get }
+  var hasPlaybackSample: Bool { get }
+}
+
 @MainActor final class WatchProgressReporter {
   struct Item: Equatable {
     let aid: Int64
@@ -13,59 +16,124 @@ import Foundation
     var season: Int64?
   }
 
-  private let service: BiliService
-  private let enabled: () -> Bool
-  private weak var player: PlayerModel?
-  private var item: Item?
-  private var identity: AuthSnapshot?
-  private var timer: Timer?
-  private var lastSent: (item: Item, seconds: Int)?
+  private struct Sample {
+    let item: Item
+    let identity: AuthSnapshot
+    let seconds: Int
+    let final: Bool
 
-  init(service: BiliService, enabled: @escaping () -> Bool) {
-    self.service = service; self.enabled = enabled
-  }
-
-  /// Starts reporting for the media now loaded in `player`, closing out the previous one.
-  func begin(_ next: Item, player: PlayerModel, identity: AuthSnapshot?) {
-    if item != next { flush() }
-    item = next; self.player = player; self.identity = identity
-    timer?.invalidate()
-    timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-      MainActor.assumeIsolated { self?.send(requirePlaying: true) }
+    func sameMedia(as other: Sample) -> Bool {
+      item == other.item && identity.sameIdentity(as: other.identity)
     }
   }
 
-  /// Reports the final position (paused or not) and stops.
-  func flush() {
-    send(requirePlaying: false)
-    timer?.invalidate(); timer = nil
-    item = nil; player = nil; identity = nil
+  typealias Submit = (Item, Int, AuthSnapshot) async throws -> Void
+  private let submit: Submit
+  private let enabled: () -> Bool
+  private let checkpoint: (Item, AuthSnapshot, Int) -> Void
+  private let feedback: (String?) -> Void
+  private weak var player: (any WatchProgressSource)?
+  private var item: Item?
+  private var identity: AuthSnapshot?
+  private var timer: Timer?
+  private var queue: [Sample] = []
+  private var worker: Task<Void, Never>?
+  private var confirmed: Sample?
+  var onConfirmed: ((Item, Int, AuthSnapshot) -> Void)?
+
+  init(enabled: @escaping () -> Bool, checkpoint: @escaping (Item, AuthSnapshot, Int) -> Void,
+       feedback: @escaping (String?) -> Void, submit: @escaping Submit) {
+    self.enabled = enabled; self.checkpoint = checkpoint; self.feedback = feedback; self.submit = submit
   }
 
-  /// Identity changes revoke the old session without flushing it to another account.
-  func discard() {
-    timer?.invalidate(); timer = nil
-    item = nil; player = nil; identity = nil; lastSent = nil
+  func begin(_ next: Item, player: any WatchProgressSource, identity nextIdentity: AuthSnapshot) {
+    identityChanged(to: nextIdentity)
+    if item == next, self.player === player { return }
+    flush()
+    item = next; self.player = player; identity = nextIdentity
+    timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+      MainActor.assumeIsolated { self?.sample(final: false) }
+    }
+  }
+
+  func flush() {
+    sample(final: true)
+    stopTimer()
+  }
+
+  private func stopTimer() {
+    timer?.invalidate(); timer = nil; item = nil; player = nil
   }
 
   func identityChanged(to snapshot: AuthSnapshot) {
-    guard let identity, identity.epoch != snapshot.epoch || identity.identityRevision != snapshot.identityRevision else { return }
-    discard()
+    if let identity, !identity.sameIdentity(as: snapshot) {
+      stopTimer()
+      queue.removeAll(); confirmed = nil
+      feedback(nil)
+    }
+    identity = snapshot
   }
 
-  private func send(requirePlaying: Bool) {
-    guard let item, let player, let identity, identity.state != .needsLogin, enabled() else { return }
+  func sample(final: Bool) {
+    guard let item, let player, let identity, player.hasPlaybackSample,
+          final || !player.paused else { return }
     let position = player.time
-    guard position.isFinite, position >= 1, !requirePlaying || !player.paused else { return }
-    let seconds = Int(position)
-    if let lastSent, lastSent.item == item, lastSent.seconds == seconds { return }
-    lastSent = (item, seconds)
-    let service = self.service
-    let episode = item.episode.flatMap { id in item.season.map { (id: id, season: $0) } }
-    Task {
-      // Bound to the identity checked for sign-in: a report that is late for an account switch
-      // is dropped instead of being written to the new account.
-      _ = try? await service.reportProgress(aid: item.aid, cid: item.cid, seconds: seconds, episode: episode, expectedIdentity: identity)
+    guard position.isFinite, position < Double(Int.max), position >= 1 || player.eofReached else { return }
+    let seconds = max(0, Int(max(0, position)))
+    checkpoint(item, identity, player.eofReached ? 0 : seconds)
+    guard enabled(), seconds > 0, identity.canAttemptHistoryReport else { return }
+    let sample = Sample(item: item, identity: identity, seconds: seconds, final: final)
+    // Coalesce only queued values; the running request always finishes first. Seeking back
+    // is a newer position even when its numeric value is smaller.
+    queue.removeAll { $0.sameMedia(as: sample) }
+    queue.append(sample)
+    if worker == nil {
+      worker = Task { await self.drain() }
+    }
+  }
+
+  private func drain() async {
+    while !queue.isEmpty {
+      let sample = queue.removeFirst()
+      guard enabled(), identity?.sameIdentity(as: sample.identity) == true else { continue }
+      if let confirmed, confirmed.sameMedia(as: sample), confirmed.seconds == sample.seconds { continue }
+      do {
+        try await submit(sample.item, sample.seconds, sample.identity)
+        guard identity?.sameIdentity(as: sample.identity) == true else { continue }
+        confirmed = sample
+        onConfirmed?(sample.item, sample.seconds, sample.identity)
+        feedback(nil)
+      } catch is CancellationError {
+        continue
+      } catch {
+        guard identity?.sameIdentity(as: sample.identity) == true, enabled() else { continue }
+        if let confirmed, confirmed.sameMedia(as: sample) { self.confirmed = nil }
+        feedback(Self.message(error))
+        if sample.final, Self.retryable(error), !queue.contains(where: { $0.sameMedia(as: sample) }) {
+          // Requeue once; a newer pending position supersedes the final retry.
+          queue.append(Sample(item: sample.item, identity: sample.identity, seconds: sample.seconds, final: false))
+        }
+      }
+    }
+    worker = nil
+  }
+
+  var hasPendingReports: Bool { worker != nil }
+  func waitForReports() async { await worker?.value }
+
+  private static func retryable(_ error: Error) -> Bool {
+    if error is URLError { return true }
+    if case AuthFailure.transport = error { return true }
+    if case BiliError.http(let status) = error { return (500...599).contains(status) }
+    return false
+  }
+
+  private static func message(_ error: Error) -> String {
+    switch error {
+    case AuthFailure.needsLogin: "同步观看进度需要有效的 App 登录凭据，请重新扫码登录。"
+    case BiliError.http(let status): "观看进度同步失败（HTTP \(status)）。"
+    case BiliError.api(let code, _), AuthFailure.rejected(let code): "哔哩哔哩未接受观看进度（\(code)）。"
+    default: "观看进度同步失败，请检查网络后重试。"
     }
   }
 }

@@ -53,6 +53,9 @@ struct M3HistoryPage: View {
       }
       .onChange(of: browsingPageActive, initial: true) { _, _ in reloadIdentityIfNeeded() }
       .onChange(of: history.identityVersion) { _, _ in reloadIdentityIfNeeded() }
+      .onReceive(model.historyWrites) { write in
+        history.acknowledgeProgress(aid: write.0.aid, cid: write.0.cid, episode: write.0.episode, seconds: write.1, identity: write.2)
+      }
       .onDisappear { history.cancelRequests() }
       .confirmationDialog(confirmationTitle, isPresented: Binding(
         get: { history.confirmation != nil }, set: { if !$0 { history.cancelConfirmation() } }
@@ -109,7 +112,16 @@ struct M3HistoryPage: View {
     let remove = Button("从历史记录中删除", role: .destructive) { history.requestRemove(record) }
       .disabled(history.busy || history.isLoading)
     if case .video(let video) = record.entry.destination {
-      VideoCard(video: video, action: { model.open(video) }, menuExtra: AnyView(remove)).help(record.entry.subtitle)
+      let hint = record.videoBookmark(for: history.loadedIdentity)
+      VideoCard(video: video, action: { model.open(video, mode: nil, history: hint) }, menuExtra: AnyView(remove))
+        .environment(\.cardActions, CardActions(model: model, history: hint)).help(record.entry.subtitle)
+    } else if case .episode(_, let seconds, _, _) = record.item.content,
+      case .web(let url) = record.entry.destination, case .episode(let ep)? = BiliLinkParser.parse(url) {
+      LibraryEntryCard(entry: record.entry) {
+        model.openPGC(PGCSelection(episodeID: ep), history: history.loadedIdentity?.playbackOwner.map {
+          (owner: $0, episode: ep, seconds: Int(clamping: seconds), updated: Double(record.item.viewedAt))
+        })
+      }.contextMenu { remove }
     } else {
       LibraryEntryCard(entry: record.entry) { model.open(record.entry) }.contextMenu { remove }
     }

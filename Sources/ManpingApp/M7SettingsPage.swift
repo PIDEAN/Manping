@@ -215,6 +215,9 @@ private struct SettingsCategoryView: View {
                   }
                   .disabled(!settings.values.bool(.liveAllowPaidGifts))
                 } else {
+                  if descriptor.key == .reportProgress, settings.values.bool(.reportProgress), let message = model.historySyncError {
+                    Text(message).foregroundStyle(.secondary)
+                  }
                   SettingRow(settings: settings, descriptor: descriptor)
                     .disabled(
                       group == .live && descriptor.section == "画面上的特效与横幅"

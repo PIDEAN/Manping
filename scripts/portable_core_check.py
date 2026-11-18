@@ -23,6 +23,7 @@ let package = Package(
   targets: [
     .target(name: "ManpingCore", swiftSettings: [.define("MANPING_PORTABLE_CORE")]),
     .testTarget(name: "ManpingCoreTests", dependencies: ["ManpingCore"]),
+    // APP_PROGRESS_TARGETS
     .executableTarget(name: "CoreBenchmark", dependencies: ["ManpingCore"]),
   ],
   swiftLanguageModes: [.v6]
@@ -43,7 +44,22 @@ def prepare(label, ref=None):
     package = ROOT / ".build" / "portable-core" / label
     for directory in ("Sources/ManpingCore", "Sources/CoreBenchmark", "Tests/ManpingCoreTests"):
         (package / directory).mkdir(parents=True, exist_ok=True)
-    (package / "Package.swift").write_text(MANIFEST)
+    manifest = MANIFEST
+    if ref is None:
+        # Exercise the actual reporter with a controllable player clock, without Apple UI frameworks.
+        app = package / "Sources/ManpingApp"
+        app_tests = package / "Tests/ManpingAppTests"
+        app.mkdir(exist_ok=True)
+        app_tests.mkdir(exist_ok=True)
+        for name in ("AuthSnapshot.swift", "Models.swift", "PlaybackBookmarks.swift", "PreferencesStore.swift"):
+            shutil.copyfile(ROOT / "Sources/ManpingCore" / name, package / "Sources/ManpingCore" / name)
+        shutil.copyfile(ROOT / "Sources/ManpingApp/WatchProgressReporter.swift", app / "WatchProgressReporter.swift")
+        shutil.copyfile(ROOT / "Tests/ManpingAppTests/WatchProgressReporterTests.swift", app_tests / "WatchProgressReporterTests.swift")
+        shutil.copyfile(ROOT / "Tests/ManpingCoreTests/PlaybackBookmarkTests.swift", package / "Tests/ManpingCoreTests/PlaybackBookmarkTests.swift")
+        manifest = manifest.replace("// APP_PROGRESS_TARGETS",
+            '.target(name: "ManpingApp", dependencies: ["ManpingCore"]),\n'
+            '    .testTarget(name: "ManpingAppTests", dependencies: ["ManpingApp", "ManpingCore"]),')
+    (package / "Package.swift").write_text(manifest)
     for name in SOURCES:
         path = f"Sources/ManpingCore/{name}"
         content = git("show", f"{ref}:{path}") if ref else (ROOT / path).read_text()

@@ -10,16 +10,28 @@ public enum HistoryBusiness: String, CaseIterable, Sendable {
 public struct HistoryRecordKey: Hashable, Sendable {
   public let kid: Int64
   public let business: HistoryBusiness
-  public init(kid: Int64, business: HistoryBusiness) { self.kid = kid; self.business = business }
+  public let apiBusiness: String
+  public init(kid: Int64, business: HistoryBusiness) {
+    self.kid = kid; self.business = business; apiBusiness = business.rawValue
+  }
+  fileprivate init(episodeKid: Int64) { kid = episodeKid; business = .archive; apiBusiness = "pgc" }
 }
 public struct HistoryRecord: Identifiable, Sendable, Equatable {
-  public var id: String { "\(key.business.rawValue):\(key.kid)" }
+  public var id: String { "\(key.apiBusiness):\(key.kid)" }
   public let key: HistoryRecordKey
   public let item: RPCHistoryItem
   public var entry: LibraryEntry { .history(item) }
+  public func videoBookmark(for identity: AuthSnapshot?) -> PlaybackBookmark? {
+    guard let owner = identity?.playbackOwner, case .video(let card, let seconds) = item.content,
+      card.aid > 0, card.cid > 0 else { return nil }
+    return PlaybackBookmark(owner: owner, aid: card.aid, cid: card.cid, seconds: Int(clamping: seconds), updated: Double(item.viewedAt))
+  }
   public init?(item: RPCHistoryItem, business: HistoryBusiness) {
     guard item.id > 0 else { return nil }
     switch (business, item.content) {
+    case (.archive, .episode) where item.business == "pgc":
+      key = HistoryRecordKey(episodeKid: item.id); self.item = item; return
+    case (.archive, .episode) where item.business == "archive": break
     case (.archive, .video), (.live, .live), (.article, .article): break
     default: return nil
     }
@@ -62,7 +74,7 @@ public enum HistoryConfirmation: Equatable, Sendable {
   @Published public private(set) var identityVersion = 0
   private let service: BiliService
   private let rpc: LibraryRPCService?
-  private var loadedIdentity: AuthSnapshot?
+  public private(set) var loadedIdentity: AuthSnapshot?
   private var requestIdentity: AuthSnapshot?
   private var confirmationIdentity: AuthSnapshot?
   private var flight: Task<Void, Never>?
@@ -139,6 +151,27 @@ public enum HistoryConfirmation: Equatable, Sendable {
     flight = task
     await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
   }
+  /// Update an already displayed row in place so returning to history keeps its scroll position.
+  public func acknowledgeProgress(aid: Int64, cid: Int64, episode: Int64?, seconds: Int, identity: AuthSnapshot) {
+    guard loadedIdentity?.sameIdentity(as: identity) == true else { return }
+    for i in records.indices {
+      let previous = records[i], row = previous.item
+      let content: RPCHistoryContent
+      switch row.content {
+      case .video(let card, _) where episode == nil && card.aid == aid && card.cid == cid:
+        content = .video(card, progress: Int64(seconds))
+      case .episode(let cover, _, let duration, let subtitle):
+        guard let episode, case .web(let url) = previous.entry.destination,
+          BiliLinkParser.parse(url) == .episode(episode) else { continue }
+        content = .episode(cover: cover, progress: Int64(seconds), duration: duration, subtitle: subtitle)
+      default: continue
+      }
+      let updated = RPCHistoryItem(id: row.id, oid: row.oid, business: row.business, title: row.title,
+        uri: row.uri, viewedAt: row.viewedAt, content: content)
+      if let record = HistoryRecord(item: updated, business: previous.key.business) { records[i] = record }
+      return
+    }
+  }
   public func requestRemove(_ record: HistoryRecord) {
     guard !busy, !isLoading, let loadedIdentity, records.contains(where: { $0.id == record.id }) else { return }
     confirmation = .remove(record.key); confirmationIdentity = loadedIdentity
@@ -164,7 +197,7 @@ public enum HistoryConfirmation: Equatable, Sendable {
         try await self.check(revision, expected: expected)
         switch action {
         case .remove(let key): self.records.removeAll { $0.key == key }
-        case .clear: self.records = []; self.hasMore = false
+        case .clear(let business): self.records.removeAll { $0.key.apiBusiness == business.rawValue }; self.hasMore = false
         }
         return true
       } catch is CancellationError { return false } catch {

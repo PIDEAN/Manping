@@ -98,6 +98,7 @@ private actor ModelCheckTransport: AuthTransport {
       try await checkIdentityCancellationDuringBrowsing()
       try await checkDeferredRetryPlacement()
       try await checkPendingPlacementDuringBrowsing()
+      try await checkHistoryOpen()
       try await checkLateQualityPosition()
       try await checkMessageUnreadSnapshots()
       return true
@@ -218,6 +219,30 @@ private actor ModelCheckTransport: AuthTransport {
       model.shutdown()
     }
     print("PASS AppModel compact/detached defaults are revoked by navigation before manifest completion")
+  }
+  private static func checkHistoryOpen() async throws {
+    let model = try await fixtureModel(ModelCheckTransport())
+    defer { model.shutdown() }
+    let video = Video(bvid: "", title: "History part", cid: 1001, aid: 100)
+    let hint = PlaybackBookmark(owner: M3Fixture.owner, aid: 100, cid: 1001, seconds: 37, updated: 1)
+    let actions = CardActions(model: model, history: hint)
+    for open in [actions.play, actions.playCompact, actions.playDetached] {
+      open(video)
+      await model.debugVideoLoadRequest?.value
+      try require(model.selected?.cid == 1001 && model.player.time == 37, "every history open keeps the selected part and 37s")
+    }
+    guard let other = model.videoDetails?.parts.first(where: { $0.cid == 1000 }) else { throw Failure.assertion("fixture P1") }
+    model.openPart(other)
+    await model.debugVideoLoadRequest?.value
+    try require(model.selected?.cid == 1000 && model.player.time == 0, "P1 does not inherit P2's start")
+    // Exercise the episode model directly so this check awaits the actual selected media.
+    let pgc = PGCPlaybackModel(service: model.service, player: PlayerModel(), usesFixtures: true)
+    defer { pgc.shutdown() }
+    await pgc.load(PGCSelection(episodeID: 1001))
+    let restores = PerformanceEnvironment.defaults.object(forKey: "autoLoadHistory") as? Bool ?? true
+    try require(pgc.episode?.id == 1001 && pgc.fixturePosition == (restores ? 152 : 0), "explicit matching episode restores")
+    await pgc.load(PGCSelection(episodeID: 1002))
+    try require(pgc.episode?.id == 1002 && pgc.fixturePosition == 0, "another episode starts at zero")
   }
   private static func checkLateQualityPosition() async throws {
     let gate = ModelCheckGate()

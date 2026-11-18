@@ -1050,6 +1050,29 @@ import SwiftUI
   func windowDidExitFullScreen(_ notification: Notification) { fullScreen.didExit() }
   func windowDidFailToEnterFullScreen(_ window: NSWindow) { fullScreen.didFailToEnter() }
   func windowDidFailToExitFullScreen(_ window: NSWindow) { fullScreen.didFailToExit() }
+  private var waitingForHistory = false
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if waitingForHistory { return .terminateLater }
+    model.progressReporter.flush()
+    guard model.progressReporter.hasPendingReports else { return .terminateNow }
+    waitingForHistory = true
+    // AppKit continues servicing the main run loop while the final request has a bounded grace period.
+    let deadline = Task { @MainActor in
+      do { try await Task.sleep(for: .seconds(2)) } catch { return }
+      finishTermination(sender)
+    }
+    Task { @MainActor in
+      await model.progressReporter.waitForReports()
+      deadline.cancel()
+      finishTermination(sender)
+    }
+    return .terminateLater
+  }
+  private func finishTermination(_ sender: NSApplication) {
+    guard waitingForHistory else { return }
+    waitingForHistory = false
+    sender.reply(toApplicationShouldTerminate: true)
+  }
   func applicationWillTerminate(_ notification: Notification) { model.shutdown() }
   func windowWillClose(_ notification: Notification) {
     // The settings window belongs to this one; closing the main window quits.

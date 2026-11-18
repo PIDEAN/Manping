@@ -24,7 +24,7 @@
 | 关注/粉丝 | ✅ | 关注分组/粉丝实网只读通过；按原版UserCard底部为MID；465e0b2修千分位格式后待复验，写仅fixture；m3-fixture/following.png、followers.png |
 | 收藏夹 | ✅ | 追番收藏实网只读通过；其它文件夹/视频内容及多选批处理待验，写仅fixture；m3-fixture/favorites.png为fixture |
 | 稍后再看 | ✅ | 实网只读列表通过；多选删除/清空确认仅fixture；m3-fixture/later.png为fixture |
-| 历史记录 | ✅ | 实网只读列表通过；其它分类/搜索待复验，删除/清空仅fixture；m3-fixture/history.png为fixture。2026-10-18补齐原版的观看进度上报（`/x/v2/history/report`，视频 type=3、番剧 type=4），请求字段由单测覆盖；自动化测试不写账号，实网写入待使用者观看后在历史页确认 |
+| 历史记录 | ✅ | 实网只读列表通过；其它分类/搜索待复验，删除/清空仅fixture；m3-fixture/history.png为fixture。2026-10-18补齐原版的观看进度上报（`/x/v2/history/report`，视频 type=3、番剧 type=4），请求字段由单测覆盖。普通视频依账号及分 P 保存本机进度，番剧支持同集续播；上报串行并在成功后去重。Linux 离线测试覆盖失败重试、倒退和换号。macOS 真机起播及账号写入仍待独立客户端读回复验 |
 | 动态/评论互动 | 🚧 | 视频动态实网只读通过；综合/UP过滤及评论路径待复验，点赞/发送仅fixture+合并review；moment-video-dark.png / moment-all-dark.png / moment-comments-dark.png；inline emote按原版20pt附件/24pt行高接ImageCache，fixture通过，新增布局待实网复验 |
 | PGC详情/播放 | 🚧 | 公开ep837204实网只读有画面及弹幕；pgc-player-dark.png / pgc-info-dark.png为fixture；EOF/付费地区待验；追番/追剧、点赞/投币/收藏/三连已接App签名接口、expectedIdentity/CSRF与UI迟到结果隔离，7项fixture+合并review通过；未真实写；信息区按固定XAML移除无有效入口的warning/extra，正文28pt行高，final-gaps-dark/pgc.png为fixture，视觉待实网复验；弹幕发送仅fixture、下载待验 |
 | 动漫时间线/索引 | ✅ | 实网索引原报Invalid PGC index list：68c32e3修page0→1，2026-10-14集中实网复验app内索引正常；timeline type2/3合并13天26条无丢失，10-13接口仅1条；0dcb829优先停更pub_index_show；真实结构fixture通过 |

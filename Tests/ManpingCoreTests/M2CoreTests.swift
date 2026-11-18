@@ -782,6 +782,22 @@ final class M2CoreTests: XCTestCase, @unchecked Sendable {
       timestamp: 1000, accessKey: "fixture-access"))
   }
 
+  func testWebCookieOnlyHistoryHasIsolatedOwnerAndFailsBeforeSending() async throws {
+    let cookies = try ["SESSDATA": "fixture-session", "DedeUserID": "321"].map { name, value in
+      try XCTUnwrap(HTTPCookie(properties: [.domain: ".bilibili.com", .path: "/", .name: name, .value: value]))
+    }
+    let transport = M2Transport([])
+    let service = BiliService(transport: transport, credentials: M2Store(cookies: cookies))
+    try await service.restoreCookies()
+    let identity = await service.authSnapshot()
+    XCTAssertEqual(identity.playbackOwner, 321)
+    do {
+      _ = try await service.reportProgressForCurrentAccount(aid: 789, cid: 456, seconds: 37)
+      XCTFail("Web cookies alone cannot sign the App report")
+    } catch AuthFailure.needsLogin {}
+    let sent = await transport.requests
+    XCTAssertTrue(sent.isEmpty)
+  }
   func testFavoriteFoldersUseAuthenticatedMid() async throws {
     let transport = M2Transport([
       .init(

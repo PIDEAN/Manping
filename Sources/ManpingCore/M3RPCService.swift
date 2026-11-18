@@ -85,7 +85,7 @@ public actor LibraryRPCService {
     guard key.kid > 0 else { throw BiliRPCError.invalidArgument }
     var request = Bilibili_App_Interfaces_V1_DeleteReq()
     var item = Bilibili_App_Interfaces_V1_HisInfo()
-    item.kid = key.kid; item.business = key.business.rawValue; request.hisInfo = [item]
+    item.kid = key.kid; item.business = key.apiBusiness; request.hisInfo = [item]
     _ = try await call(request, response: Bilibili_App_Interfaces_V1_NoReply.self,
       service: "bilibili.app.interface.v1.History", method: "Delete", authenticated: true,
       expectedIdentity: expectedIdentity)
@@ -127,6 +127,11 @@ extension LibraryEntry {
       destination: historyURL(item).map(Destination.web) ?? .unavailable)
   }
   private static func historyURL(_ item: RPCHistoryItem) -> URL? {
+    if case .episode = item.content, let native = URL(string: item.uri),
+      native.scheme == "bilibili", native.host == "bangumi", native.user == nil, native.password == nil,
+      native.path.range(of: "^/play/(ep|ss)[1-9][0-9]*/?$", options: .regularExpression) != nil {
+      return URL(string: "https://www.bilibili.com/bangumi" + native.path)
+    }
     if let url = JSONValue.url(item.uri) { return url }
     guard item.id > 0 else { return nil }
     switch item.content {

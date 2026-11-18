@@ -328,10 +328,38 @@ import WebKit
   let proxySettingsModel = ProxySettingsModel()
   /// Debug playback reports exercise real playback but must never write to the account.
   private static let writesHistory = !ProcessInfo.processInfo.arguments.contains("--ui-playback-report")
-  private(set) lazy var progressReporter = WatchProgressReporter(service: service) { [weak self] in
-    guard let self else { return false }
-    return Self.writesHistory && !self.usesUIFixtures && self.appSettings.bool(.reportProgress)
+  private lazy var bookmarks = PlaybackBookmarks(defaults: recordsProgress ? PerformanceEnvironment.defaults : MemoryPreferences())
+  private var restoredCredentials = false
+  private var openingPosition: (identity: AuthSnapshot, seconds: Double)?
+  private func takeOpeningPosition(for identity: AuthSnapshot, otherwise current: Double) -> Double {
+    guard let openingPosition else { return current }
+    self.openingPosition = nil
+    return openingPosition.identity.sameIdentity(as: identity) ? openingPosition.seconds : 0
   }
+  @Published private(set) var historySyncError: String?
+  private var recordsProgress: Bool { Self.writesHistory && !usesUIFixtures && !PerformanceOptions.requested }
+  private func localOwner(_ snapshot: AuthSnapshot) -> Int64? {
+    guard snapshot.playbackOwner != 0 || restoredCredentials else { return nil }
+    return snapshot.playbackOwner
+  }
+  let historyWrites = PassthroughSubject<(WatchProgressReporter.Item, Int, AuthSnapshot), Never>()
+  private(set) lazy var progressReporter: WatchProgressReporter = {
+    let reporter = WatchProgressReporter(
+      enabled: { [weak self] in self?.recordsProgress == true && self?.appSettings.bool(.reportProgress) == true },
+      checkpoint: { [weak self] item, snapshot, seconds in
+        guard let self, let owner = localOwner(snapshot) else { return }
+        bookmarks.save(.init(owner: owner, aid: item.aid, cid: item.cid, seconds: seconds,
+                             updated: Date().timeIntervalSince1970))
+      }, feedback: { [weak self] message in
+        if self?.historySyncError != message { self?.historySyncError = message }
+      }, submit: { [service] item, seconds, snapshot in
+        let episode = item.episode.flatMap { ep in item.season.map { (id: ep, season: $0) } }
+        try await service.reportProgress(aid: item.aid, cid: item.cid, seconds: seconds,
+                                         episode: episode, expectedIdentity: snapshot)
+      })
+    reporter.onConfirmed = { [weak self] item, seconds, identity in self?.historyWrites.send((item, seconds, identity)) }
+    return reporter
+  }()
   @Published var account = "登录"
   @Published private(set) var fixtureReady = false
   @Published var accountAvatar: URL?
@@ -603,6 +631,7 @@ import WebKit
   }
   private func applySettings(_ settings: MacSettings) {
     let previous = appSettings; appSettings = settings
+    if !settings.bool(.reportProgress) { historySyncError = nil }
     LiveInteractionPreferences.shared.update(settings)
     if previous.bool(.dockBadge) != settings.bool(.dockBadge) { updateDockBadge() }
     watchActivity.indexesSpotlight = settings.bool(.spotlightIndex)
@@ -811,6 +840,7 @@ import WebKit
         _ = await applyProxy(proxySettings, secret: nil, saveSecret: false)
       }
       let applied = try await service.restore(stored, ifUnchangedSince: before)
+      restoredCredentials = true
       guard applied, authCallbacks.accepts(generation) else { return }
       let snapshot = await service.authSnapshot()
       if snapshot.state != .needsLogin {
@@ -1056,8 +1086,8 @@ import WebKit
   /// nil uses 设置 › 打开视频时. Either way the choice is applied once, for this open: later
   /// items (next part, playlist, related) stay where the picture is.
   func open(_ video: Video) { open(video, mode: nil) }
-  func open(_ video: Video, mode: MacOpenMode?) {
-    startVideo(video, preservingQueue: false)
+  func open(_ video: Video, mode: MacOpenMode?, history: PlaybackBookmark? = nil) {
+    startVideo(video, preservingQueue: false, history: history)
     pendingOpenMode = mode.map { OpenPlacement(mode: $0) } ?? defaultOpenPlacement
     // An explicit window opens right away; the media fills it when it loads, leaving the
     // window as it is by then.
@@ -1073,7 +1103,8 @@ import WebKit
   }
   /// Opens an episode or a season; its first load applies 设置 › 打开视频时 (no entry offers
   /// another place for episodes).
-  func openPGC(_ selection: PGCSelection) {
+  func openPGC(_ selection: PGCSelection) { openPGC(selection, history: nil) }
+  func openPGC(_ selection: PGCSelection, history: (owner: Int64, episode: Int64, seconds: Int, updated: Double)?) {
     noteNavigation()
     closePlayer()
     pendingOpenMode = defaultOpenPlacement
@@ -1081,6 +1112,18 @@ import WebKit
     Self.configurePlayerPreferences(player, settings: appSettings)
     let playback = PGCPlaybackModel(service: service, player: player,
       preferences: playbackPreferences, usesFixtures: usesUIFixtures, cdn: cdn)
+    playback.resumePosition = { [weak self] episode, identity, remote in
+      let fallback = PlaybackBookmark.start(remote ?? 0, duration: episode.duration)
+      guard let self, let owner = localOwner(identity), let aid = episode.aid, let cid = episode.cid else { return fallback }
+      var hint: PlaybackBookmark?
+      if let history, history.owner == owner, history.episode == episode.id {
+        hint = PlaybackBookmark(owner: owner, aid: aid, cid: cid, seconds: history.seconds, updated: history.updated)
+      } else if let remote {
+        // The season response has no timestamp. A local checkpoint for this episode takes precedence.
+        hint = PlaybackBookmark(owner: owner, aid: aid, cid: cid, seconds: remote, updated: 0)
+      }
+      return bookmarks.start(owner: owner, aid: aid, cid: cid, duration: episode.duration, history: hint)
+    }
     pgcPlayback = playback
     playback.onPlaybackEnd = { [weak self] in self?.requestNextPlayback() }
     playback.onEpisodeChange = { [weak self] in
@@ -1088,6 +1131,7 @@ import WebKit
       self?.clipPlayback.stop(.mediaChanged)
     }
     playback.onMediaReady = { [weak self] in self?.playbackDidLoad() }
+    playback.onProgressReady = { [weak self] identity in self?.bindProgress(identity: identity) }
     playback.skipNextPrompt = { [weak self] in self?.appSettings.bool(.skipNextPrompt) ?? false }
     // 依次播放 moves the playhead itself: automatic skips wait until it ends.
     playback.automaticSkip = { [weak self] in
@@ -1329,7 +1373,8 @@ import WebKit
     forwardRoutes = forward.filter { !Self.isPlayerRoute($0) }
   }
   private func startVideo(_ video: Video, preservingQueue: Bool, identityRetry: Bool = false,
-    initiallyPaused: Bool = false) {
+    initiallyPaused: Bool = false, history: PlaybackBookmark? = nil) {
+    openingPosition = nil
     deferredVideoRetry = nil
     cdn.detach()
     noteNavigation()
@@ -1372,13 +1417,17 @@ import WebKit
     let expected = preservingQueue ? queueLoadIdentity : nil
     loadTask = Task {
       do {
-        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
-        let details = try await service.videoDetails(video, expectedIdentity: expected).selectingPart(cid: video.cid)
+        let base = try await service.videoDetails(video, expectedIdentity: expected)
         #if DEBUG
         if let debugAfterDetails { await debugAfterDetails() }
         #endif
+        let detailsIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
+        let rememberedPart = localOwner(detailsIdentity).flatMap { owner in
+          base.video.aid.flatMap { bookmarks.latestPart(owner: owner, aid: $0) }
+        }
+        let details = base.selectingPart(cid: video.cid ?? rememberedPart)
         selected = details.video
         videoDetails = details
         playbackFeatures.follow(aid: details.video.aid, cid: details.video.cid)
@@ -1386,32 +1435,42 @@ import WebKit
         #if DEBUG
         if let debugAfterManifest { await debugAfterManifest() }
         #endif
+        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
+        if video.cid == nil, rememberedPart != nil, !reportIdentity.sameIdentity(as: detailsIdentity) {
+          throw CancellationError()
+        }
+        openingPosition = (reportIdentity, bookmarks.start(owner: localOwner(reportIdentity), aid: details.video.aid,
+          cid: details.video.cid, duration: details.video.duration, history: history))
         manifest = streams
         let choice = try PlaybackSelector.select(streams, preferences: playbackPreferences,
           supportsHardware: Self.supportsHardware)
         selectedStream = choice.video
-        if usesUIFixtures { player.status = "本地样本 · 不加载在线媒体" }
-        else {
+        if usesUIFixtures {
+          player.time = takeOpeningPosition(for: reportIdentity, otherwise: 0)
+          player.status = "本地样本 · 不加载在线媒体"
+        } else {
           let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P,
             reportFailureTo: player)
-          try await checkCurrentLoad(loadGeneration, expected: expected)
+          try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
           // nil: a quality change made during startup already loaded the newer stream.
-          if let prepared {
-            player.load(video: prepared.video, audio: prepared.audio, paused: !player.playbackIntended); Self.configurePlayerPreferences(player)
+          if let prepared, selectedStream?.id == choice.video.id {
+            player.load(video: prepared.video, audio: prepared.audio, start: takeOpeningPosition(for: reportIdentity, otherwise: 0), paused: !player.playbackIntended)
+            bindProgress(identity: reportIdentity)
+            Self.configurePlayerPreferences(player)
             await attachCDN(to: player, ticket: prepared.ticket)
-            try await checkCurrentLoad(loadGeneration, expected: expected)
+            try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
           }
         }
         observePlaybackEnd()
-        playbackDidLoad(identity: reportIdentity)
+        playbackDidLoad()
         if let cid = details.video.cid {
           do {
-            let comments = try await service.comments(cid: cid, expectedIdentity: expected)
-            try await checkCurrentLoad(loadGeneration, expected: expected)
+            let comments = try await service.comments(cid: cid, expectedIdentity: reportIdentity)
+            try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
             player.timeline = DanmakuTimeline(comments: comments)
           } catch is CancellationError { return } catch {
-            if (try? await checkCurrentLoad(loadGeneration, expected: expected)) != nil {
+            if (try? await checkCurrentLoad(loadGeneration, expected: reportIdentity)) != nil {
               player.status = "没能加载弹幕：\(error.localizedDescription)"
             }
           }
@@ -1419,7 +1478,7 @@ import WebKit
       } catch is CancellationError {
         // An identity change (credentials restored, login sheet opened) cancels in-flight requests
         // without the user leaving the video: reload it once instead of leaving a dead page.
-        if !Task.isCancelled, !identityRetry, expected == nil, loadGeneration == clipGeneration, manifest == nil {
+        if !Task.isCancelled, !identityRetry, expected == nil, loadGeneration == clipGeneration {
           retryVideoForIdentity(video)
         }
       } catch {
@@ -1453,7 +1512,7 @@ import WebKit
         let replacement = streams.video.first { $0.id == current?.id }
         let next = current == nil || preferred.quality > current!.quality ? preferred : replacement ?? preferred
         // The old identity was detached immediately; attach even when quality stays unchanged.
-        changeQuality(next, persist: false)
+        changeQuality(next, persist: false, rebind: identity)
       } catch is CancellationError {
         return
       } catch {
@@ -1490,6 +1549,7 @@ import WebKit
     guard let details = videoDetails else { return }
     cdn.detach()
     progressReporter.flush()
+    openingPosition = nil
     cancelNextPlayback()
     pausedBrowsing.invalidate()
     eofObservation = nil; clipGeneration = UUID(); player.resetPlaybackEnd()
@@ -1510,35 +1570,42 @@ import WebKit
     let expected = queueLoadIdentity
     loadTask = Task {
       do {
-        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
         let streams = try await service.playback(video, expectedIdentity: expected)
         #if DEBUG
         if let debugAfterManifest { await debugAfterManifest() }
         #endif
+        let reportIdentity = await service.authSnapshot()
         try await checkCurrentLoad(loadGeneration, expected: expected)
+        openingPosition = (reportIdentity, bookmarks.start(owner: localOwner(reportIdentity), aid: video.aid, cid: part.cid, duration: part.duration))
         manifest = streams
         let choice = try PlaybackSelector.select(streams, preferences: playbackPreferences,
           supportsHardware: Self.supportsHardware)
         selectedStream = choice.video
-        if usesUIFixtures { player.status = "本地样本 · 不加载在线媒体" }
-        else {
+        if usesUIFixtures {
+          player.time = takeOpeningPosition(for: reportIdentity, otherwise: 0)
+          player.status = "本地样本 · 不加载在线媒体"
+        } else {
           let prepared = await cdn.prepare(video: choice.video, audio: choice.audio, avoidP2P: playbackPreferences.avoidP2P,
             reportFailureTo: player)
-          try await checkCurrentLoad(loadGeneration, expected: expected)
+          try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
           // nil: a quality change made during startup already loaded the newer stream.
-          if let prepared {
-            player.load(video: prepared.video, audio: prepared.audio); Self.configurePlayerPreferences(player)
+          if let prepared, selectedStream?.id == choice.video.id {
+            player.load(video: prepared.video, audio: prepared.audio, start: takeOpeningPosition(for: reportIdentity, otherwise: 0))
+            bindProgress(identity: reportIdentity)
+            Self.configurePlayerPreferences(player)
             await attachCDN(to: player, ticket: prepared.ticket)
-            try await checkCurrentLoad(loadGeneration, expected: expected)
+            try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
           }
         }
         observePlaybackEnd()
-        playbackDidLoad(identity: reportIdentity)
-        let lines = try await service.comments(cid: part.cid, expectedIdentity: expected)
-        try await checkCurrentLoad(loadGeneration, expected: expected)
+        playbackDidLoad()
+        let lines = try await service.comments(cid: part.cid, expectedIdentity: reportIdentity)
+        try await checkCurrentLoad(loadGeneration, expected: reportIdentity)
         player.timeline = DanmakuTimeline(comments: lines)
-      } catch is CancellationError {} catch {
+      } catch is CancellationError {
+        if !Task.isCancelled, expected == nil, loadGeneration == clipGeneration { retryVideoForIdentity(video) }
+      } catch {
         if (try? await checkCurrentLoad(loadGeneration, expected: expected)) != nil { self.error = error.localizedDescription }
       }
     }
@@ -1773,15 +1840,18 @@ import WebKit
     nextPlaybackTask?.cancel(); nextPlaybackTask = nil
     if nextPlaybackDeadline != nil { nextPlaybackDeadline = nil }
   }
-  private func playbackDidLoad(identity: AuthSnapshot? = nil) {
-    if PerformanceOptions.anonymousRequested { return }
-    let identity = identity ?? reportIdentity
+  private func bindProgress(identity: AuthSnapshot) {
+    guard recordsProgress else { return }
     let target = pgcPlayback?.player ?? player
     if let episode = pgcPlayback?.episode, let aid = episode.aid, let cid = episode.cid {
       progressReporter.begin(.init(aid: aid, cid: cid, episode: episode.id, season: episode.seasonID), player: target, identity: identity)
     } else if pgcPlayback == nil, let aid = selected?.aid, let cid = selected?.cid {
       progressReporter.begin(.init(aid: aid, cid: cid), player: target, identity: identity)
     }
+  }
+  private func playbackDidLoad() {
+    if PerformanceOptions.anonymousRequested { return }
+    let target = pgcPlayback?.player ?? player
     let title = pgcPlayback?.episode?.title ?? selected?.title ?? ""
     let author = pgcPlayback?.details?.season.title ?? selected?.author ?? ""
     if !usesUIFixtures {
@@ -2016,7 +2086,7 @@ import WebKit
     window.toggleFullScreen(nil)
   }
   /// `persist: false` is used by automatic downgrades so they do not overwrite the user's choice.
-  func changeQuality(_ stream: MediaStream, persist: Bool = true, recovering: Bool = false) {
+  func changeQuality(_ stream: MediaStream, persist: Bool = true, recovering: Bool = false, rebind: AuthSnapshot? = nil) {
     guard let manifest,
       let audio = manifest.audio.max(by: { $0.quality < $1.quality }) else { return }
     selectedStream = stream
@@ -2039,6 +2109,8 @@ import WebKit
     let generation = clipGeneration
     let request = Task { [weak self] in
       guard let self else { return }
+      let identity = await self.service.authSnapshot()
+      if let rebind, !identity.sameIdentity(as: rebind) { return }
       guard let prepared = await self.cdn.prepare(video: stream, audio: audio,
         avoidP2P: self.playbackPreferences.avoidP2P, allowProbe: false, preserveRecovery: recovering),
         self.player === target, self.clipGeneration == generation, self.selectedStream?.id == stream.id else { return }
@@ -2046,7 +2118,10 @@ import WebKit
       if let debugAfterQualityPrepare { await debugAfterQualityPrepare() }
       #endif
       guard self.player === target, self.clipGeneration == generation, self.selectedStream?.id == stream.id else { return }
-      target.load(video: prepared.video, audio: prepared.audio, start: target.time, paused: target.paused)
+      guard (try? await self.checkCurrentLoad(generation, expected: identity)) != nil,
+        self.player === target, self.selectedStream?.id == stream.id else { return }
+      target.load(video: prepared.video, audio: prepared.audio, start: self.takeOpeningPosition(for: identity, otherwise: target.time), paused: target.paused)
+      self.bindProgress(identity: identity)
       await self.attachCDN(to: target, ticket: prepared.ticket)
     }
     #if DEBUG

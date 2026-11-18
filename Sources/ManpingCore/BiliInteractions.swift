@@ -165,7 +165,7 @@ extension BiliService {
   public func reportProgressForCurrentAccount(aid: Int64, cid: Int64, seconds: Int,
     episode: (id: Int64, season: Int64)? = nil) async throws -> Bool {
     let identity = authSnapshot()
-    guard identity.state != .needsLogin else { return false }
+    guard identity.canAttemptHistoryReport else { return false }
     try await reportProgress(aid: aid, cid: cid, seconds: seconds, episode: episode, expectedIdentity: identity)
     return true
   }

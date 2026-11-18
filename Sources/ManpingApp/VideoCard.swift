@@ -13,11 +13,11 @@ struct CardActions {
   var openSpace: @MainActor (Int64) -> Void
   var playLiveCompact: @MainActor (Int64) -> Void
 
-  @MainActor init(model: AppModel) {
-    play = { model.open($0) }
+  @MainActor init(model: AppModel, history: PlaybackBookmark? = nil) {
+    play = { model.open($0, mode: nil, history: history) }
     // The menu's choice is this open's mode; 设置 › 打开视频时 does not override it on load.
-    playCompact = { model.open($0, mode: .compact) }
-    playDetached = { model.open($0, mode: .detached) }
+    playCompact = { model.open($0, mode: .compact, history: history) }
+    playDetached = { model.open($0, mode: .detached, history: history) }
     openSpace = { model.openOverlay(.userSpace($0)) }
     playLiveCompact = { model.openLive($0, mode: .compact) }
   }
